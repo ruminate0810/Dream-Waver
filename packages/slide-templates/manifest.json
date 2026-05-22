@@ -8,7 +8,9 @@
       "best_for": ["general business", "product updates", "internal memos"],
       "supported_layouts": ["title", "section", "bullets", "content", "quote", "data", "closing"],
       "primary_color": "#0F172A",
-      "accent_color": "#2563EB"
+      "accent_color": "#2563EB",
+      "thumbnail": "/theme-previews/minimalist-1.png",
+      "previews": ["/theme-previews/minimalist-1.png", "/theme-previews/minimalist-2.png", "/theme-previews/minimalist-3.png"]
     },
     {
       "name": "corporate",
@@ -17,7 +19,9 @@
       "best_for": ["consulting decks", "sales proposals", "client presentations"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "data", "closing"],
       "primary_color": "#1E3A8A",
-      "accent_color": "#F59E0B"
+      "accent_color": "#F59E0B",
+      "thumbnail": "/theme-previews/corporate-1.png",
+      "previews": ["/theme-previews/corporate-1.png", "/theme-previews/corporate-2.png", "/theme-previews/corporate-3.png"]
     },
     {
       "name": "pitch-deck",
@@ -26,7 +30,9 @@
       "best_for": ["investor pitches", "fundraising", "product launches", "founders' decks"],
       "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
       "primary_color": "#050505",
-      "accent_color": "#FF6B35"
+      "accent_color": "#FF6B35",
+      "thumbnail": "/theme-previews/pitch-deck-1.png",
+      "previews": ["/theme-previews/pitch-deck-1.png", "/theme-previews/pitch-deck-2.png", "/theme-previews/pitch-deck-3.png"]
     },
     {
       "name": "academic",
@@ -35,7 +41,9 @@
       "best_for": ["research talks", "lectures", "literature reviews", "white papers"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
       "primary_color": "#18181B",
-      "accent_color": "#B91C1C"
+      "accent_color": "#B91C1C",
+      "thumbnail": "/theme-previews/academic-1.png",
+      "previews": ["/theme-previews/academic-1.png", "/theme-previews/academic-2.png", "/theme-previews/academic-3.png"]
     },
     {
       "name": "playful",
@@ -44,7 +52,9 @@
       "best_for": ["小红书 explainers", "B 站 课程", "教学课件", "social media decks", "personal brand"],
       "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
       "primary_color": "#0A0A0F",
-      "accent_color": "#F472B6"
+      "accent_color": "#F472B6",
+      "thumbnail": "/theme-previews/playful-1.png",
+      "previews": ["/theme-previews/playful-1.png", "/theme-previews/playful-2.png", "/theme-previews/playful-3.png"]
     },
     {
       "name": "editorial",
@@ -53,7 +63,9 @@
       "best_for": ["long-read talks", "thought leadership", "media / journalism", "literary or design criticism"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
       "primary_color": "#1A1614",
-      "accent_color": "#B5371E"
+      "accent_color": "#B5371E",
+      "thumbnail": "/theme-previews/editorial-1.png",
+      "previews": ["/theme-previews/editorial-1.png", "/theme-previews/editorial-2.png", "/theme-previews/editorial-3.png"]
     },
     {
       "name": "retro",
@@ -62,7 +74,9 @@
       "best_for": ["game dev launches", "hackathons", "anything self-consciously fun", "nostalgia-themed talks"],
       "supported_layouts": ["title", "section", "bullets", "content", "data", "quote", "two-column", "closing"],
       "primary_color": "#0F0524",
-      "accent_color": "#FF2D95"
+      "accent_color": "#FF2D95",
+      "thumbnail": "/theme-previews/retro-1.png",
+      "previews": ["/theme-previews/retro-1.png", "/theme-previews/retro-2.png", "/theme-previews/retro-3.png"]
     },
     {
       "name": "tech",
@@ -71,7 +85,9 @@
       "best_for": ["open-source releases", "infra postmortems", "dev-tool launches", "engineering team updates"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "data", "quote", "closing"],
       "primary_color": "#0B0E13",
-      "accent_color": "#4ADE80"
+      "accent_color": "#4ADE80",
+      "thumbnail": "/theme-previews/tech-1.png",
+      "previews": ["/theme-previews/tech-1.png", "/theme-previews/tech-2.png", "/theme-previews/tech-3.png"]
     },
     {
       "name": "zen",
@@ -80,7 +96,9 @@
       "best_for": ["wellness & meditation", "design philosophy", "茶道 / 慢内容", "spiritual or contemplative topics"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
       "primary_color": "#1A1815",
-      "accent_color": "#B5371E"
+      "accent_color": "#B5371E",
+      "thumbnail": "/theme-previews/zen-1.png",
+      "previews": ["/theme-previews/zen-1.png", "/theme-previews/zen-2.png", "/theme-previews/zen-3.png"]
     },
     {
       "name": "warm",
@@ -89,7 +107,9 @@
       "best_for": ["personal blog talks", "手帐风课件", "vintage brands", "slow-content explainers", "creator notes"],
       "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
       "primary_color": "#3D2E1F",
-      "accent_color": "#C84B1A"
+      "accent_color": "#C84B1A",
+      "thumbnail": "/theme-previews/warm-1.png",
+      "previews": ["/theme-previews/warm-1.png", "/theme-previews/warm-2.png", "/theme-previews/warm-3.png"]
     }
   ]
 }
