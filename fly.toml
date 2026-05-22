@@ -1,0 +1,55 @@
+# fly.toml — Dream-Waver Go orchestrator deployment.
+#
+# Single-region MVP. App name is set at first `fly launch` and stored
+# in this file; for now it's left as a placeholder you can sed to your
+# actual chosen name. Run:
+#
+#   fly launch --copy-config --no-deploy --name dreamwaver-orchestrator
+#   fly secrets set DEEPSEEK_API_KEY=... LLM_PRIMARY_PROVIDER=deepseek
+#   fly deploy --remote-only
+#
+# Region "sjc" is San Jose — close to DeepSeek's Asia routing without
+# the China-mainland TLS dance. Change to "nrt" / "sin" for lower
+# latency to Chinese users if Fly's pricing makes sense there.
+
+app = "dreamwaver-orchestrator"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  ENV = "production"
+  LOG_LEVEL = "info"
+  ORCHESTRATOR_HTTP_PORT = "8080"
+  # SLIDE_TEMPLATE_DIR and SLIDE_OUT_DIR are baked into the image (see
+  # Dockerfile ENV lines) so they're not repeated here.
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Idle-to-zero is OK for the demo phase. First-request cold start is
+  # ~3-5s while chromedp warms up — bearable. Flip min_machines_running
+  # to 1 once you have a paying user.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  # /healthz is a 200 OK from the chi router — checked frequently so
+  # Fly knows when the machine is alive after cold start.
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    timeout = "10s"
+    path = "/healthz"
+
+# Slide rendering needs RAM:
+#   - chromedp's Chromium ~ 600MB headless
+#   - one 1920x1080 PNG ~ 8MB; 10 slides + decode buffers easily 200MB
+#   - Go runtime + buffers ~ 200MB
+# performance-2x (2 CPU / 4 GB) is the smallest VM that finishes a
+# 10-slide deck reliably. shared-cpu-1x at 2GB OOMs around slide 6.
+[[vm]]
+  size = "performance-2x"

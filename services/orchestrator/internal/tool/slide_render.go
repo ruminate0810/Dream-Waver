@@ -345,8 +345,15 @@ func (r *SlideRender) renderSlidesIndices(
 	}
 
 	// One Chromium per call. For high-throughput we'd pool allocators.
+	//
+	// no-sandbox + disable-dev-shm-usage are container-runtime essentials:
+	// inside Docker (and Fly's microVMs) Chromium can't open the sandbox
+	// namespace as root, and /dev/shm is sized 64MB by default which is
+	// not enough for our 1920×1080 canvas.
 	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("hide-scrollbars", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
 	)
 	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, allocOpts...)
 	defer cancelAlloc()
