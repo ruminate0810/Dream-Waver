@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { getSlideJob, type SlideJob } from "@/lib/api";
 import { Chat } from "@/components/chat/Chat";
+import { AgentSessionProvider } from "@/components/chat/transport";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
 
 // The slides workspace is a two-column manuscript:
@@ -111,29 +112,33 @@ export default function SlideJobPage() {
   );
 }
 
-// Workspace owns the two-column split itself. Kept as a leaf component
-// so the suspense/loading states above stay clean, and so the layout
-// math doesn't bleed into the data-fetching code.
+// Workspace owns the two-column split + the shared event stream.
+// <AgentSessionProvider> opens the single WebSocket; both Chat (which
+// reads typed Turn[] via useAgentSession) and LivePreviewStack (which
+// just listens for slides.updated) subscribe to it. One connection,
+// fan-out delivery, no duplication.
 function Workspace({ job, sessionId }: { job: SlideJob; sessionId: string }) {
   return (
-    // CSS grid gives us reliable structure — explicit fr units rather
-    // than flexbox math. Left column is narrower (the editor's notes);
-    // right column gets the proof. The hairline centre divider is a
-    // single rule, not a card border on either side.
-    <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14">
-      {/* ── Left: chat / generation timeline ─────────────────────────── */}
-      <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-10 xl:pr-14">
-        <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pb-10 lg:pt-2 lg:[scrollbar-width:thin]">
-          <Chat job={job} sessionId={sessionId} compact />
-        </div>
-      </section>
+    <AgentSessionProvider sessionId={sessionId || job.session_id}>
+      {/* CSS grid gives us reliable structure — explicit fr units rather
+          than flexbox math. Left column is narrower (the editor's notes);
+          right column gets the proof. The hairline centre divider is a
+          single rule, not a card border on either side. */}
+      <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14">
+        {/* ── Left: chat / generation timeline ────────────────────────── */}
+        <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-10 xl:pr-14">
+          <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pb-10 lg:pt-2 lg:[scrollbar-width:thin]">
+            <Chat job={job} sessionId={sessionId} compact />
+          </div>
+        </section>
 
-      {/* ── Right: live HTML preview stack ───────────────────────────── */}
-      <section className="relative lg:pl-2">
-        <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pl-4 lg:pr-2 lg:pt-2 lg:[scrollbar-width:thin]">
-          <LivePreviewStack job={job} />
-        </div>
-      </section>
-    </div>
+        {/* ── Right: live HTML preview stack ──────────────────────────── */}
+        <section className="relative lg:pl-2">
+          <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pl-4 lg:pr-2 lg:pt-2 lg:[scrollbar-width:thin]">
+            <LivePreviewStack job={job} />
+          </div>
+        </section>
+      </div>
+    </AgentSessionProvider>
   );
 }

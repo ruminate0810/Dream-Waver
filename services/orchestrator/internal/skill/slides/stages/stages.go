@@ -137,6 +137,53 @@ func Content(ctx context.Context, router llm.Router, outline *OutlineResult) (*C
 	return &out, resp.Usage, nil
 }
 
+// ─── Single-slide writer (used by add_slide tool) ───────────────────
+
+// WriteOneParams describes one new slide to be inserted into an
+// existing deck. NeighborTitles carries the (at most) two adjacent
+// slide titles so the worker LLM can match tone — both can be empty
+// when inserting at the very start or end of the deck.
+type WriteOneParams struct {
+	DeckTitle      string
+	DeckTheme      schema.Theme
+	Layout         schema.SlideLayout
+	Position       int // 1-based position the new slide will occupy
+	Instruction    string
+	NeighborTitles []string
+}
+
+// WriteOneSlide asks the worker LLM to produce a single slide's
+// SlideData payload. Used by the add_slide tool — significantly cheaper
+// than re-running stages.Content for the whole deck.
+func WriteOneSlide(ctx context.Context, router llm.Router, p WriteOneParams) (*schema.SlideData, llm.Usage, error) {
+	if p.Layout == "" {
+		p.Layout = schema.LayoutContent
+	}
+	user := fmt.Sprintf(
+		"Deck title: %s\nDeck theme: %s\nInsert position: %d (1-based)\nLayout: %s\nNeighbor titles: %s\n\nInstruction:\n%s",
+		p.DeckTitle, p.DeckTheme, p.Position, p.Layout,
+		strings.Join(p.NeighborTitles, " · "),
+		p.Instruction,
+	)
+
+	client := router.For("worker")
+	resp, err := client.AskTool(ctx, llm.AskToolRequest{
+		Model:             router.ModelFor("worker"),
+		SystemPrompt:      prompts.SlideOne,
+		Messages:          []schema.Message{schema.NewUser(user)},
+		MaxTokens:         1200,
+		EnablePromptCache: true,
+	})
+	if err != nil {
+		return nil, llm.Usage{}, err
+	}
+	var data schema.SlideData
+	if err := json.Unmarshal(stripFences(resp.Content), &data); err != nil {
+		return nil, resp.Usage, fmt.Errorf("parse slide_one json: %w; raw=%s", err, truncate(resp.Content, 400))
+	}
+	return &data, resp.Usage, nil
+}
+
 // ─── Stage 3: Assemble ───────────────────────────────────────────────
 
 // Assemble joins outline-level metadata (title, theme) with the per-slide

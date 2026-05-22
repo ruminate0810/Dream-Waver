@@ -18,6 +18,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 )
 
@@ -369,6 +370,13 @@ func (h *handlers) slidePageHTML(w http.ResponseWriter, r *http.Request, nStr st
 		return
 	}
 
+	// If apply_brand has run, inject the deck's brand as CSS variables
+	// at the top of <body>. Templates that opt into `var(--brand-*)`
+	// pick them up automatically.
+	if css := brandStyleBlock(deck.Brand); css != "" {
+		html = injectAfterBodyOpen(html, []byte(css))
+	}
+
 	// Append the bridge script *just before </body>* (case-insensitive
 	// fall-through) so it runs after the slide is fully laid out. We
 	// don't parse the document — just splice — because the HTML is
@@ -531,6 +539,82 @@ func injectBeforeBodyClose(html, payload []byte) []byte {
 		return out
 	}
 	return append(html, payload...)
+}
+
+// injectAfterBodyOpen splices payload right after the opening <body…>
+// tag. The needle is "<body" (case-insensitive) so attributes on body
+// don't confuse the search. Used by apply_brand to inject the brand's
+// CSS variables before any template content paints.
+func injectAfterBodyOpen(html, payload []byte) []byte {
+	idx := bytesIndexFold(html, []byte("<body"))
+	if idx < 0 {
+		return append(payload, html...)
+	}
+	// Find the `>` that closes the opening tag.
+	closeIdx := bytesIndex(html[idx:], []byte(">"))
+	if closeIdx < 0 {
+		return append(payload, html...)
+	}
+	insertAt := idx + closeIdx + 1
+	out := make([]byte, 0, len(html)+len(payload))
+	out = append(out, html[:insertAt]...)
+	out = append(out, payload...)
+	out = append(out, html[insertAt:]...)
+	return out
+}
+
+// brandStyleBlock formats the Deck.Brand into a `<style>:root{...}</style>`
+// snippet. Returns "" when brand is nil or has no fields set — no point
+// emitting an empty rule.
+func brandStyleBlock(b *schema.Brand) string {
+	if b == nil {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("<style id=\"__dw_brand\">:root{")
+	if b.PrimaryColor != "" {
+		sb.WriteString("--brand-primary:" + b.PrimaryColor + ";")
+	}
+	if b.AccentColor != "" {
+		sb.WriteString("--brand-accent:" + b.AccentColor + ";")
+	}
+	if b.FontFamily != "" {
+		// Quote font family so the CSS parser doesn't choke on commas.
+		sb.WriteString("--brand-font:" + b.FontFamily + ";")
+	}
+	sb.WriteString("}</style>")
+	// If no field was set, suppress the empty block.
+	out := sb.String()
+	if out == `<style id="__dw_brand">:root{}</style>` {
+		return ""
+	}
+	return out
+}
+
+// bytesIndexFold is a case-insensitive bytesIndex for ASCII haystacks.
+// Used for tag matching where case shouldn't be load-bearing.
+func bytesIndexFold(haystack, needle []byte) int {
+	n, m := len(haystack), len(needle)
+	if m == 0 || m > n {
+		return -1
+	}
+outer:
+	for i := 0; i <= n-m; i++ {
+		for j := 0; j < m; j++ {
+			a, b := haystack[i+j], needle[j]
+			if a >= 'A' && a <= 'Z' {
+				a += 32
+			}
+			if b >= 'A' && b <= 'Z' {
+				b += 32
+			}
+			if a != b {
+				continue outer
+			}
+		}
+		return i
+	}
+	return -1
 }
 
 // bytesIndex is a tiny wrapper over the stdlib so we don't pull in the

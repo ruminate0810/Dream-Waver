@@ -9,3 +9,6 @@ var Outline string
 
 //go:embed content.md
 var Content string
+
+//go:embed slide_one.md
+var SlideOne string

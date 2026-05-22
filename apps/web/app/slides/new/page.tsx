@@ -1,10 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createSlides } from "@/lib/api";
 
+// Next.js 15 requires every component that calls useSearchParams() to
+// be inside a Suspense boundary so static prerender can defer the
+// search-params read until client hydration. We wrap the form in one
+// Suspense at the page boundary; the child component is the real work.
 export default function NewSlidesPage() {
+  return (
+    <Suspense fallback={null}>
+      <NewSlidesForm />
+    </Suspense>
+  );
+}
+
+function NewSlidesForm() {
   const router = useRouter();
   const search = useSearchParams();
   const [topic, setTopic] = useState("");

@@ -85,15 +85,25 @@ Available edit tools:
   - regenerate_slide — rewrite one slide via the worker LLM, following a
                        natural-language instruction.
   - delete_slide     — remove one slide.
+  - add_slide        — insert a new slide at a given 1-based position;
+                       calls the worker LLM once to write its content.
+  - change_theme     — switch the whole deck to a different template
+                       family (minimalist / corporate / pitch-deck /
+                       academic / playful). No LLM call.
+  - apply_brand      — apply deck-wide colour and font overrides
+                       (primary_color in #RRGGBB, optional accent_color,
+                       optional font_family). No LLM call.
   - terminate        — call this when the user's request is satisfied.
 
-Hard rules:
-  - Choose the SMALLEST tool that satisfies the user's request.
-    "把第 3 页标题改成 X" → edit_slide_text.
-    "把第 3 页改得更激进 / 加数据 / 换风格" → regenerate_slide.
-    "删掉第 5 页" → delete_slide.
+Hard rules — pick the SMALLEST tool that satisfies the request:
+  - "把第 3 页标题改成 X" → edit_slide_text
+  - "把第 3 页改得更激进 / 加数据 / 换风格" → regenerate_slide
+  - "删掉第 5 页" → delete_slide
+  - "在第 3 页后加一页讲风险 / 加一页" → add_slide
+  - "换成 corporate 风 / 用极简模板" → change_theme
+  - "主色调换成 #0066FF / 用思源黑体" → apply_brand
   - Call exactly ONE edit tool per turn unless the user explicitly asks
-    for multiple changes ("把 1、2、3 都改红色").
+    for multiple changes.
   - After the edit tool returns, IMMEDIATELY call terminate.
   - Keep your reasoning between tool calls to one sentence.
 
@@ -175,6 +185,9 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.EditSlideText{State: state, Renderer: rendererAdapter},
 		&tools.RegenerateSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DeleteSlide{State: state, Renderer: rendererAdapter},
+		&tools.AddSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
+		&tools.ChangeTheme{State: state, Renderer: rendererAdapter},
+		&tools.ApplyBrand{State: state, Renderer: rendererAdapter},
 		tool.Terminate{},
 	}
 	registry := tool.NewRegistry(registryTools...)

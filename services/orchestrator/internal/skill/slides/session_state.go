@@ -122,6 +122,90 @@ func (s *SessionState) DeleteSlide(index int) error {
 	return nil
 }
 
+// InsertSlide is the mirror of DeleteSlide for the add_slide tool. It
+// splices `s` into Deck.Slides at `index`, and inserts zero-filled
+// peer entries into Content.Slides and Outline.Slides so all three
+// stay length-aligned for the next agent turn.
+//
+// `index` ranges 0 .. len(Deck.Slides) inclusive — i.e. equal to the
+// length means "append".
+func (s *SessionState) InsertSlide(index int, slide schema.Slide) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return fmt.Errorf("no deck loaded — generate the deck before inserting slides")
+	}
+	if index < 0 || index > len(s.Deck.Slides) {
+		return fmt.Errorf("slide index %d out of range (have %d slides)", index, len(s.Deck.Slides))
+	}
+	// Splice into Deck.Slides.
+	s.Deck.Slides = append(s.Deck.Slides[:index], append([]schema.Slide{slide}, s.Deck.Slides[index:]...)...)
+	// Keep Content.Slides length-aligned with zero-filled entry. The
+	// add_slide tool's caller fills SlideData from a worker LLM; this
+	// entry just keeps the indexes in sync.
+	if s.Content != nil {
+		filler := stages.ContentSlide{
+			Index:    index,
+			Template: slide.Template,
+			Layout:   slide.Layout,
+			Data:     slide.Data,
+		}
+		if index >= len(s.Content.Slides) {
+			s.Content.Slides = append(s.Content.Slides, filler)
+		} else {
+			s.Content.Slides = append(s.Content.Slides[:index], append([]stages.ContentSlide{filler}, s.Content.Slides[index:]...)...)
+		}
+	}
+	// Outline gets a thin placeholder — title becomes the headline so a
+	// future Continue() turn that re-reads outline still finds something
+	// meaningful at this index.
+	if s.Outline != nil {
+		filler := stages.OutlineSlide{
+			Index:    index,
+			Type:     string(slide.Layout),
+			Headline: slide.Data.Title,
+		}
+		if index >= len(s.Outline.Slides) {
+			s.Outline.Slides = append(s.Outline.Slides, filler)
+		} else {
+			s.Outline.Slides = append(s.Outline.Slides[:index], append([]stages.OutlineSlide{filler}, s.Outline.Slides[index:]...)...)
+		}
+	}
+	s.SlideCount = len(s.Deck.Slides)
+	return nil
+}
+
+// SetTheme rewrites Deck.Theme and overrides every slide.Template with
+// the new theme name so the next render picks up the new template family.
+// Per-slide Layout is preserved (a "bullets" layout stays "bullets" —
+// the new theme just provides a different visual treatment of that layout).
+func (s *SessionState) SetTheme(theme schema.Theme) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return
+	}
+	s.Deck.Theme = theme
+	for i := range s.Deck.Slides {
+		s.Deck.Slides[i].Template = string(theme)
+	}
+}
+
+// SetBrand replaces Deck.Brand with the given pointer (nil clears any
+// previously applied brand). The renderer injects this into every served
+// slide HTML as `:root { --brand-primary: …; --brand-accent: …; … }`.
+// Templates that opt into `var(--brand-*, default)` pick them up; until
+// Sprint B2 upgrades the 5 templates, the variable is set but not yet
+// consumed by template CSS.
+func (s *SessionState) SetBrand(b *schema.Brand) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return
+	}
+	s.Deck.Brand = b
+}
+
 // MarkDirty is a no-op today — the incremental renderer derives dirty
 // indices from its argument list directly. We keep the method so the
 // SessionAccessor interface stays expressive: in a future revision we

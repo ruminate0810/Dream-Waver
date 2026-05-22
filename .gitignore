@@ -25,6 +25,7 @@ node_modules/
 out/
 .turbo/
 .pnpm-store/
+*.tsbuildinfo
 
 # Python (just in case)
 __pycache__/

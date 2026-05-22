@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Download, Eye, FileWarning, Pencil } from "lucide-react";
 import clsx from "clsx";
 
-import { eventsURL, postSlideMessage, type SlideJob } from "@/lib/api";
+import { postSlideMessage, type SlideJob } from "@/lib/api";
+import { useAgentEventStream } from "@/components/chat/transport";
 import { SlideFrame, type EditRequest } from "./SlideFrame";
 import { EditPopover, type EditSubmit, type EditTarget } from "./EditPopover";
 
@@ -44,88 +45,24 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
     });
   }, [slideCount]);
 
-  // Dedicated WebSocket for the live preview. The Chat component also
-  // opens one, but routing both panes through a single shared connection
-  // would mean lifting the WS into the page — heavy refactor for no
-  // user-visible benefit. The orchestrator's Hub multi-subscribes per
-  // session ID for cheap.
-  //
-  // We reconnect with exponential backoff on close. A long-idle follow-up
-  // window can let the connection drop silently; without retry, the
-  // user would see "Just revised" never flash again even though edits
-  // are landing on the server.
+  // Subscribe to the shared event stream from <AgentSessionProvider>.
+  // The provider owns the single WebSocket + reconnect logic; we just
+  // listen for slides.updated and bump exactly one iframe's version.
+  const stream = useAgentEventStream();
   useEffect(() => {
-    if (!job.session_id) return;
-    let alive = true;
-    let ws: WebSocket | null = null;
-    let attempt = 0;
-    let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const handleMessage = (m: MessageEvent) => {
-      if (!alive) return;
-      try {
-        const ev = JSON.parse(m.data);
-        if (ev?.kind === "slides.updated" && typeof ev?.data?.slide_index === "number") {
-          const oneBased = ev.data.slide_index as number;
-          setVersions((prev) => {
-            const next = prev.slice();
-            const i = oneBased - 1;
-            if (i >= 0 && i < next.length) next[i] = (next[i] ?? 1) + 1;
-            return next;
-          });
-          setActiveIdx(oneBased);
-        }
-      } catch {
-        /* malformed frame — drop silently */
-      }
-    };
-
-    const connect = () => {
-      if (!alive) return;
-      try {
-        ws = new WebSocket(eventsURL(job.session_id));
-      } catch {
-        scheduleRetry();
-        return;
-      }
-      ws.onmessage = handleMessage;
-      ws.onopen = () => {
-        attempt = 0; // a clean handshake resets the backoff
-      };
-      // Either close (graceful) or error (mid-flight failure) ends the
-      // socket; reconnect from the same place. Browsers fire close after
-      // error so we only schedule from close to avoid double-retries.
-      ws.onclose = () => {
-        ws = null;
-        scheduleRetry();
-      };
-      ws.onerror = () => {
-        /* close will handle the retry */
-      };
-    };
-
-    const scheduleRetry = () => {
-      if (!alive) return;
-      // 0.6s → 1.2s → 2.4s … capped at 30s. The first retry is fast so a
-      // refresh-induced disconnect re-binds before the user notices.
-      const delay = Math.min(600 * 2 ** attempt, 30_000);
-      attempt += 1;
-      retryTimer = setTimeout(connect, delay);
-    };
-
-    connect();
-    return () => {
-      alive = false;
-      if (retryTimer) clearTimeout(retryTimer);
-      if (ws) {
-        ws.onopen = null;
-        ws.onmessage = null;
-        ws.onclose = null;
-        ws.onerror = null;
-        ws.close();
-      }
-    };
-  }, [job.session_id]);
+    return stream.subscribe((ev) => {
+      if (ev.kind !== "slides.updated") return;
+      const oneBased = ev.data.slide_index;
+      if (typeof oneBased !== "number") return;
+      setVersions((prev) => {
+        const next = prev.slice();
+        const i = oneBased - 1;
+        if (i >= 0 && i < next.length) next[i] = (next[i] ?? 1) + 1;
+        return next;
+      });
+      setActiveIdx(oneBased);
+    });
+  }, [stream]);
 
   // Clear the vermillion "just updated" highlight after a moment so the
   // strip doesn't permanently scream for attention.

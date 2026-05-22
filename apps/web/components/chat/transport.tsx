@@ -1,0 +1,228 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+import { eventsURL } from "@/lib/api";
+
+// transport.ts owns the single WebSocket connection per slide session.
+//
+// Pre-refactor, both <Chat> and <LivePreviewStack> opened their own
+// WS — same session id, same event stream, duplicated reconnect logic.
+// This file makes the connection a shared resource:
+//
+//   <AgentSessionProvider sessionId={...}>
+//      <Chat …/>            ← subscribes via useAgentEventStream()
+//      <LivePreviewStack …/>← subscribes via useAgentEventStream()
+//   </AgentSessionProvider>
+//
+// Subscribers register a callback; the provider fans every incoming
+// event out to all of them. New subscribers picked up later still get
+// future events but NOT past ones — by design, since each consumer
+// folds the stream into its own state shape.
+
+// ─── Wire-protocol mirror of internal/event/event.go ─────────────────
+
+export type EventKind =
+  | "step.start"
+  | "llm.thought"
+  | "tool.start"
+  | "tool.end"
+  | "slides.outline"
+  | "slides.content"
+  | "slides.render.start"
+  | "slides.render.end"
+  | "slides.updated"
+  | "agent.finish"
+  | "agent.error";
+
+export type Tokens = {
+  input: number;
+  output: number;
+  cache_read?: number;
+  cache_creation?: number;
+};
+
+export type EventData = {
+  // Agent loop
+  agent?: string;
+  step?: number;
+  // LLM thought
+  text?: string;
+  tokens?: Tokens;
+  // Tool calls
+  tool_name?: string;
+  tool_id?: string;
+  tool_calls?: string[];
+  tool_output?: string;
+  // Slides
+  outline_title?: string;
+  slide_count?: number;
+  slide_index?: number;
+  slide_bytes?: number;
+  pptx_path?: string;
+  // Errors
+  stage?: string;
+  error?: string;
+};
+
+export type AgentEvent = {
+  session_id: string;
+  kind: EventKind;
+  at: string;
+  data: EventData;
+};
+
+export type ConnectionStatus = "connecting" | "open" | "closed";
+
+// ─── Context surface ─────────────────────────────────────────────────
+
+export type AgentEventStream = {
+  subscribe: (listener: (ev: AgentEvent) => void) => () => void;
+  status: ConnectionStatus;
+};
+
+const StreamCtx = createContext<AgentEventStream | null>(null);
+
+/**
+ * Hook every event consumer calls. Returns the shared stream — call
+ * `subscribe(handler)` inside a useEffect to receive incoming events.
+ *
+ * Returns null when not mounted under an AgentSessionProvider; the
+ * provider is added once at the page level so any null result here
+ * is a bug, not a runtime edge case worth defending against.
+ */
+export function useAgentEventStream(): AgentEventStream {
+  const ctx = useContext(StreamCtx);
+  if (!ctx) {
+    throw new Error("useAgentEventStream must be used inside <AgentSessionProvider>");
+  }
+  return ctx;
+}
+
+// ─── Provider implementation ─────────────────────────────────────────
+
+export function AgentSessionProvider({
+  sessionId,
+  children,
+}: {
+  sessionId: string;
+  children: ReactNode;
+}) {
+  // Listener registry — mutated outside React's render cycle so adding
+  // a listener doesn't re-trigger the WS effect. The Set identity is
+  // stable for the lifetime of the provider; we mutate in place.
+  const listenersRef = useRef<Set<(ev: AgentEvent) => void>>(new Set());
+
+  const [status, setStatus] = useState<ConnectionStatus>("connecting");
+
+  // The connection + reconnect lifecycle. Mirrors the previously-proven
+  // backoff logic that LivePreviewStack used in isolation, but lives
+  // in exactly one place now.
+  useEffect(() => {
+    if (!sessionId) {
+      setStatus("closed");
+      return;
+    }
+
+    let alive = true;
+    let ws: WebSocket | null = null;
+    let attempt = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const broadcast = (ev: AgentEvent) => {
+      listenersRef.current.forEach((l) => {
+        try {
+          l(ev);
+        } catch (err) {
+          // A listener throwing must not break the fan-out for siblings.
+          // Surface to the dev console; production builds drop it.
+          // eslint-disable-next-line no-console
+          console.error("[AgentEventStream] listener threw:", err);
+        }
+      });
+    };
+
+    const handleMessage = (m: MessageEvent) => {
+      if (!alive) return;
+      try {
+        const ev = JSON.parse(m.data) as AgentEvent;
+        if (ev && ev.kind && ev.data !== undefined) broadcast(ev);
+      } catch {
+        /* malformed frame — drop silently */
+      }
+    };
+
+    const scheduleRetry = () => {
+      if (!alive) return;
+      // 0.6s → 1.2s → 2.4s … capped at 30s. First retry stays in cache.
+      const delay = Math.min(600 * 2 ** attempt, 30_000);
+      attempt += 1;
+      setStatus("connecting");
+      retryTimer = setTimeout(connect, delay);
+    };
+
+    const connect = () => {
+      if (!alive) return;
+      try {
+        ws = new WebSocket(eventsURL(sessionId));
+      } catch {
+        scheduleRetry();
+        return;
+      }
+      ws.onopen = () => {
+        attempt = 0;
+        if (alive) setStatus("open");
+      };
+      ws.onmessage = handleMessage;
+      // close fires after error too — schedule only here so we don't
+      // queue two retries for one drop.
+      ws.onclose = () => {
+        ws = null;
+        if (alive) setStatus("closed");
+        scheduleRetry();
+      };
+      ws.onerror = () => {
+        /* close handles retry */
+      };
+    };
+
+    connect();
+
+    return () => {
+      alive = false;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (ws) {
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.close();
+      }
+    };
+  }, [sessionId]);
+
+  // subscribe is stable across renders so consumers can pass it to
+  // useEffect's deps without re-subscribing on every state change.
+  const subscribe = useCallback((listener: (ev: AgentEvent) => void) => {
+    listenersRef.current.add(listener);
+    return () => {
+      listenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const value = useMemo<AgentEventStream>(
+    () => ({ subscribe, status }),
+    [subscribe, status],
+  );
+
+  return <StreamCtx.Provider value={value}>{children}</StreamCtx.Provider>;
+}
