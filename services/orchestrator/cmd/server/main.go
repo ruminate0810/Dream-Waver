@@ -66,18 +66,29 @@ func main() {
 	}
 
 	// ─── Image source ─────────────────────────────────────────────────
-	// Composite chain: nano-banana (AI gen) → Unsplash (stock photos) →
-	// Noop. The first provider that returns a non-nil Result wins; any
-	// provider failure (rate limit, safety block, no key) silently
-	// falls through to the next. Order is "specific to generic" so an
-	// AI-generated illustration is preferred when available.
+	// Composite chain: nano-banana (AI gen via df-ability proxy) →
+	// Unsplash (stock photos) → Noop. First provider with a non-nil
+	// Result wins; any failure (network, safety block, timeout)
+	// silently falls through. Order is "specific to generic" so an
+	// AI-generated illustration beats a generic stock photo when both
+	// are available.
 	aiImagesDir := filepath.Join(cfg.OutDir, "ai-images")
 	aiImagesBaseURL := fmt.Sprintf("http://localhost:%s/api/v1/assets/ai-images", cfg.HTTPPort)
 	var imgProviders []image.Searcher
-	if cfg.GoogleAPIKey != "" {
-		imgProviders = append(imgProviders, image.NewNanoBanana(cfg.GoogleAPIKey, aiImagesDir, aiImagesBaseURL))
-		slog.Info("nano-banana image gen enabled (Gemini 2.5 Flash Image)",
-			"dir", aiImagesDir, "base_url", aiImagesBaseURL)
+	if cfg.NanoBananaEnabled {
+		imgProviders = append(imgProviders, image.NewNanoBanana(
+			cfg.NanoBananaAPIBase,
+			cfg.NanoBananaAccess,
+			cfg.NanoBananaSecret,
+			cfg.NanoBananaModel,
+			aiImagesDir,
+			aiImagesBaseURL,
+		))
+		slog.Info("nano-banana image gen enabled (df-ability proxy)",
+			"model", firstNonEmpty(cfg.NanoBananaModel, "gemini-3-pro-image-preview"),
+			"dir", aiImagesDir,
+			"asset_base", aiImagesBaseURL,
+		)
 	}
 	if cfg.UnsplashAccessKey != "" {
 		imgProviders = append(imgProviders, image.NewUnsplash(cfg.UnsplashAccessKey))
@@ -139,7 +150,7 @@ func main() {
 		// Mount only when nano-banana is actually enabled — otherwise
 		// the route serves nothing and just clutters the surface.
 		AIImagesDir: func() string {
-			if cfg.GoogleAPIKey != "" {
+			if cfg.NanoBananaEnabled {
 				return aiImagesDir
 			}
 			return ""
@@ -176,6 +187,19 @@ func pickPrimary(cfg *config.Config) llm.Client {
 		slog.Error("unknown primary provider; defaulting to deepseek", "value", cfg.PrimaryProvider)
 		return providers.NewDeepSeek(cfg.DeepSeekAPIKey, cfg.DeepSeekBaseURL, cfg.ModelWorker)
 	}
+}
+
+// firstNonEmpty returns the first non-empty string from the args, or
+// "" if all are empty. Tiny helper for log messages that want to show
+// the "effective" value of a config field that may be unset (in which
+// case the provider's constructor applies a default).
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 func setupLogger(level string) {

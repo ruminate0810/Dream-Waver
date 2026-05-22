@@ -3,7 +3,6 @@ package image
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -17,122 +16,151 @@ import (
 	"github.com/google/uuid"
 )
 
-// NanoBanana calls Google's Gemini "2.5 Flash Image" model
-// (codename "nano-banana") to generate a PNG from a natural-language
-// prompt. Used when a slide's image_query / image_prompt asks for a
-// specific image stock photos won't satisfy — illustrations, CAD-
-// renderings, branded imagery, niche scenes.
+// NanoBanana drives Google's Gemini image models ("gemini-3-pro-image-
+// preview" by default, "gemini-2.5-flash-image" for cheaper / faster
+// runs) via the internal df-ability proxy. The proxy is async:
 //
-// Endpoint:
-//   POST https://generativelanguage.googleapis.com/v1beta/models/
-//        gemini-2.5-flash-image:generateContent
-// Auth via ?key=$GOOGLE_API_KEY query parameter.
+//	POST /task/v1/submit            → returns a task_id immediately
+//	GET  /task/v1/status/{task_id}  → poll every 5s until FINISHED
+//	(download the CDN URL it returns and save locally for durability)
 //
-// Returns the same image.Result shape the Unsplash provider uses, so
-// composite() in this package can stack providers without each call
-// site changing.
+// Why proxy instead of calling Gemini directly?
+//   - The proxy lives inside the company network and already has the
+//     real API key. We don't ship the user-side GOOGLE_API_KEY at all.
+//   - It returns a CDN-hosted PNG URL we can rehost; no base64 round-
+//     trip through HTTP for ~1 MB blobs.
+//   - Matches the Python reference impl at
+//     ~/.claude/skills/cinematic/scripts/tools/graphics/nano_banana.py
+//     so behaviour is identical to the rest of the platform.
 //
-// Pricing (as of 2026-05): ≈ $0.03 per 1024×1024 image. We cache by
-// prompt hash inside one job so repeated identical prompts don't
-// re-bill (e.g. multiple slides sharing one image_query).
+// Used when a slide's image_query / image_prompt asks for a specific
+// image stock photos won't satisfy — illustrations, CAD-renderings,
+// branded imagery, niche scenes. Returns the same image.Result shape
+// the Unsplash provider uses so Composite() can stack providers.
+//
+// All non-fatal errors (network, safety block, timeout) return
+// (nil, nil) so the composite layer falls through to the next
+// provider — an image-gen failure must never kill a deck.
 type NanoBanana struct {
-	APIKey string
-	OutDir string // local dir on disk where PNGs land (one file per call, keyed by random UUID).
-	// BaseURL is the HTTP prefix the rendered HTML / templates should
-	// use to reference these images. Example:
-	//   "http://localhost:8080/api/v1/assets/ai-images"
-	// When empty, Search falls back to emitting "file://" URLs — fine
-	// for chromedp's controlled headless Chrome (PPTX render) but the
-	// live-preview browser iframe will block them. main.go always sets
-	// a real value so both surfaces work.
-	BaseURL string
-	client  *http.Client
+	APIBase      string // e.g. http://38.98.112.79/df-ability-server/task/v1
+	AccessKey    string // x-df-access-key header
+	SecretKey    string // x-df-secret-key header
+	Model        string // gemini-3-pro-image-preview (default) | gemini-2.5-flash-image
+	OutDir       string // local dir where downloaded PNGs are saved (one file per call, keyed by UUID)
+	AssetBaseURL string // HTTP prefix the renderer uses to reference saved files; e.g. "http://localhost:8080/api/v1/assets/ai-images". Empty falls back to file://.
+	PollInterval time.Duration
+	MaxWait      time.Duration
+	client       *http.Client
 }
 
-// NewNanoBanana constructs the provider. apiKey="" makes Search a
-// no-op (returns nil,nil) so the orchestrator boots without the key.
-// outDir is created lazily on first successful call. baseURL is the
-// HTTP prefix the renderer should use to reach saved images; pass ""
-// for file:// fallback (PPTX-only — browser iframe won't load it).
-func NewNanoBanana(apiKey, outDir, baseURL string) *NanoBanana {
+// NewNanoBanana constructs the provider with the internal proxy
+// defaults. apiBase / accessKey / secretKey are optional — when empty
+// they fall back to the documented values from
+// /Users/sheng/Downloads/NANO-BANANA调用文档.MD. outDir is created
+// lazily on first successful call. assetBaseURL can be "" to fall back
+// to file:// (PPTX-only — browser iframe won't load file://).
+func NewNanoBanana(apiBase, accessKey, secretKey, model, outDir, assetBaseURL string) *NanoBanana {
+	if apiBase == "" {
+		apiBase = "http://38.98.112.79/df-ability-server/task/v1"
+	}
+	if accessKey == "" {
+		accessKey = "yunying"
+	}
+	if secretKey == "" {
+		secretKey = "ths123456"
+	}
+	if model == "" {
+		model = "gemini-3-pro-image-preview"
+	}
+	// Build an HTTP client that does NOT honour HTTP_PROXY /
+	// HTTPS_PROXY. The df-ability proxy is at a Chinese internal IP
+	// (38.98.112.79) and the CDN it returns is on aliyuncs.com — both
+	// are reachable directly. Routing them through whatever overseas
+	// proxy the user set for DeepSeek/OpenAI just adds latency and
+	// causes the recurring "proxyconnect: connection refused" errors
+	// we see when their socks5 tunnel naps. Nil Proxy = direct dial.
+	transport := &http.Transport{
+		Proxy: nil,
+		// CDN downloads can be 1 MB+; give them headroom.
+		ResponseHeaderTimeout: 30 * time.Second,
+		// Default IdleConnTimeout etc. are fine.
+	}
 	return &NanoBanana{
-		APIKey:  apiKey,
-		OutDir:  outDir,
-		BaseURL: strings.TrimRight(baseURL, "/"),
-		client:  &http.Client{Timeout: 60 * time.Second},
+		APIBase:      strings.TrimRight(apiBase, "/"),
+		AccessKey:    accessKey,
+		SecretKey:    secretKey,
+		Model:        model,
+		OutDir:       outDir,
+		AssetBaseURL: strings.TrimRight(assetBaseURL, "/"),
+		PollInterval: 5 * time.Second,
+		MaxWait:      5 * time.Minute,
+		// Generous global timeout — submit/poll finish in <2s; the
+		// ceiling only matters for the actual CDN asset fetch.
+		client: &http.Client{
+			Timeout:   180 * time.Second,
+			Transport: transport,
+		},
 	}
 }
 
-// generateContentRequest is the subset of Gemini's request schema we
-// need. omitempty everywhere so the body stays small.
-type generateContentRequest struct {
-	Contents []generateContent `json:"contents"`
-	// ResponseModalities tells the model to emit an image, not just
-	// text. ["IMAGE"] alone makes the model paint without commentary;
-	// ["TEXT","IMAGE"] would interleave both.
-	GenerationConfig *generateConfig `json:"generationConfig,omitempty"`
-}
-type generateConfig struct {
-	ResponseModalities []string `json:"responseModalities,omitempty"`
-}
-type generateContent struct {
-	Role  string         `json:"role,omitempty"`
-	Parts []generatePart `json:"parts"`
-}
-type generatePart struct {
-	Text       string         `json:"text,omitempty"`
-	InlineData *inlineDataReq `json:"inlineData,omitempty"`
-}
-type inlineDataReq struct {
-	MimeType string `json:"mimeType"`
-	Data     string `json:"data"`
+// ─── Wire types ──────────────────────────────────────────────────────
+// We only marshal what we need; the proxy returns extra fields we
+// ignore.
+
+type nbSubmitReq struct {
+	Model    string     `json:"model"`
+	Contents []nbPart   `json:"contents"`
 }
 
-type generateContentResponse struct {
-	Candidates []struct {
-		Content struct {
-			Parts []struct {
-				Text       string `json:"text,omitempty"`
-				InlineData struct {
-					MimeType string `json:"mimeType"`
-					Data     string `json:"data"` // base64-encoded image bytes
-				} `json:"inlineData,omitempty"`
-			} `json:"parts"`
-		} `json:"content"`
-		FinishReason string `json:"finishReason,omitempty"`
-	} `json:"candidates"`
-	// PromptFeedback surfaces safety blocks etc.
-	PromptFeedback *struct {
-		BlockReason string `json:"blockReason,omitempty"`
-	} `json:"promptFeedback,omitempty"`
-	Error *struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Status  string `json:"status"`
-	} `json:"error,omitempty"`
+type nbPart struct {
+	Parts []nbPartItem `json:"parts"`
 }
 
-// Search satisfies the image.Searcher interface. The "search" framing
-// is a misnomer for an image-gen backend, but it lets NanoBanana plug
-// into the same composite that Unsplash uses — the slide pipeline
-// doesn't care which provider invented the URL it gets back.
+type nbPartItem struct {
+	Text string `json:"text,omitempty"`
+}
+
+type nbSubmitResp struct {
+	Data struct {
+		Result string `json:"result"` // task_id when status_code==0
+		Status string `json:"status"`
+	} `json:"data"`
+	StatusCode   int    `json:"status_code"`
+	StatusMsg    string `json:"status_msg"`
+	ErrorMessage string `json:"error_message,omitempty"`
+}
+
+type nbStatusResp struct {
+	Data struct {
+		Ability  string `json:"ability"`
+		Result   string `json:"result"` // CDN URL when status==FINISHED
+		Status   string `json:"status"` // SUBMITTED | RUNNING | FINISHED | FAILED
+		TaskID   string `json:"task_id"`
+		ErrorMsg string `json:"errorMsg,omitempty"`
+	} `json:"data"`
+	StatusCode int    `json:"status_code"`
+	StatusMsg  string `json:"status_msg"`
+}
+
+// ─── Public Searcher impl ────────────────────────────────────────────
+
+// Search satisfies the image.Searcher interface. The "search" naming
+// is a misnomer for an image-gen backend but lets NanoBanana plug into
+// the same composite Unsplash uses — the slide pipeline doesn't care
+// which provider invented the URL it gets back.
 //
-// Returns (nil, nil) when API key is empty so the composite can fall
-// back to Unsplash. Non-nil errors are logged + swallowed at the
-// composite layer (an image failure should never kill a deck).
+// Returns (nil, nil) on any soft failure so the composite can fall
+// through to Unsplash → Noop. Errors are only returned when the
+// caller should know about them (rare; mostly disk-write issues).
 func (n *NanoBanana) Search(ctx context.Context, query string) (*Result, error) {
-	if n.APIKey == "" {
-		return nil, nil
-	}
 	if strings.TrimSpace(query) == "" {
 		return nil, nil
 	}
 
-	// The Gemini image model prefers descriptive English prompts. The
-	// caller may have given us 2-5 Unsplash keywords ("quantum
-	// computing chip"); we wrap them in a richer instruction so the
-	// generator paints something usable as a slide hero rather than a
-	// blurry stock-photo lookalike.
+	// Wrap the bare keywords in a richer instruction. The image model
+	// prefers descriptive English prompts; the caller usually hands us
+	// 2-5 Unsplash-style keywords ("quantum computing chip") so we
+	// turn that into a slide-hero brief.
 	prompt := fmt.Sprintf(
 		"Generate a high-quality 16:9 landscape image suitable for a presentation slide background. "+
 			"Subject: %s. Style: cinematic, editorial photograph with shallow depth of field, "+
@@ -141,112 +169,213 @@ func (n *NanoBanana) Search(ctx context.Context, query string) (*Result, error) 
 		query,
 	)
 
-	body, err := json.Marshal(generateContentRequest{
-		Contents: []generateContent{{
-			Role:  "user",
-			Parts: []generatePart{{Text: prompt}},
-		}},
-		GenerationConfig: &generateConfig{ResponseModalities: []string{"IMAGE"}},
-	})
+	taskID, err := n.submit(ctx, prompt)
 	if err != nil {
-		return nil, fmt.Errorf("nanobanana marshal: %w", err)
+		slog.WarnContext(ctx, "nanobanana submit failed", "err", err, "query", query)
+		return nil, nil
 	}
 
-	endpoint := "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=" + n.APIKey
-	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(body))
+	cdnURL, err := n.poll(ctx, taskID)
 	if err != nil {
-		return nil, err
+		slog.WarnContext(ctx, "nanobanana poll failed", "err", err, "task_id", taskID, "query", query)
+		return nil, nil
 	}
-	req.Header.Set("Content-Type", "application/json")
+
+	localURL, err := n.download(ctx, cdnURL)
+	if err != nil {
+		// Disk / network at the download step is more "real" than the
+		// proxy-side errors above, but still graceful: degrade.
+		slog.WarnContext(ctx, "nanobanana download failed", "err", err, "cdn", cdnURL, "query", query)
+		return nil, nil
+	}
+
+	slog.InfoContext(ctx, "nanobanana generated image",
+		"query", query, "task_id", taskID, "url", localURL)
+	return &Result{
+		URL:    localURL,
+		Credit: "AI-generated · Gemini",
+	}, nil
+}
+
+// ─── Internal steps ──────────────────────────────────────────────────
+
+// submit POSTs the generation request and returns the task_id.
+func (n *NanoBanana) submit(ctx context.Context, prompt string) (string, error) {
+	body, err := json.Marshal(nbSubmitReq{
+		Model: n.Model,
+		Contents: []nbPart{
+			{Parts: []nbPartItem{{Text: prompt}}},
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", n.APIBase+"/submit", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	n.setHeaders(req, true)
 
 	resp, err := n.client.Do(req)
 	if err != nil {
-		// Network / proxy / TLS — log + degrade so the pipeline still
-		// produces a deck.
-		slog.WarnContext(ctx, "nanobanana request failed", "err", err)
-		return nil, nil
+		return "", fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 	respBytes, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		slog.WarnContext(ctx, "nanobanana http error", "status", resp.StatusCode,
-			"body", truncBody(respBytes, 240))
-		return nil, nil
+		return "", fmt.Errorf("status %d: %s", resp.StatusCode, truncBody(respBytes, 240))
 	}
-
-	var out generateContentResponse
+	var out nbSubmitResp
 	if err := json.Unmarshal(respBytes, &out); err != nil {
-		slog.WarnContext(ctx, "nanobanana decode failed", "err", err)
-		return nil, nil
+		return "", fmt.Errorf("decode: %w; body=%s", err, truncBody(respBytes, 240))
 	}
-	if out.Error != nil {
-		slog.WarnContext(ctx, "nanobanana api error", "code", out.Error.Code, "msg", out.Error.Message)
-		return nil, nil
+	if out.StatusCode != 0 {
+		return "", fmt.Errorf("status_code=%d msg=%q err=%q", out.StatusCode, out.StatusMsg, out.ErrorMessage)
 	}
-	if out.PromptFeedback != nil && out.PromptFeedback.BlockReason != "" {
-		slog.WarnContext(ctx, "nanobanana blocked", "reason", out.PromptFeedback.BlockReason, "query", query)
-		return nil, nil
+	if out.Data.Result == "" {
+		return "", fmt.Errorf("empty task_id in response")
 	}
+	return out.Data.Result, nil
+}
 
-	// Pull the first inlineData (image) from candidates.
-	var imgB64, mime string
-	for _, c := range out.Candidates {
-		for _, p := range c.Content.Parts {
-			if p.InlineData.Data != "" {
-				imgB64 = p.InlineData.Data
-				mime = p.InlineData.MimeType
-				break
+// poll loops on /status/{task_id} every PollInterval until FINISHED /
+// FAILED / MaxWait. Returns the CDN URL on success.
+func (n *NanoBanana) poll(ctx context.Context, taskID string) (string, error) {
+	deadline := time.Now().Add(n.MaxWait)
+	statusURL := n.APIBase + "/status/" + taskID
+	for {
+		// Sleep first — the proxy is async; an immediate first poll is
+		// always SUBMITTED. Saves one round-trip per call.
+		select {
+		case <-ctx.Done():
+			return "", ctx.Err()
+		case <-time.After(n.PollInterval):
+		}
+		if time.Now().After(deadline) {
+			return "", fmt.Errorf("timeout after %s", n.MaxWait)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, "GET", statusURL, nil)
+		if err != nil {
+			return "", err
+		}
+		n.setHeaders(req, false)
+		resp, err := n.client.Do(req)
+		if err != nil {
+			return "", fmt.Errorf("poll http: %w", err)
+		}
+		respBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			return "", fmt.Errorf("poll status %d: %s", resp.StatusCode, truncBody(respBytes, 240))
+		}
+		var out nbStatusResp
+		if err := json.Unmarshal(respBytes, &out); err != nil {
+			return "", fmt.Errorf("poll decode: %w; body=%s", err, truncBody(respBytes, 240))
+		}
+		switch out.Data.Status {
+		case "FINISHED":
+			if out.Data.Result == "" {
+				return "", fmt.Errorf("FINISHED but empty result URL")
 			}
-		}
-		if imgB64 != "" {
-			break
+			return out.Data.Result, nil
+		case "FAILED":
+			return "", fmt.Errorf("generation FAILED: %s", out.Data.ErrorMsg)
+		case "SUBMITTED", "SUBMITED", "RUNNING", "":
+			// keep polling
+		default:
+			// unknown status — log and keep polling so we don't drop
+			// generations because the proxy added a new state.
+			slog.DebugContext(ctx, "nanobanana unknown status", "status", out.Data.Status, "task_id", taskID)
 		}
 	}
-	if imgB64 == "" {
-		slog.WarnContext(ctx, "nanobanana returned no image", "query", query)
-		return nil, nil
+}
+
+// download fetches the CDN URL and writes it to OutDir as a fresh
+// nb-<uuid>.png. Returns the URL the renderer should reference: the
+// HTTP self-hosted form if AssetBaseURL is set, file:// otherwise.
+//
+// Self-hosting matters because the proxy CDN URLs are ephemeral
+// (signed AliCloud OSS links) and chromedp may face the same tunnel
+// flakiness the orchestrator does — pulling once into localhost and
+// serving from there avoids two cross-tunnel fetches per slide.
+//
+// One retry on body-read failure handles the common case where a
+// flaky tunnel resets the connection mid-stream. Anything past that
+// returns the error to Search() which logs + degrades to the next
+// provider in the composite chain.
+func (n *NanoBanana) download(ctx context.Context, cdnURL string) (string, error) {
+	var body []byte
+	var ct string
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, "GET", cdnURL, nil)
+		if err != nil {
+			return "", err
+		}
+		resp, err := n.client.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("cdn: %w", err)
+			continue
+		}
+		if resp.StatusCode >= 400 {
+			resp.Body.Close()
+			return "", fmt.Errorf("cdn status %d", resp.StatusCode)
+		}
+		ct = resp.Header.Get("Content-Type")
+		body, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("cdn read: %w", err)
+			// Backoff a beat before the retry. Tunnel resets often
+			// clear within a second.
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(800 * time.Millisecond):
+			}
+			continue
+		}
+		lastErr = nil
+		break
+	}
+	if lastErr != nil {
+		return "", lastErr
 	}
 
-	imgBytes, err := base64.StdEncoding.DecodeString(imgB64)
-	if err != nil {
-		slog.WarnContext(ctx, "nanobanana base64 decode failed", "err", err)
-		return nil, nil
-	}
-
-	// Save to disk under OutDir as nb-<uuid>.png so chromedp can load
-	// it via file:// or the live HTML endpoint can rewrite to a hosted
-	// URL later. For now we expose it via the same /api/v1/slides/
-	// {job}/image/{name} pattern by writing into the existing OutDir
-	// and letting a future handler serve it. The slide template uses
-	// the absolute file path directly because chromedp navigates from
-	// a file:// staging URL anyway.
 	if err := os.MkdirAll(n.OutDir, 0o755); err != nil {
-		return nil, fmt.Errorf("nanobanana mkdir: %w", err)
+		return "", fmt.Errorf("mkdir: %w", err)
 	}
+	// Default to png; if the CDN ever serves jpg we'll pick that up
+	// from the Content-Type header (captured in the loop above).
 	ext := ".png"
-	if strings.Contains(mime, "jpeg") || strings.Contains(mime, "jpg") {
+	if strings.Contains(ct, "jpeg") || strings.Contains(ct, "jpg") {
+		ext = ".jpg"
+	} else if strings.HasSuffix(strings.ToLower(cdnURL), ".jpg") || strings.HasSuffix(strings.ToLower(cdnURL), ".jpeg") {
 		ext = ".jpg"
 	}
 	filename := fmt.Sprintf("nb-%s%s", uuid.NewString()[:12], ext)
 	fullPath := filepath.Join(n.OutDir, filename)
-	if err := os.WriteFile(fullPath, imgBytes, 0o644); err != nil {
-		return nil, fmt.Errorf("nanobanana write: %w", err)
+	if err := os.WriteFile(fullPath, body, 0o644); err != nil {
+		return "", fmt.Errorf("write: %w", err)
 	}
-	slog.InfoContext(ctx, "nanobanana generated image",
-		"query", query, "bytes", len(imgBytes), "path", fullPath)
 
-	// Prefer the HTTP URL so the browser iframe (live preview) can fetch
-	// it; chromedp can fetch it too. Fall back to file:// only when no
-	// BaseURL is configured — that keeps the PPTX path working for
-	// CLI-only invocations.
-	url := "file://" + fullPath
-	if n.BaseURL != "" {
-		url = n.BaseURL + "/" + filename
+	if n.AssetBaseURL != "" {
+		return n.AssetBaseURL + "/" + filename, nil
 	}
-	return &Result{
-		URL:    url,
-		Credit: "AI-generated · Gemini",
-	}, nil
+	return "file://" + fullPath, nil
+}
+
+// setHeaders applies the three df-ability headers (and content-type
+// for POSTs). The proxy rejects requests without all three; rotating
+// these to a config is on the post-MVP backlog.
+func (n *NanoBanana) setHeaders(req *http.Request, json bool) {
+	req.Header.Set("x-df-ability", "df-ability-google-gemini")
+	req.Header.Set("x-df-access-key", n.AccessKey)
+	req.Header.Set("x-df-secret-key", n.SecretKey)
+	if json {
+		req.Header.Set("Content-Type", "application/json")
+	}
 }
 
 // truncBody clips an error body for logging.
@@ -259,9 +388,9 @@ func truncBody(b []byte, n int) string {
 
 // Composite tries providers in order and returns the first non-nil
 // Result. Use to stack NanoBanana → Unsplash → Noop so the pipeline
-// degrades gracefully: an image-gen call that fails (key missing,
-// safety block, network drop) falls through to the next provider
-// without the slide losing its image.
+// degrades gracefully: an image-gen call that fails (network drop,
+// safety block, timeout) falls through to the next provider without
+// the slide losing its image.
 type Composite struct {
 	Providers []Searcher
 }

@@ -32,6 +32,17 @@ type Config struct {
 	TavilyAPIKey    string
 	UnsplashAccessKey string
 
+	// Nano-banana (Gemini image generation via internal df-ability
+	// proxy). Defaults match the documented internal endpoint /
+	// credentials; override any of these via env for testing.
+	// NanoBananaEnabled gates the whole provider; off by default
+	// while the proxy is internal-only.
+	NanoBananaEnabled bool
+	NanoBananaAPIBase string // DF_API_BASE
+	NanoBananaAccess  string // DF_ACCESS_KEY
+	NanoBananaSecret  string // DF_SECRET_KEY
+	NanoBananaModel   string // DF_MODEL — "gemini-3-pro-image-preview" (default) | "gemini-2.5-flash-image"
+
 	// PrimaryProvider selects which provider serves the unbound tasks.
 	// One of: "deepseek" (default), "anthropic", "openai".
 	PrimaryProvider string
@@ -66,6 +77,11 @@ func Load() (*Config, error) {
 		DeepSeekBaseURL: os.Getenv("DEEPSEEK_BASE_URL"),
 		TavilyAPIKey:    os.Getenv("TAVILY_API_KEY"),
 		UnsplashAccessKey: os.Getenv("UNSPLASH_ACCESS_KEY"),
+		NanoBananaEnabled: envOr("NANOBANANA_ENABLED", "false") == "true",
+		NanoBananaAPIBase: os.Getenv("DF_API_BASE"),
+		NanoBananaAccess:  os.Getenv("DF_ACCESS_KEY"),
+		NanoBananaSecret:  os.Getenv("DF_SECRET_KEY"),
+		NanoBananaModel:   os.Getenv("DF_MODEL"),
 		PrimaryProvider: envOr("LLM_PRIMARY_PROVIDER", "deepseek"),
 		// Planner / Critic — quality. Worker — volume; v4-flash is 3× cheaper
 		// on output and "deepseek-chat" alias deprecates 2026/07/24.
