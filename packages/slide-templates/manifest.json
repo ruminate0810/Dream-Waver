@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "templates": [
+    {
+      "name": "minimalist",
+      "label": "Minimalist",
+      "description": "Clean white canvas, single blue accent, lots of whitespace. Default fallback when the topic doesn't hint at a specific style.",
+      "best_for": ["general business", "product updates", "internal memos"],
+      "supported_layouts": ["title", "section", "bullets", "content", "quote", "data", "closing"],
+      "primary_color": "#0F172A",
+      "accent_color": "#2563EB"
+    },
+    {
+      "name": "corporate",
+      "label": "Corporate",
+      "description": "Structured business deck with header bar, accent rule, and footer metadata.",
+      "best_for": ["consulting decks", "sales proposals", "client presentations"],
+      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "data", "closing"],
+      "primary_color": "#1E3A8A",
+      "accent_color": "#F59E0B"
+    },
+    {
+      "name": "pitch-deck",
+      "label": "Pitch Deck",
+      "description": "Linear/Vercel-style dark canvas, orange-to-amber gradient metric numbers, glowing dot accents. High-contrast and confident.",
+      "best_for": ["investor pitches", "fundraising", "product launches", "founders' decks"],
+      "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
+      "primary_color": "#050505",
+      "accent_color": "#FF6B35"
+    },
+    {
+      "name": "academic",
+      "label": "Academic",
+      "description": "Scholarly journal aesthetic — IBM Plex Serif headlines, footnote-style numbered bullets, deep-red accent. Generous margins.",
+      "best_for": ["research talks", "lectures", "literature reviews", "white papers"],
+      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
+      "primary_color": "#18181B",
+      "accent_color": "#B91C1C"
+    },
+    {
+      "name": "playful",
+      "label": "Playful",
+      "description": "Dark Linear-style canvas with multi-color radial accents, rounded badges with emoji, big bouncy Nunito display. Built for creator content.",
+      "best_for": ["小红书 explainers", "B 站 课程", "教学课件", "social media decks", "personal brand"],
+      "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
+      "primary_color": "#0A0A0F",
+      "accent_color": "#F472B6"
+    }
+  ]
+}

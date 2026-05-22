@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package dreamwaver.v1;
+
+option go_package = "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1;dreamwaverv1";
+
+// Sandbox is the gRPC service exposed by the Rust sandbox runtime.
+// The Go orchestrator calls it whenever an agent invokes the `code_execute`
+// tool, which must run untrusted code in isolation.
+service Sandbox {
+  // Execute a code snippet in an isolated runtime (wasmtime / firecracker).
+  // Returns stdout, stderr, exit code, and resource usage.
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+
+  // Health check.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+enum Language {
+  LANGUAGE_UNSPECIFIED = 0;
+  LANGUAGE_PYTHON = 1;
+  LANGUAGE_NODE = 2;
+  LANGUAGE_BASH = 3;
+}
+
+message ExecuteRequest {
+  // Programming language to interpret `code` with.
+  Language language = 1;
+  // Source code to execute.
+  string code = 2;
+  // Optional stdin payload.
+  string stdin = 3;
+  // Hard timeout in milliseconds. Default 30000.
+  uint32 timeout_ms = 4;
+  // Memory limit in MB. Default 256.
+  uint32 memory_mb = 5;
+  // Environment variables (key=value).
+  repeated string env = 6;
+  // Files to mount into the sandbox (path → contents).
+  map<string, bytes> files = 7;
+}
+
+message ExecuteResponse {
+  string stdout = 1;
+  string stderr = 2;
+  int32 exit_code = 3;
+  // Wall-clock duration in milliseconds.
+  uint64 duration_ms = 4;
+  // Files produced by the sandbox (path → contents).
+  map<string, bytes> output_files = 5;
+  // Set when the runtime itself errored (OOM, timeout, etc.).
+  string runtime_error = 6;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  bool ok = 1;
+  string version = 2;
+}

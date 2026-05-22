@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Display + body + mono. Fraunces is a variable serif with optical sizes;
+   we load 300–700 across the full optical-size range so headlines pick up
+   the calligraphic axis at large sizes. JetBrains Mono is the editorial
+   "metadata" face — small caps tracking, no ligatures. */
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap");
+
+:root {
+  color-scheme: light;
+  /* The Dream-Waver paper/ink palette. Used by the generation timeline.
+     Kept as variables so we can switch to a dark "evening edition" later. */
+  --paper: #F7F4ED;
+  --ink: #1A1614;
+  --ink-soft: #57534E;     /* stone-600-ish, warm */
+  --ink-faint: #A8A29E;    /* stone-400 warm */
+  --rule: rgba(26, 22, 20, 0.08);
+  --vermillion: #B5371E;
+}
+
+html, body { height: 100%; }
+body { @apply bg-white text-ink font-sans antialiased; }
+
+/* ── Utility type classes ──────────────────────────────────────────── */
+.font-display {
+  font-family: "Fraunces", "DM Serif Display", Georgia, serif;
+  font-feature-settings: "liga" 1, "kern" 1, "dlig" 1, "ss01" 1;
+  font-optical-sizing: auto;
+}
+.font-mono-jb {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-feature-settings: "liga" 0;
+}
+
+/* ── Editorial motion ──────────────────────────────────────────────── */
+@keyframes phase-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-phase-in {
+  animation: phase-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes hairline-draw {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
+}
+.animate-hairline {
+  animation: hairline-draw 900ms cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+/* Soft grain we overlay on the paper background. Encoded as a data-URL in
+   page.tsx so we don't add an asset to the build. */

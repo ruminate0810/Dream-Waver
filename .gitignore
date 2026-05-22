@@ -1,0 +1,57 @@
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Go
+**/bin/
+**/dist/
+*.test
+*.out
+go.work
+go.work.sum
+vendor/
+
+# Rust
+target/
+**/target/
+Cargo.lock.bak
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+.pnpm-store/
+
+# Python (just in case)
+__pycache__/
+*.pyc
+.venv/
+.uv/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.pptx
+*.pdf
+.tmp/
+tmp/
+workspace/
+storage_local/
+sandbox_local/
+
+# Generated protobuf code (commit explicitly)
+!proto/**/*.go
+!proto/**/*.rs
+
+# Logs
+*.log
+logs/

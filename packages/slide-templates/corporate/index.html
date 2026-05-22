@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<title>{{with .Data.Title}}{{.}}{{else}}Slide{{end}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=IBM+Plex+Serif:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700;900&family=Noto+Serif+SC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  /* Latin in Manrope; Chinese in Noto Sans SC. macOS users get PingFang SC
+     via system fallback; Windows users get Microsoft YaHei. */
+  html, body { width:1920px;height:1080px;margin:0;padding:0;font-family:'Manrope','Noto Sans SC','PingFang SC','Microsoft YaHei',system-ui,sans-serif; }
+  .slide      { width:1920px;height:1080px;background:#FAFAF9;color:#0F172A;display:flex;flex-direction:column;position:relative; }
+  .header-bar { height:14px;background:#1E3A8A; }
+  .accent-bar { width:120px;height:6px;background:#F59E0B;margin-bottom:32px;border-radius:999px; }
+  .body       { flex:1;padding:80px 120px 60px;display:flex;flex-direction:column; }
+  .footer     { padding:32px 120px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;font-size:22px;color:#64748B; }
+  .serif      { font-family:'IBM Plex Serif','Noto Serif SC',Georgia,serif; }
+  .bullet     { display:flex;gap:24px;align-items:flex-start;font-size:34px;line-height:1.5; }
+  .bullet:before { content:"";width:18px;height:18px;background:#1E3A8A;margin-top:18px;flex-shrink:0;transform:rotate(45deg); }
+  .metric     { font-size:200px;line-height:1;color:#1E3A8A;font-weight:800;letter-spacing:-0.03em; }
+</style>
+</head>
+<body>
+<section class="slide">
+<div class="header-bar"></div>
+<div class="body">
+
+{{if eq .Layout "title"}}
+  <div class="mt-auto">
+    <div class="accent-bar"></div>
+    <div class="text-sm uppercase tracking-[0.4em] text-slate-500 font-semibold mb-8">{{with .Data.Subtitle}}{{.}}{{else}}Presentation{{end}}</div>
+    <div class="serif text-[140px] leading-none tracking-tight">{{.Data.Title}}</div>
+  </div>
+  <div class="mt-auto"></div>
+
+{{else if eq .Layout "section"}}
+  <div class="mt-auto">
+    <div class="text-xs uppercase tracking-[0.5em] text-amber-600 font-semibold mb-6">Chapter</div>
+    <div class="serif text-9xl leading-none">{{.Data.Title}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-500 max-w-4xl">{{.}}</div>{{end}}
+  </div>
+  <div class="mt-auto"></div>
+
+{{else if eq .Layout "bullets"}}
+  <div class="accent-bar"></div>
+  <div class="text-5xl font-bold mb-14 tracking-tight">{{.Data.Title}}</div>
+  <div class="flex flex-col gap-8">
+    {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "data"}}
+  <div class="accent-bar"></div>
+  <div class="text-5xl font-bold mb-14 tracking-tight">{{.Data.Title}}</div>
+  <div class="flex items-end gap-16">
+    <div class="metric">{{with .Data.Metric}}{{.}}{{else}}—{{end}}</div>
+    {{with .Data.Body}}<div class="text-3xl text-slate-600 leading-relaxed max-w-2xl pb-8">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "two-column"}}
+  <div class="accent-bar"></div>
+  <div class="text-5xl font-bold mb-14 tracking-tight">{{.Data.Title}}</div>
+  <div class="grid grid-cols-2 gap-24 text-3xl leading-relaxed flex-1">
+    <div>{{.Data.Body}}</div>
+    <div class="flex flex-col gap-6">
+      {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "closing"}}
+  <div class="mt-auto">
+    <div class="text-xs uppercase tracking-[0.5em] text-amber-600 font-semibold mb-6">Questions & Discussion</div>
+    <div class="serif text-9xl">{{with .Data.Title}}{{.}}{{else}}Thank you{{end}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-500">{{.}}</div>{{end}}
+  </div>
+  <div class="mt-auto"></div>
+
+{{else}}
+  <div class="accent-bar"></div>
+  <div class="text-5xl font-bold mb-12 tracking-tight">{{.Data.Title}}</div>
+  {{with .Data.Body}}<div class="text-3xl text-slate-600 leading-relaxed max-w-5xl">{{.}}</div>{{end}}
+  {{if .Data.Bullets}}
+    <div class="mt-12 flex flex-col gap-6">
+      {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+{{end}}
+
+</div>
+<div class="footer">
+  <span>{{with .Data.Footer}}{{.}}{{else}}Dream-Waver{{end}}</span>
+  <span class="font-semibold">●●●</span>
+</div>
+</section>
+</body>
+</html>

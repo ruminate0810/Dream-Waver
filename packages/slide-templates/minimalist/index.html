@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<title>{{with .Data.Title}}{{.}}{{else}}Slide{{end}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  /* Latin fonts first; Chinese characters fall through to Noto Sans/Serif SC.
+     PingFang SC is the macOS system Chinese face that matches Inter's tone. */
+  html, body { width: 1920px; height: 1080px; margin: 0; padding: 0; font-family: 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif; }
+  .serif      { font-family: 'DM Serif Display', 'Noto Serif SC', Georgia, serif; }
+  .slide      { width: 1920px; height: 1080px; padding: 100px 140px; background: #fff; color: #0F172A; display: flex; flex-direction: column; justify-content: center; position: relative; }
+  .accent     { color: #2563EB; }
+  .accent-bg  { background: #2563EB; }
+  .footer     { position: absolute; left: 140px; right: 140px; bottom: 60px; display: flex; justify-content: space-between; align-items: center; font-size: 22px; color: #64748B; }
+  .bullet     { display: flex; gap: 24px; align-items: flex-start; font-size: 36px; line-height: 1.5; }
+  .bullet:before { content: ""; width: 12px; height: 12px; background: #2563EB; border-radius: 999px; margin-top: 22px; flex-shrink: 0; }
+  /* Hero layout: full-bleed Unsplash photo with a dark gradient overlay so
+     light Inter text stays legible. Only used on title / section / closing. */
+  .hero       { background: #0F172A; color: #FFF; }
+  .hero-img   { position: absolute; inset: 0; background-size: cover; background-position: center;
+                background-repeat: no-repeat; z-index: 0; }
+  .hero-overlay { position: absolute; inset: 0; z-index: 1;
+                  background: linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.85) 100%); }
+  .hero-content { position: relative; z-index: 2; }
+  .hero .accent { color: #93C5FD; }
+  .hero-credit  { position: absolute; bottom: 20px; right: 24px; font-size: 14px; color: rgba(255,255,255,0.6); z-index: 2; }
+</style>
+</head>
+<body>
+<section class="slide">
+
+{{if eq .Layout "title"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content">
+      <div class="serif text-9xl leading-tight tracking-tight text-white">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="mt-10 text-4xl text-slate-300">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="serif text-9xl leading-tight tracking-tight">{{.Data.Title}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-4xl text-slate-500">{{.}}</div>{{end}}
+    <div class="absolute right-[140px] top-1/2 -translate-y-1/2 w-2 h-[300px] accent-bg rounded-full" data-no-extract></div>
+  {{end}}
+
+{{else if eq .Layout "section"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content">
+      <div class="text-sm uppercase tracking-[0.4em] hero accent font-semibold mb-12" style="color:#93C5FD">Section</div>
+      <div class="serif text-8xl leading-tight text-white">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-300 max-w-4xl">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="text-sm uppercase tracking-[0.4em] accent font-semibold mb-12">Section</div>
+    <div class="serif text-8xl leading-tight">{{.Data.Title}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-500 max-w-4xl">{{.}}</div>{{end}}
+  {{end}}
+
+{{else if eq .Layout "bullets"}}
+  <div class="text-5xl font-semibold mb-16 tracking-tight">{{.Data.Title}}</div>
+  <div class="flex flex-col gap-8">
+    {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "two-column"}}
+  <div class="text-5xl font-semibold mb-16 tracking-tight">{{.Data.Title}}</div>
+  <div class="grid grid-cols-2 gap-24 text-3xl leading-relaxed">
+    <div>{{.Data.Body}}</div>
+    <div class="flex flex-col gap-6">
+      {{range .Data.Bullets}}<div class="bullet text-3xl">{{.}}</div>{{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "quote"}}
+  <div class="serif text-7xl leading-tight max-w-5xl">&ldquo;{{.Data.Quote}}&rdquo;</div>
+  {{with .Data.Attribution}}<div class="mt-12 text-2xl text-slate-500">— {{.}}</div>{{end}}
+
+{{else if eq .Layout "data"}}
+  <div class="text-5xl font-semibold mb-12 tracking-tight">{{.Data.Title}}</div>
+  <div class="text-9xl font-bold accent">{{with .Data.Metric}}{{.}}{{else}}—{{end}}</div>
+  {{with .Data.Body}}<div class="mt-8 text-3xl text-slate-500 max-w-4xl">{{.}}</div>{{end}}
+
+{{else if eq .Layout "closing"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content">
+      <div class="text-sm uppercase tracking-[0.4em] font-semibold mb-12" style="color:#93C5FD">Thank you</div>
+      <div class="serif text-8xl text-white">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-300">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="text-sm uppercase tracking-[0.4em] accent font-semibold mb-12">Thank you</div>
+    <div class="serif text-8xl">{{.Data.Title}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-slate-500">{{.}}</div>{{end}}
+  {{end}}
+
+{{else}}
+  <div class="text-5xl font-semibold mb-12 tracking-tight">{{.Data.Title}}</div>
+  {{with .Data.Body}}<div class="text-3xl text-slate-600 leading-relaxed max-w-5xl">{{.}}</div>{{end}}
+  {{if .Data.Bullets}}
+    <div class="mt-12 flex flex-col gap-6">
+      {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+{{end}}
+
+{{with .Data.Footer}}<div class="footer"><span>{{.}}</span><span class="accent font-semibold">●</span></div>{{end}}
+</section>
+</body>
+</html>

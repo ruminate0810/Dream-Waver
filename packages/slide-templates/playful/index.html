@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<title>{{with .Data.Title}}{{.}}{{else}}Slide{{end}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* Playful but still cool — dark canvas keeps it in the Linear/Vercel
+     family; multi-accent pills inject the "creator" energy a serious deck
+     would never use. Aimed at lecturers, 小红书 explainers, B-站 covers. */
+  html, body { width:1920px;height:1080px;margin:0;padding:0;
+    font-family:'Nunito','Inter','Noto Sans SC','PingFang SC',system-ui,sans-serif;
+    color:#FAFAFA; background:#0A0A0F; }
+  .slide {
+    width:1920px;height:1080px;padding:120px 140px;
+    display:flex;flex-direction:column;position:relative;overflow:hidden;
+    background:
+      radial-gradient(800px 600px at 110% -10%, rgba(244,114,182,0.16), transparent 60%),
+      radial-gradient(700px 500px at -10% 110%, rgba(52,211,153,0.13), transparent 60%),
+      radial-gradient(600px 400px at 50% 50%, rgba(96,165,250,0.06), transparent 60%),
+      #0A0A0F;
+  }
+  /* Per-slide accent picked from a rotation; each layout block sets its own
+     CSS var so headings + bullets agree. */
+  .slide { --accent:#F472B6; }
+  .accent     { color:var(--accent); }
+  .accent-bg  { background:var(--accent); }
+  .display    { font-family:'Nunito',sans-serif;font-weight:900;letter-spacing:-0.02em; }
+  .badge      { display:inline-flex;align-items:center;gap:12px;
+                padding:14px 28px;border-radius:999px;
+                background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);
+                font-size:22px;font-weight:600;color:#E4E4E7; }
+  .badge .emoji { font-size:28px; }
+  .pill-accent{ display:inline-block;padding:8px 22px;border-radius:999px;
+                background:var(--accent);color:#0A0A0F;font-weight:700;font-size:22px;letter-spacing:0.04em;text-transform:uppercase; }
+  .bullet     { display:flex;gap:24px;align-items:flex-start;font-size:38px;line-height:1.5;color:#FAFAFA;font-weight:500; }
+  .bullet .marker { width:46px;height:46px;border-radius:14px;background:var(--accent);color:#0A0A0F;
+                    flex-shrink:0;display:flex;align-items:center;justify-content:center;
+                    font-weight:900;font-size:24px;margin-top:6px; }
+  .quote-card { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);
+                border-radius:32px;padding:80px;backdrop-filter:blur(20px); }
+  .metric-card{ background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.10);
+                border-radius:32px;padding:60px 80px; }
+  .corner     { position:absolute;font-size:18px;color:#71717A;font-family:'Inter',monospace;letter-spacing:0.1em; }
+  .corner.tl  { top:60px;left:140px; }
+  .corner.br  { bottom:60px;right:140px; }
+</style>
+</head>
+<body>
+<section class="slide" style="--accent:#F472B6">
+
+<div class="corner tl" data-no-extract>{{with .Data.Footer}}{{.}}{{else}}DREAM-WAVER ✨{{end}}</div>
+
+{{if eq .Layout "title"}}
+  <div class="my-auto">
+    <div class="pill-accent mb-12">{{with .Data.Subtitle}}{{.}}{{else}}TODAY{{end}}</div>
+    <div class="display text-[180px] leading-[0.95]">{{.Data.Title}}</div>
+  </div>
+
+{{else if eq .Layout "section"}}
+  <div class="my-auto">
+    <div class="badge mb-12"><span class="emoji">📍</span><span>Chapter</span></div>
+    <div class="display text-9xl leading-tight">{{.Data.Title}}</div>
+    {{with .Data.Subtitle}}<div class="mt-10 text-3xl text-zinc-400 max-w-4xl">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "bullets"}}
+  <div class="badge mb-10"><span class="emoji">💡</span><span>Key points</span></div>
+  <div class="display text-7xl mb-14">{{.Data.Title}}</div>
+  <div class="flex flex-col gap-7">
+    {{range $i, $b := .Data.Bullets}}
+    <div class="bullet">
+      <span class="marker">{{add1 $i}}</span>
+      <span>{{$b}}</span>
+    </div>
+    {{end}}
+  </div>
+
+{{else if eq .Layout "data"}}
+  <div class="badge mb-10"><span class="emoji">📈</span><span>By the numbers</span></div>
+  <div class="display text-6xl mb-12">{{.Data.Title}}</div>
+  <div class="metric-card flex items-end gap-16 flex-1">
+    <div class="display text-[260px] leading-none accent">{{with .Data.Metric}}{{.}}{{else}}—{{end}}</div>
+    {{with .Data.Body}}<div class="text-3xl text-zinc-300 leading-relaxed max-w-xl pb-12">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "two-column"}}
+  <div class="badge mb-10"><span class="emoji">⚖️</span><span>Side by side</span></div>
+  <div class="display text-6xl mb-14">{{.Data.Title}}</div>
+  <div class="grid grid-cols-2 gap-16 flex-1">
+    <div class="quote-card text-3xl text-zinc-200 leading-relaxed">{{.Data.Body}}</div>
+    <div class="quote-card flex flex-col gap-5">
+      {{range $i, $b := .Data.Bullets}}
+      <div class="bullet"><span class="marker">{{add1 $i}}</span><span>{{$b}}</span></div>
+      {{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "quote"}}
+  <div class="my-auto">
+    <div class="badge mb-12"><span class="emoji">💬</span><span>Quote</span></div>
+    <div class="quote-card">
+      <div class="display text-7xl leading-[1.2]">"{{.Data.Quote}}"</div>
+      {{with .Data.Attribution}}<div class="mt-10 text-2xl text-zinc-500">— {{.}}</div>{{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "closing"}}
+  <div class="my-auto">
+    <div class="badge mb-12"><span class="emoji">🙌</span><span>That's all!</span></div>
+    <div class="display text-[160px] leading-none">{{with .Data.Title}}{{.}}{{else}}Thank you!{{end}}</div>
+    {{with .Data.Subtitle}}<div class="mt-12 text-3xl text-zinc-400">{{.}}</div>{{end}}
+  </div>
+
+{{else}}
+  <div class="badge mb-10"><span class="emoji">📝</span><span>Notes</span></div>
+  <div class="display text-6xl mb-12">{{.Data.Title}}</div>
+  {{with .Data.Body}}<div class="text-3xl text-zinc-300 leading-relaxed max-w-5xl">{{.}}</div>{{end}}
+  {{if .Data.Bullets}}
+    <div class="mt-12 flex flex-col gap-6">
+      {{range $i, $b := .Data.Bullets}}
+      <div class="bullet"><span class="marker">{{add1 $i}}</span><span>{{$b}}</span></div>
+      {{end}}
+    </div>
+  {{end}}
+{{end}}
+
+<div class="corner br" data-no-extract>{{with .Data.Footer}}{{.}}{{else}}2026 ✨{{end}}</div>
+</section>
+</body>
+</html>
