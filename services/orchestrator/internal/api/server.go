@@ -6,6 +6,7 @@ package api
 
 import (
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -38,6 +39,13 @@ type Dependencies struct {
 	// optional so the orchestrator still starts when this skill is unwired.
 	Games        *games.Pipeline
 	GameSessions *games.SessionStore
+
+	// AIImagesDir is the on-disk directory where NanoBanana writes its
+	// generated PNGs. The server mounts a static-file route under
+	// /api/v1/assets/ai-images/* pointing at this dir so the browser
+	// iframe + chromedp render can both fetch them by HTTP URL. Leave
+	// empty to skip mounting the route (e.g. when image-gen is off).
+	AIImagesDir string
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -84,9 +92,33 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/games", h.CreateGame)
 		r.Get("/games/{id}", h.GetGame)
 		r.Get("/games/{id}/play", h.PlayGame)
+		r.Get("/games/{id}/source", h.SourceGame)
+		// Workspace file server. The iframe loads
+		// /games/{id}/files/index.html; relative paths inside resolve
+		// to siblings under the same prefix. {*} is chi's catch-all.
+		r.Get("/games/{id}/files/*", h.FilesGame)
 		r.Post("/games/{id}/messages", h.PostGameMessage)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
+
+		// AI-generated image assets. NanoBanana writes PNGs into
+		// AIImagesDir; this route serves them so both the browser
+		// iframe and chromedp can fetch by URL. Path-traversal is
+		// blocked by basename-only access (no subdirectories
+		// expected, since NanoBanana writes flat).
+		if deps.AIImagesDir != "" {
+			r.Get("/assets/ai-images/{name}", func(w http.ResponseWriter, req *http.Request) {
+				name := chi.URLParam(req, "name")
+				// Defence in depth — disallow anything that could
+				// escape AIImagesDir even though chi already filters
+				// the param to one path segment.
+				if name == "" || strings.Contains(name, "..") || strings.ContainsAny(name, "/\\") {
+					http.Error(w, "bad path", http.StatusBadRequest)
+					return
+				}
+				http.ServeFile(w, req, filepath.Join(deps.AIImagesDir, name))
+			})
+		}
 	})
 
 	return &http.Server{

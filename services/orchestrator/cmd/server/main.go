@@ -4,10 +4,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -64,13 +66,28 @@ func main() {
 	}
 
 	// ─── Image source ─────────────────────────────────────────────────
-	var imgSearcher image.Searcher = image.NoopSearcher{}
-	if cfg.UnsplashAccessKey != "" {
-		imgSearcher = image.NewUnsplash(cfg.UnsplashAccessKey)
-		slog.Info("unsplash image search enabled")
-	} else {
-		slog.Info("unsplash key not set — slides render without hero images")
+	// Composite chain: nano-banana (AI gen) → Unsplash (stock photos) →
+	// Noop. The first provider that returns a non-nil Result wins; any
+	// provider failure (rate limit, safety block, no key) silently
+	// falls through to the next. Order is "specific to generic" so an
+	// AI-generated illustration is preferred when available.
+	aiImagesDir := filepath.Join(cfg.OutDir, "ai-images")
+	aiImagesBaseURL := fmt.Sprintf("http://localhost:%s/api/v1/assets/ai-images", cfg.HTTPPort)
+	var imgProviders []image.Searcher
+	if cfg.GoogleAPIKey != "" {
+		imgProviders = append(imgProviders, image.NewNanoBanana(cfg.GoogleAPIKey, aiImagesDir, aiImagesBaseURL))
+		slog.Info("nano-banana image gen enabled (Gemini 2.5 Flash Image)",
+			"dir", aiImagesDir, "base_url", aiImagesBaseURL)
 	}
+	if cfg.UnsplashAccessKey != "" {
+		imgProviders = append(imgProviders, image.NewUnsplash(cfg.UnsplashAccessKey))
+		slog.Info("unsplash image search enabled (fallback)")
+	}
+	if len(imgProviders) == 0 {
+		slog.Info("no image providers configured — slides render without hero images")
+	}
+	imgProviders = append(imgProviders, image.NoopSearcher{})
+	var imgSearcher image.Searcher = image.NewComposite(imgProviders...)
 
 	// ─── Slides — two execution paths ─────────────────────────────────
 	// Pipeline = deterministic, single-shot; cheaper, fewer events.
@@ -119,6 +136,14 @@ func main() {
 		Sessions:     sessions,
 		Games:        gamePipeline,
 		GameSessions: gameSessions,
+		// Mount only when nano-banana is actually enabled — otherwise
+		// the route serves nothing and just clutters the surface.
+		AIImagesDir: func() string {
+			if cfg.GoogleAPIKey != "" {
+				return aiImagesDir
+			}
+			return ""
+		}(),
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

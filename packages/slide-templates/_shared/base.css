@@ -457,11 +457,63 @@ body.layout-quote    .slide { justify-content: center; }
 }
 
 /* ─── Hero image (title / section / closing layouts only) ────────── */
+/*
+   Full-bleed cinematic treatment. The image carries the gaze; a
+   radial+linear overlay quiets the lower band so 168px display type
+   sits with good contrast; a slow Ken-Burns pan keeps the canvas
+   breathing without becoming busy. Works equally well over Unsplash
+   stock photos and nano-banana AI generations because the overlay
+   forces a dark backing regardless of source colour.
+*/
 
-.hero-img    { position: absolute; inset: 0; background-size: cover; background-position: center; z-index: 0; }
-.hero-overlay{ position: absolute; inset: 0; z-index: 1;
-               background: linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.85) 100%); }
-.hero-content{ position: relative; z-index: 2; }
-.hero-content .title   { color: #fff; }
-.hero-content .subtitle{ color: rgba(255,255,255,0.72); }
-.hero-credit { position: absolute; bottom: 20px; right: 24px; font-size: 14px; color: rgba(255,255,255,0.6); z-index: 2; }
+.hero-img {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center;
+  transform: scale(1.04); transform-origin: 50% 50%;
+  animation: dw-kenburns 28s ease-in-out infinite alternate;
+  will-change: transform;
+}
+@keyframes dw-kenburns {
+  0%   { transform: scale(1.04) translate3d(0, 0, 0); }
+  100% { transform: scale(1.11) translate3d(-1.4%, -0.8%, 0); }
+}
+.hero-overlay {
+  position: absolute; inset: 0; z-index: 1;
+  /* Two-layer overlay:
+     1. Radial highlight at upper-third draws the eye into the image.
+     2. Linear bottom-heavy gradient forces deep shadow behind the
+        title block (which sits lower-left in every hero layout). */
+  background:
+    radial-gradient(ellipse 90% 70% at 55% 30%,
+      rgba(15,23,42,0.05) 0%,
+      rgba(15,23,42,0.42) 55%,
+      rgba(15,23,42,0.85) 100%),
+    linear-gradient(180deg,
+      rgba(15,23,42,0.30) 0%,
+      rgba(15,23,42,0.08) 32%,
+      rgba(15,23,42,0.72) 100%);
+}
+.hero-content {
+  position: relative; z-index: 2;
+  text-shadow: 0 2px 14px rgba(0,0,0,0.48);
+}
+.hero-content .kicker   { color: rgba(255,255,255,0.62); }
+.hero-content .title    {
+  color: #fff;
+  /* Hero pushes display a notch larger than the in-flow .title size. */
+  font-size: 168px; line-height: 0.92; letter-spacing: -0.03em;
+}
+.hero-content .subtitle { color: rgba(255,255,255,0.86); }
+.hero-content .body     { color: rgba(255,255,255,0.78); }
+.hero-credit {
+  position: absolute; bottom: 24px; right: 28px; z-index: 2;
+  font-size: 11px; letter-spacing: 0.20em; text-transform: uppercase;
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", monospace);
+  color: rgba(255,255,255,0.62);
+  padding: 6px 12px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 999px;
+  background: rgba(15,23,42,0.30);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}

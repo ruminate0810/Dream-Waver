@@ -100,6 +100,12 @@ Available edit tools:
                         slide_index) or one slide. No LLM call.
   - edit_speaker_notes — set the speaker_notes for one slide. Renders
                         only in PowerPoint's presenter view. No LLM call.
+  - generate_image    — swap ONE slide's hero image for a fresh
+                        AI-generated picture (or Unsplash stock photo
+                        as fallback). Use when the user asks for a
+                        specific picture or wants to refresh a slide's
+                        visual. Instruction should be a short visual
+                        description, ideally in English.
   - terminate         — call this when the user's request is satisfied.
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
@@ -113,6 +119,7 @@ Hard rules — pick the SMALLEST tool that satisfies the request:
   - "主色调换成 #0066FF / 用思源黑体" → apply_brand
   - "页脚加 'Q1 2026' / 给所有页加页脚" → set_footer
   - "给第 3 页加演讲稿: ..." → edit_speaker_notes
+  - "给第 3 页换张配图 / 给封面加一张未来感的图 / swap the photo" → generate_image
 
 Vague aesthetic requests (HARD — read this carefully):
   - "整体更好看 / 加点颜色 / 排版更丰富 / 视觉不够好" → DO NOT just call
@@ -128,10 +135,12 @@ Vague aesthetic requests (HARD — read this carefully):
     (c) Reply to the user explaining which lever you used and why,
         and what they can ALSO try (e.g. "如果还想更花，可以再换
         playful 主题").
-  - "标题字号大一点 / 给这页加配图" → 现在没有专门的工具直接做到。
-    回答用户：「目前不支持单页字号或配图调整 — Sprint D 计划里有
-    style_slide / swap_image，但还没 ship。」不要硬选 apply_brand
-    凑数。
+  - "给这页加配图 / 换张图 / 这张图不好看" → generate_image
+    (Sprint H ships nano-banana + Unsplash via a single tool — no
+    more "not supported".)
+  - "标题字号大一点 / 文字太小了" → 现在没有专门工具调字号 — 请
+    回答用户：「目前不支持单页字号微调 — 后续 sprint 会加
+    style_slide。」不要硬选 apply_brand 凑数。
 
 Other rules:
   - Call exactly ONE edit tool per turn unless the user explicitly asks
@@ -224,6 +233,7 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.ApplyBrand{State: state, Renderer: rendererAdapter},
 		&tools.SetFooter{State: state, Renderer: rendererAdapter},
 		&tools.EditSpeakerNotes{State: state, Renderer: rendererAdapter},
+		&tools.GenerateImage{State: state, Images: r.Images, Renderer: rendererAdapter},
 		tool.Terminate{},
 	}
 	registry := tool.NewRegistry(registryTools...)
