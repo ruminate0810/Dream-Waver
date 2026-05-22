@@ -15,7 +15,7 @@ Adapt vocabulary, depth, and tone to the audience. Choose a single overarching t
   "slides": [
     {
       "index": 1,
-      "type": "title | section | content | data | quote | closing",
+      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric",
       "headline": "≤ 12 words",
       "key_points": ["3–5 bullets, ≤ 20 words each"],
       "speaker_notes": "2–3 sentences the presenter would say"
@@ -58,6 +58,39 @@ Match the AUDIENCE field first, then content type:
 - 媒体记者 / 长文 / 思想类 / 评论 / 文学 / 设计批评 → `editorial`
 - 禅修 / 冥想 / 慢生活 / 设计哲学 / 茶道 / 日式美学 → `zen`
 - (no strong signal) → `minimalist`
+
+# Slide type selection
+
+For each slide, pick the `type` that best matches its content shape:
+
+- `title`        — opening title slide. ALWAYS the first slide.
+- `closing`      — final "thank you" slide. ALWAYS the last slide.
+- `section`      — chapter divider mid-deck (use for decks ≥ 6 slides).
+- `content`      — generic title + body paragraph (and optional bullets).
+- `data`         — a single headline metric (one big number).
+- `quote`        — a single quotation (use sparingly — at most 1 per deck).
+- `timeline`     — when the content is a chronological sequence of 3-7
+                   events: product history, roadmap, milestones, life arc.
+                   Triggered by hints like 时间线 / 历程 / 演变 / 发展史
+                   / roadmap / milestones / timeline / journey.
+- `comparison`   — when the content is two alternatives side-by-side
+                   with bullet lists each: before/after, plan A vs B,
+                   pros vs cons, 新方案 vs 旧方案, our approach vs theirs.
+                   Triggered by: 对比 / 之前之后 / 优缺点 / vs / 对照表 /
+                   versus / comparison / before & after.
+                   ⚠️ STRONGLY prefer this over giving each alternative
+                   its own bullets slide. ONE comparison slide is more
+                   effective than two slides ("Plan A bullets" + "Plan
+                   B bullets"). Bake the trade-off into one image.
+- `multi-metric` — when the content is 2-4 KPI numbers (NOT just 1 —
+                   that's `data`). Examples: "ARR / Users / NPS /
+                   Churn", "用户数 / 收入 / 留存 / 转化率".
+                   Triggered by: 多个指标 / 数据看板 / 核心数据 / KPIs.
+
+Prefer `bullets`/`content` when a slide doesn't strongly fit one of the
+specialised types. Specialised types make for stronger slides but only
+when the underlying content really is "a timeline", "a comparison", or
+"several KPIs".
 
 # Hard constraints
 - `slides` length MUST equal the requested slide count.

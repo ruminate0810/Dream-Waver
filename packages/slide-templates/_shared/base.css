@@ -90,6 +90,167 @@ body.layout-quote    .slide { justify-content: center; }
 .metric     { font-size: 168px; line-height: 0.95; font-weight: 800; letter-spacing: -0.03em; color: var(--accent); }
 .metric-context { font-size: 28px; line-height: 1.5; color: var(--fg-muted); max-width: 600px; padding-bottom: 24px; }
 
+/* ─── Timeline (E2.a) ─────────────────────────────────────────────
+ * Horizontal sequence of dated events. Each .event sits on the axis
+ * via a dot, label below, optional note. Themes override the dot
+ * shape + axis colour but not the structure.
+ */
+
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 56px;
+  padding-top: 56px;
+  position: relative;
+  list-style: none;
+  padding-left: 0;
+}
+/* horizontal axis line spanning all events */
+.timeline::before {
+  content: "";
+  position: absolute;
+  top: 30px; left: 24px; right: 24px;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.4;
+}
+.event {
+  position: relative;
+  padding-top: 32px;
+}
+.event::before {
+  content: "";
+  position: absolute;
+  top: -8px; left: 0;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 4px solid var(--bg);
+}
+.event-date {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.event-label {
+  font-size: 26px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+.event-note {
+  font-size: 19px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}
+
+/* ─── Comparison (E2.b) ───────────────────────────────────────────
+ * Two labelled columns side-by-side. The dividing rule colour comes
+ * from --accent so themes get coherent treatment.
+ */
+
+.comparison-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 80px;
+  margin-top: 48px;
+  position: relative;
+}
+.comparison-pair::before {
+  /* vertical accent rule between the two columns */
+  content: "";
+  position: absolute;
+  left: 50%; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0.3;
+  transform: translateX(-1px);
+}
+.comparison-col { padding: 0 16px; }
+.comparison-header {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 600;
+  padding-bottom: 16px;
+  border-bottom: 2px solid var(--accent);
+  margin-bottom: 28px;
+}
+.comparison-items {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.comparison-item {
+  font-size: 26px;
+  line-height: 1.5;
+  color: var(--fg);
+  padding-left: 28px;
+  position: relative;
+}
+.comparison-item::before {
+  content: "•";
+  position: absolute;
+  left: 0; top: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 24px;
+}
+
+/* ─── Multi-metric (E2.c) ─────────────────────────────────────────
+ * 2x2 grid (4 metrics) or 1x3 (3 metrics) or 1x2 (2 metrics). Each
+ * tile = big value + label + optional delta. Delta colour heuristic:
+ * starts with "+" → green; starts with "−" or "-" → red; else muted.
+ */
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 40px;
+  margin-top: 48px;
+}
+.metric-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px 16px;
+  border-top: 3px solid var(--accent);
+}
+.metric-tile-value {
+  font-family: var(--font-display, var(--font-body));
+  font-size: 96px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+}
+.metric-tile-label {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+.metric-tile-delta {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-muted);
+}
+.metric-tile-delta[data-direction="up"]   { color: #16A34A; }
+.metric-tile-delta[data-direction="down"] { color: #DC2626; }
+
 /* ─── Footer ─────────────────────────────────────────────────────── */
 
 .footer {

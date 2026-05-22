@@ -6,14 +6,18 @@ package schema
 type SlideLayout string
 
 const (
-	LayoutTitle    SlideLayout = "title"
-	LayoutSection  SlideLayout = "section"
-	LayoutBullets  SlideLayout = "bullets"
-	LayoutContent  SlideLayout = "content"
-	LayoutQuote    SlideLayout = "quote"
-	LayoutTwoCol   SlideLayout = "two-column"
-	LayoutData     SlideLayout = "data"
-	LayoutClosing  SlideLayout = "closing"
+	LayoutTitle       SlideLayout = "title"
+	LayoutSection     SlideLayout = "section"
+	LayoutBullets     SlideLayout = "bullets"
+	LayoutContent     SlideLayout = "content"
+	LayoutQuote       SlideLayout = "quote"
+	LayoutTwoCol      SlideLayout = "two-column"
+	LayoutData        SlideLayout = "data"
+	LayoutClosing     SlideLayout = "closing"
+	// Sprint E2 — extra layouts for richer decks.
+	LayoutTimeline    SlideLayout = "timeline"     // 3-7 dated events on a horizontal axis
+	LayoutComparison  SlideLayout = "comparison"   // two labelled columns of bullets side-by-side
+	LayoutMultiMetric SlideLayout = "multi-metric" // 2-4 KPI cards (value + label + delta)
 )
 
 // Theme picks a base template family. The renderer falls back to LayoutTitle
@@ -51,6 +55,43 @@ type SlideData struct {
 	// ImageCredit is a "Photo by X on Unsplash" attribution string mandated
 	// by Unsplash's API terms when displaying their photos.
 	ImageCredit string `json:"image_credit,omitempty"`
+
+	// ─── Sprint E2 layout-specific fields ────────────────────────────
+
+	// Events populates layout=timeline. 3-7 chronological items rendered
+	// on a horizontal axis with date above, label below, optional note.
+	Events []TimelineEvent `json:"events,omitempty"`
+
+	// LeftHeader / RightHeader / LeftItems / RightItems populate
+	// layout=comparison — two labelled columns side-by-side (e.g.
+	// "Before / After", "Plan A / Plan B", "Pros / Cons").
+	LeftHeader  string   `json:"left_header,omitempty"`
+	RightHeader string   `json:"right_header,omitempty"`
+	LeftItems   []string `json:"left_items,omitempty"`
+	RightItems  []string `json:"right_items,omitempty"`
+
+	// Metrics populates layout=multi-metric — 2 to 4 KPI cards.
+	Metrics []Metric `json:"metrics,omitempty"`
+}
+
+// TimelineEvent is one node on a timeline slide. Date is a short label
+// (year, "Q1 2026", "Day 3" etc — the renderer doesn't parse it);
+// Label is the headline event; Note is optional sub-context.
+type TimelineEvent struct {
+	Date  string `json:"date"`
+	Label string `json:"label"`
+	Note  string `json:"note,omitempty"`
+}
+
+// Metric is one tile on a multi-metric slide. Value is the headline
+// number ("73%", "$1.2B"); Label is the dimension ("ARR", "NPS",
+// "Churn"); Delta is an optional change indicator ("+12% YoY",
+// "−3 pts"). Renderer colours positive/negative deltas if the string
+// starts with + or −.
+type Metric struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Delta string `json:"delta,omitempty"`
 }
 
 // Slide is one rendered page in a Deck.

@@ -100,6 +100,50 @@ __THEME_STYLE__
     {{with .Data.Body}}<div class="metric-context">{{.}}</div>{{end}}
   </div>
 
+{{else if eq .Layout "timeline"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <ol class="timeline">
+    {{range .Data.Events}}
+    <li class="event">
+      <div class="event-date">{{.Date}}</div>
+      <div class="event-label">{{.Label}}</div>
+      {{with .Note}}<div class="event-note">{{.}}</div>{{end}}
+    </li>
+    {{end}}
+  </ol>
+
+{{else if eq .Layout "comparison"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="comparison-pair">
+    <div class="comparison-col comparison-left">
+      {{with .Data.LeftHeader}}<div class="comparison-header">{{.}}</div>{{end}}
+      <ul class="comparison-items">
+        {{range .Data.LeftItems}}<li class="comparison-item">{{.}}</li>{{end}}
+      </ul>
+    </div>
+    <div class="comparison-col comparison-right">
+      {{with .Data.RightHeader}}<div class="comparison-header">{{.}}</div>{{end}}
+      <ul class="comparison-items">
+        {{range .Data.RightItems}}<li class="comparison-item">{{.}}</li>{{end}}
+      </ul>
+    </div>
+  </div>
+
+{{else if eq .Layout "multi-metric"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="metric-grid">
+    {{range .Data.Metrics}}
+    <div class="metric-tile">
+      <div class="metric-tile-value">{{.Value}}</div>
+      <div class="metric-tile-label">{{.Label}}</div>
+      {{with .Delta}}<div class="metric-tile-delta">{{.}}</div>{{end}}
+    </div>
+    {{end}}
+  </div>
+
 {{else if eq .Layout "closing"}}
   {{if .Data.Image}}
     <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
