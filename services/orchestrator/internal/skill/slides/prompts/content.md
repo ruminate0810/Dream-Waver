@@ -7,7 +7,7 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
     {
       "index": 1,
       "template": "matches the deck theme",
-      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric",
+      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot",
       "data": {
         "title": "...",
         "subtitle": "optional",
@@ -24,7 +24,17 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
         "right_header": "REQUIRED for layout=comparison. Column-B header.",
         "left_items": "REQUIRED for layout=comparison. 3-5 bullets, each ≤ 14 words.",
         "right_items": "REQUIRED for layout=comparison. 3-5 bullets, each ≤ 14 words. SHOULD pair-up positionally with left_items (item 1 left vs item 1 right).",
-        "metrics": "REQUIRED for layout=multi-metric. 2-4 items, each {value, label, delta}. Value = headline number ('73%', '$1.2B'). Label = dimension in mono caps ('ARR', 'NPS'). Delta optional ('+12% YoY', '−3 pts')."
+        "metrics": "REQUIRED for layout=multi-metric. 2-4 items, each {value, label, delta}. Value = headline number ('73%', '$1.2B'). Label = dimension in mono caps ('ARR', 'NPS'). Delta optional ('+12% YoY', '−3 pts').",
+
+        "table_headers": "REQUIRED for layout=comparison-table. Array of column labels, first column is the row-label dimension (e.g. ['比较项目', '当社', '竞品 A', '竞品 B']). 3-5 columns.",
+        "table_rows": "REQUIRED for layout=comparison-table. 4-8 rows, each {cells: [...]}. Cell count MUST equal headers count. Each cell is either {text: '...'} for free text OR {rating: 1-5} for a star-rating cell (★★★★☆). Use rating for evaluation rows like 'UI/UX 评价'; use text for quantitative cells like '27%' or '$1.2B'. Mix freely — typically the first column is text (row label), middle columns are text or rating, last column is text.",
+
+        "sections": "REQUIRED for layout=toc. 4-12 items, each {number: '01', title: 'Section title'}. Number must be a string ('01', '02', ...) — supports zero-padding and non-numeric labels (i, ii, A, B). Title ≤ 8 words.",
+
+        "strengths": "REQUIRED for layout=swot. 3-5 short bullets (≤ 14 words each) — the deck's / topic's internal strong points.",
+        "weaknesses": "REQUIRED for layout=swot. 3-5 short bullets — internal weak points.",
+        "opportunities": "REQUIRED for layout=swot. 3-5 short bullets — external opportunities.",
+        "threats": "REQUIRED for layout=swot. 3-5 short bullets — external threats."
       },
       "speaker_notes": "..."
     }
@@ -44,6 +54,9 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - For layout=`timeline`, ALWAYS include `events` (3-7 items). Omit `bullets`/`body`.
 - For layout=`comparison`, ALWAYS include `left_header`+`right_header`+`left_items`+`right_items`. Omit `bullets`/`body`.
 - For layout=`multi-metric`, ALWAYS include `metrics` (2-4 items). Omit `metric` (singular), `bullets`, `body`.
+- For layout=`comparison-table`, ALWAYS include `table_headers`+`table_rows`. Every `row.cells` length MUST equal `table_headers` length. Omit `bullets`/`body`. Each cell is exactly one of `{text}` OR `{rating}` — never both.
+- For layout=`toc`, ALWAYS include `sections`. Title defaults to "Table of Contents" / "目录" if omitted. Omit `bullets`/`body`.
+- For layout=`swot`, ALWAYS include `strengths`+`weaknesses`+`opportunities`+`threats` (each 3-5 bullets). Omit `bullets`/`body`.
 
 # When to emit image_query
 

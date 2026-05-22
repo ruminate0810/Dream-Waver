@@ -517,12 +517,22 @@ func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme) ([]byte, er
 // small and obvious — templates are authored as data, not code, so heavy
 // logic should live in Go.
 var templateFuncs = template.FuncMap{
-	"add1":     func(i int) int { return i + 1 },
-	"alpha":    func(i int) string { return string(rune('a' + i%26)) },        // 0→a, 1→b, …
-	"ALPHA":    func(i int) string { return string(rune('A' + i%26)) },        // 0→A, 1→B, …
-	"roman":    func(i int) string { return toRoman(i + 1) },                  // 0→i, 1→ii, …
-	"upper":    strings.ToUpper,
-	"lower":    strings.ToLower,
+	"add1":  func(i int) int { return i + 1 },
+	"alpha": func(i int) string { return string(rune('a' + i%26)) }, // 0→a, 1→b, …
+	"ALPHA": func(i int) string { return string(rune('A' + i%26)) }, // 0→A, 1→B, …
+	"roman": func(i int) string { return toRoman(i + 1) },           // 0→i, 1→ii, …
+	"upper": strings.ToUpper,
+	"lower": strings.ToLower,
+	// iterate(n) returns [0, 1, …, n-1] so templates can run a fixed-
+	// length loop without arithmetic helpers. Used by the star-rating
+	// renderer: `{{range iterate 5}} … {{end}}`.
+	"iterate": func(n int) []int {
+		out := make([]int, n)
+		for i := range out {
+			out[i] = i
+		}
+		return out
+	},
 }
 
 // toRoman returns lowercase Roman numerals up to 39. Enough for any slide

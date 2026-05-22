@@ -18,6 +18,10 @@ const (
 	LayoutTimeline    SlideLayout = "timeline"     // 3-7 dated events on a horizontal axis
 	LayoutComparison  SlideLayout = "comparison"   // two labelled columns of bullets side-by-side
 	LayoutMultiMetric SlideLayout = "multi-metric" // 2-4 KPI cards (value + label + delta)
+	// Sprint G1 — high information-density layouts (info-table / TOC / SWOT)
+	LayoutComparisonTable SlideLayout = "comparison-table" // N-column × M-row data table with optional star ratings per cell
+	LayoutTOC             SlideLayout = "toc"              // table-of-contents — huge title + numbered section list with decoration
+	LayoutSWOT            SlideLayout = "swot"             // 2x2 strategic grid (strengths / weaknesses / opportunities / threats)
 )
 
 // Theme picks a base template family. The renderer falls back to LayoutTitle
@@ -72,6 +76,52 @@ type SlideData struct {
 
 	// Metrics populates layout=multi-metric — 2 to 4 KPI cards.
 	Metrics []Metric `json:"metrics,omitempty"`
+
+	// Sprint G1 fields:
+
+	// TableHeaders + TableRows populate layout=comparison-table.
+	// Headers is the first row's labels; Rows are the data rows
+	// underneath. Each cell can be plain text OR a 0-5 star rating.
+	TableHeaders []string         `json:"table_headers,omitempty"`
+	TableRows    []TableRow       `json:"table_rows,omitempty"`
+
+	// Sections populates layout=toc — the table-of-contents section
+	// list. Each item is a [number, label] pair. The decorative chrome
+	// (big "Table of Contents" title + background circles) is rendered
+	// by base.css; this slice only carries the entries.
+	Sections []TOCSection `json:"sections,omitempty"`
+
+	// SWOT populates layout=swot — four quadrants of bullet text.
+	// Slice per quadrant so each can have a different length; theme
+	// CSS chooses background colour per quadrant (green / red / blue /
+	// amber by default).
+	Strengths     []string `json:"strengths,omitempty"`
+	Weaknesses    []string `json:"weaknesses,omitempty"`
+	Opportunities []string `json:"opportunities,omitempty"`
+	Threats       []string `json:"threats,omitempty"`
+}
+
+// TableRow is one data row inside a comparison-table slide. Cells
+// align positionally to the slide's TableHeaders.
+type TableRow struct {
+	Cells []TableCell `json:"cells"`
+}
+
+// TableCell is one datum inside a comparison-table row. Exactly one
+// of Text or Rating should be populated:
+//   - Text   is shown verbatim (e.g. "27%", "中价格", "✓", "—").
+//   - Rating renders as 5 unicode stars (★★★★☆) where filled = Rating,
+//     empty = 5 - Rating; range [0, 5]. Use for "评价" / "评分" cells.
+//     If Rating > 0, Text is ignored.
+type TableCell struct {
+	Text   string `json:"text,omitempty"`
+	Rating int    `json:"rating,omitempty"`
+}
+
+// TOCSection is one entry in a table-of-contents slide.
+type TOCSection struct {
+	Number string `json:"number"` // "01", "02", … (string so authors can use roman / chapter labels)
+	Title  string `json:"title"`
 }
 
 // TimelineEvent is one node on a timeline slide. Date is a short label

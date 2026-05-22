@@ -251,6 +251,203 @@ body.layout-quote    .slide { justify-content: center; }
 .metric-tile-delta[data-direction="up"]   { color: #16A34A; }
 .metric-tile-delta[data-direction="down"] { color: #DC2626; }
 
+/* ─── Comparison table (G1) ────────────────────────────────────────
+ * N×M data table with star-rating cells. The TABLE keeps full
+ * width; header row has the accent underline; rows alternate a
+ * very-faint zebra stripe.
+ */
+
+.ctable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 40px;
+  font-size: 22px;
+  line-height: 1.4;
+  table-layout: fixed;
+}
+.ctable th {
+  text-align: left;
+  padding: 16px 20px;
+  font-size: 16px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  border-bottom: 2px solid var(--accent);
+  font-weight: 600;
+}
+.ctable td {
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--rule, rgba(0,0,0,0.06));
+  color: var(--fg);
+  vertical-align: middle;
+}
+.ctable tbody tr:nth-child(even) td {
+  background: rgba(0, 0, 0, 0.02);
+}
+/* The FIRST column reads as a row label — bold + accent colour for
+ * scannability; numeric / rating columns stay regular weight. */
+.ctable td:first-child { font-weight: 600; color: var(--fg); }
+
+/* Star rating primitive — used inside .ctable td but also reusable
+ * anywhere a 0-5 score should appear visually. Filled stars take the
+ * accent colour; empty stars are faint. Sized so a row of 5 fits in
+ * a typical table cell. */
+.star-rating { display: inline-flex; gap: 2px; font-size: 22px; line-height: 1; vertical-align: middle; }
+.star-rating .star.filled { color: var(--accent); }
+.star-rating .star.empty  { color: var(--fg-faint); opacity: 0.55; }
+
+/* ─── Table of contents (G1) ───────────────────────────────────────
+ * Genspark-style "Table of Contents" page with a huge title on the
+ * left (overlaid on a decorative accent-coloured circle) and a
+ * numbered section list on the right with leader dots and right-
+ * aligned numbers.
+ */
+
+.toc-shell {
+  display: grid;
+  grid-template-columns: 5fr 7fr;
+  gap: 80px;
+  align-items: stretch;
+  height: 100%;
+}
+.toc-headline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.toc-headline .title {
+  font-size: 132px;
+  line-height: 1.0;
+  letter-spacing: -0.02em;
+  position: relative;
+  z-index: 2;
+  margin: 0;
+}
+.toc-headline .subtitle {
+  margin-top: 28px;
+  font-size: 24px;
+  color: var(--fg-muted);
+  position: relative;
+  z-index: 2;
+}
+/* Big decorative circle behind the title — accent at ~12% alpha so
+ * it reads as a wash, not a fill. Position bottom-left so the title
+ * peeks out the top-right. */
+.toc-bg {
+  position: absolute;
+  bottom: -120px;
+  left: -120px;
+  width: 640px;
+  height: 640px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.12;
+  z-index: 1;
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+}
+.toc-entry {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 18px;
+  font-size: 26px;
+}
+.toc-label {
+  font-weight: 500;
+  color: var(--fg);
+}
+.toc-rule {
+  display: block;
+  height: 1px;
+  background: var(--fg-faint);
+  opacity: 0.4;
+  position: relative;
+  top: -6px;
+}
+.toc-number {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: var(--accent);
+  font-weight: 600;
+  tabular-nums: 1;
+  min-width: 36px;
+  text-align: right;
+}
+
+/* ─── SWOT (G1) ───────────────────────────────────────────────────
+ * 2x2 grid. Quadrants are colour-coded by convention: strengths
+ * green, weaknesses red, opportunities blue, threats amber. Cells
+ * carry a top-edge accent rule + small uppercase label + plain
+ * bullet list.
+ */
+
+.swot-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 24px;
+  margin-top: 32px;
+  flex: 1;
+  min-height: 600px;
+}
+.swot-cell {
+  padding: 28px 32px;
+  border: 1px solid var(--rule, rgba(0,0,0,0.08));
+  border-top-width: 4px;
+  background: rgba(255,255,255,0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.swot-s { border-top-color: #16A34A; } /* green */
+.swot-w { border-top-color: #DC2626; } /* red */
+.swot-o { border-top-color: #2563EB; } /* blue */
+.swot-t { border-top-color: #F59E0B; } /* amber */
+.swot-label {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  font-weight: 600;
+}
+.swot-s .swot-label { color: #15803D; }
+.swot-w .swot-label { color: #B91C1C; }
+.swot-o .swot-label { color: #1D4ED8; }
+.swot-t .swot-label { color: #B45309; }
+.swot-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 22px;
+  line-height: 1.45;
+  color: var(--fg);
+}
+.swot-list li {
+  padding-left: 18px;
+  position: relative;
+}
+.swot-list li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--fg-faint);
+}
+
 /* ─── Footer ─────────────────────────────────────────────────────── */
 
 .footer {

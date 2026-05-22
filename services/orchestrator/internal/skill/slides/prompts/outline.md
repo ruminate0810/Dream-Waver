@@ -15,7 +15,7 @@ Adapt vocabulary, depth, and tone to the audience. Choose a single overarching t
   "slides": [
     {
       "index": 1,
-      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric",
+      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot",
       "headline": "≤ 12 words",
       "key_points": ["3–5 bullets, ≤ 20 words each"],
       "speaker_notes": "2–3 sentences the presenter would say"
@@ -86,6 +86,25 @@ For each slide, pick the `type` that best matches its content shape:
                    that's `data`). Examples: "ARR / Users / NPS /
                    Churn", "用户数 / 收入 / 留存 / 转化率".
                    Triggered by: 多个指标 / 数据看板 / 核心数据 / KPIs.
+- `comparison-table` — when content fits a multi-column DATA TABLE
+                   with 2-4 columns being compared on 4-8 dimensions
+                   (rows). Strictly stronger than `comparison` (2-col
+                   bullets) when the user wants a scannable matrix
+                   like "竞合分析 (我司 vs A vs B vs C)" with rows for
+                   市场份额, 价格, UI/UX 评价, 客服 etc. Some cells
+                   can be star ratings (★★★★☆). Use for: 竞品对比表 /
+                   规格对比 / 套餐对比 / vendor evaluation matrix.
+- `toc`          — when this slide is the deck's table-of-contents:
+                   a numbered list of section titles laid out as a
+                   left-side display title + right-side ordered list.
+                   Use when slide_count ≥ 8 AND content includes a
+                   meta section "议程" / "目录" / "概览" / "Agenda" /
+                   "Table of Contents". One TOC per deck max,
+                   conventionally slide 2 (right after title).
+- `swot`         — when content is a strategic 2×2 grid of
+                   Strengths / Weaknesses / Opportunities / Threats.
+                   Triggered by: SWOT / 优劣势机会风险分析 / 战略矩阵.
+                   Cap each quadrant at 3-5 bullets.
 
 Prefer `bullets`/`content` when a slide doesn't strongly fit one of the
 specialised types. Specialised types make for stronger slides but only

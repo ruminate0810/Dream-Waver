@@ -144,6 +144,71 @@ __THEME_STYLE__
     {{end}}
   </div>
 
+{{else if eq .Layout "comparison-table"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <table class="ctable">
+    <thead><tr>
+      {{range .Data.TableHeaders}}<th>{{.}}</th>{{end}}
+    </tr></thead>
+    <tbody>
+      {{range .Data.TableRows}}
+      <tr>
+        {{range .Cells}}
+        <td>
+          {{if gt .Rating 0}}
+            {{$r := .Rating}}
+            <span class="star-rating" data-no-extract aria-label="rating {{$r}} of 5">
+              {{range iterate 5}}{{if lt . $r}}<span class="star filled">★</span>{{else}}<span class="star empty">☆</span>{{end}}{{end}}
+            </span>
+          {{else}}{{.Text}}{{end}}
+        </td>
+        {{end}}
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+
+{{else if eq .Layout "toc"}}
+  <div class="toc-shell">
+    <div class="toc-headline">
+      <div class="toc-bg" data-no-extract></div>
+      <div class="display title">{{with .Data.Title}}{{.}}{{else}}Table of Contents{{end}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+    <ol class="toc-list">
+      {{range .Data.Sections}}
+      <li class="toc-entry">
+        <span class="toc-label">{{.Title}}</span>
+        <span class="toc-rule" data-no-extract></span>
+        <span class="toc-number">{{.Number}}</span>
+      </li>
+      {{end}}
+    </ol>
+  </div>
+
+{{else if eq .Layout "swot"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="swot-grid">
+    <div class="swot-cell swot-s">
+      <div class="swot-label">Strengths</div>
+      <ul class="swot-list">{{range .Data.Strengths}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    <div class="swot-cell swot-w">
+      <div class="swot-label">Weaknesses</div>
+      <ul class="swot-list">{{range .Data.Weaknesses}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    <div class="swot-cell swot-o">
+      <div class="swot-label">Opportunities</div>
+      <ul class="swot-list">{{range .Data.Opportunities}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+    <div class="swot-cell swot-t">
+      <div class="swot-label">Threats</div>
+      <ul class="swot-list">{{range .Data.Threats}}<li>{{.}}</li>{{end}}</ul>
+    </div>
+  </div>
+
 {{else if eq .Layout "closing"}}
   {{if .Data.Image}}
     <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
