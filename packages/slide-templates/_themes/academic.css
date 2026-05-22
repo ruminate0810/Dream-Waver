@@ -1,0 +1,152 @@
+/* academic.css — scholarly off-white canvas, deep-red accent (§/[N]/rule),
+ * IBM Plex Serif for display, IBM Plex Sans for body, IBM Plex Mono for
+ * footnote numbers and corner labels.
+ *
+ * Distinctive markers (replicates legacy academic/index.html):
+ *   - § "Chapter / Argument / Notes" kicker style (red § + grey text)
+ *   - Bullets numbered as [1], [2]… (CSS counters, no markup change)
+ *   - Hairline horizontal rules separating title + content on body slides
+ *   - Top-left + bottom-right corner labels (DREAM-WAVER PRESS / 2026)
+ */
+
+.theme-academic {
+  --bg: #FAFAFA;
+  --fg: #18181B;
+  --fg-muted: #52525B;
+  --fg-faint: #A1A1AA;
+
+  --accent: var(--brand-primary, #B91C1C);
+  --accent-2: var(--brand-accent, #B91C1C);
+
+  --font-body: var(--brand-font, 'IBM Plex Sans', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif);
+  --font-display: 'IBM Plex Serif', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 160px;
+  --pad-y: 120px;
+  --bullet-size: 0;  /* we hide the dot, render [N] via counter instead */
+}
+
+/* ─── Corner labels ──────────────────────────────────────────────── */
+/* Top-left "DREAM-WAVER PRESS" and bottom-right "— 2026". The legacy
+ * template put these in the markup; we move them to pseudo-elements so
+ * the layout HTML stays neutral. */
+
+.theme-academic .slide::before {
+  content: "DREAM·WAVER PRESS";
+  position: absolute;
+  top: 60px; left: 160px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.18em;
+  color: var(--fg-faint);
+}
+.theme-academic .slide::after {
+  content: "— " counter(slide-year);
+  counter-reset: slide-year 2026;
+  position: absolute;
+  bottom: 60px; right: 160px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  color: var(--fg-faint);
+}
+
+/* ─── § kicker style ─────────────────────────────────────────────── */
+
+.theme-academic .kicker {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 22px; letter-spacing: 0.18em; color: var(--fg-muted);
+  text-transform: uppercase; font-weight: 400;
+  margin-bottom: 40px;
+}
+.theme-academic .kicker::before {
+  content: "§";
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ─── Hairline above-and-below body slide content ────────────────── */
+
+.theme-academic .pretitle {
+  display: flex; align-items: center; gap: 12px;
+  font-family: var(--font-mono);
+  font-size: 22px; letter-spacing: 0.18em; color: var(--fg-muted);
+  text-transform: uppercase; margin-bottom: 28px;
+}
+.theme-academic .pretitle::before {
+  content: "§ Notes";
+  color: var(--accent);
+  font-weight: 600;
+}
+.theme-academic.layout-bullets .pretitle::before { content: "§ Argument"; }
+.theme-academic.layout-two-column .pretitle::before { content: "§ Comparison"; }
+.theme-academic.layout-data .pretitle::before { content: "— Figure"; }
+
+/* Body-slide title gets a hairline rule under it. */
+.theme-academic.layout-bullets .title,
+.theme-academic.layout-two-column .title,
+.theme-academic.layout-content .title {
+  font-family: var(--font-display);
+  font-size: 64px;
+  font-weight: 500;
+  padding-bottom: 28px;
+  border-bottom: 1px solid #D4D4D8;
+  margin-bottom: 28px;
+}
+
+/* ─── Footnote-style bullets [N] ─────────────────────────────────── */
+
+.theme-academic .bullets { counter-reset: bnum; }
+.theme-academic .bullet { font-size: 28px; line-height: 1.65; color: #27272A; gap: 12px; }
+.theme-academic .bullet::before {
+  counter-increment: bnum;
+  content: "[" counter(bnum) "]";
+  background: transparent;
+  border-radius: 0;
+  width: auto; height: auto;
+  margin-top: 0;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  color: var(--accent);
+  flex-shrink: 0;
+  min-width: 48px;
+}
+
+/* ─── Title / section / closing ──────────────────────────────────── */
+
+.theme-academic .title-block .title,
+.theme-academic .section-block .title,
+.theme-academic .closing-block .title {
+  font-family: var(--font-display);
+  font-weight: 500;
+}
+.theme-academic .title-block .title    { font-size: 112px; }
+.theme-academic .section-block .title  { font-size: 128px; }
+.theme-academic .closing-block .title  { font-size: 96px; }
+
+/* ─── Quote with red rule ────────────────────────────────────────── */
+
+.theme-academic .quote {
+  border-left: 6px solid var(--accent);
+  padding-left: 32px;
+  font-style: italic;
+  font-size: 56px;
+}
+
+/* ─── Metric: serif heavy, no colour bleed ───────────────────────── */
+
+.theme-academic .metric {
+  font-family: var(--font-display);
+  font-size: 200px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.03em;
+}
+
+/* ─── Footer — academic uses the corner label instead, so suppress
+ * the standard footer slot if Data.Footer is set (it's already in the
+ * .slide::before / ::after corners). */
+
+.theme-academic .footer {
+  display: none;
+}

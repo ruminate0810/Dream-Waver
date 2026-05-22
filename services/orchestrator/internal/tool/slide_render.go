@@ -551,34 +551,97 @@ func toRoman(n int) string {
 	return sb.String()
 }
 
-// loadTemplates walks TemplateDir once and parses every *.html into a single
-// html/template.Template so lookups are cheap.
+// loadTemplates walks TemplateDir once. Two paths coexist during the
+// per-theme migration (Sprint C4):
+//
+//   1. NEW arch  — _shared/layout.html + _shared/base.css + _themes/<name>.css.
+//      One layout, per-theme tokens. The theme's CSS files are spliced
+//      into the layout source at load time and registered as
+//      "<theme>.html" so the existing Lookup call sites don't change.
+//
+//   2. LEGACY arch — <theme>/index.html monolithic file. Used as a
+//      fallback for any theme that doesn't yet have a _themes/*.css
+//      counterpart. Themes migrate over one at a time; once all five
+//      are on the new arch we delete the legacy files and this branch.
+//
+// Themes covered by the new arch take precedence; legacy files for the
+// same theme are skipped to avoid template-name collisions.
 func (r *SlideRender) loadTemplates() error {
 	var firstErr error
 	r.once.Do(func() {
 		root := template.New("root").Funcs(templateFuncs)
+
+		// ─── New arch ────────────────────────────────────────────
+		// Read shared layout + base CSS once. Either being absent is
+		// a hard failure ONLY if we have any _themes/*.css; otherwise
+		// we fall through to legacy.
+		layoutPath := filepath.Join(r.TemplateDir, "_shared", "layout.html")
+		baseCSSPath := filepath.Join(r.TemplateDir, "_shared", "base.css")
+		themesDir := filepath.Join(r.TemplateDir, "_themes")
+
+		layoutSrc, layoutErr := os.ReadFile(layoutPath)
+		baseCSS, baseErr := os.ReadFile(baseCSSPath)
+		themeFiles, themesErr := os.ReadDir(themesDir)
+
+		migrated := map[string]bool{}
+		if layoutErr == nil && baseErr == nil && themesErr == nil {
+			for _, f := range themeFiles {
+				if f.IsDir() || !strings.HasSuffix(f.Name(), ".css") {
+					continue
+				}
+				themeName := strings.TrimSuffix(f.Name(), ".css")
+				themeCSS, err := os.ReadFile(filepath.Join(themesDir, f.Name()))
+				if err != nil {
+					firstErr = fmt.Errorf("read theme css %s: %w", f.Name(), err)
+					return
+				}
+				src := buildSharedTemplateSrc(layoutSrc, baseCSS, themeCSS)
+				if _, err := root.New(themeName + ".html").Parse(src); err != nil {
+					firstErr = fmt.Errorf("parse new-arch template %s: %w", themeName, err)
+					return
+				}
+				migrated[themeName] = true
+			}
+		}
+
+		// ─── Legacy arch (fallback) ──────────────────────────────
 		entries, err := os.ReadDir(r.TemplateDir)
 		if err != nil {
 			firstErr = err
 			return
 		}
 		for _, e := range entries {
-			if !e.IsDir() {
+			if !e.IsDir() || strings.HasPrefix(e.Name(), "_") {
 				continue
+			}
+			if migrated[e.Name()] {
+				continue // new arch already handled it
 			}
 			htmlPath := filepath.Join(r.TemplateDir, e.Name(), "index.html")
 			b, err := os.ReadFile(htmlPath)
 			if err != nil {
-				continue // skip non-template dirs
+				continue
 			}
 			if _, err := root.New(e.Name() + ".html").Parse(string(b)); err != nil {
-				firstErr = fmt.Errorf("parse %s: %w", htmlPath, err)
+				firstErr = fmt.Errorf("parse legacy %s: %w", htmlPath, err)
 				return
 			}
 		}
+
 		r.loaded = root
 	})
 	return firstErr
+}
+
+// buildSharedTemplateSrc splices the base + theme CSS into the shared
+// layout HTML. The layout file carries two markers (__BASE_STYLE__ and
+// __THEME_STYLE__) where the renderer wraps each CSS chunk in a
+// <style> block before substituting. Each marker is replaced once.
+func buildSharedTemplateSrc(layout, base, theme []byte) string {
+	src := string(layout)
+	src = strings.Replace(src, "__BASE_STYLE__", "<style>\n"+string(base)+"\n</style>", 1)
+	src = strings.Replace(src, "__THEME_STYLE__", "<style>\n"+string(theme)+"\n</style>", 1)
+	return src
 }
 
 // emuPerPx maps a CSS pixel (at our 1920-wide capture viewport) to PowerPoint

@@ -45,7 +45,7 @@ Thumbs.db
 *.pdf
 .tmp/
 tmp/
-workspace/
+/workspace/
 storage_local/
 sandbox_local/
 

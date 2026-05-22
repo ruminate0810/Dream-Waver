@@ -1,0 +1,69 @@
+/* minimalist.css — neutral white canvas, blue accent, DM Serif Display
+ * for displays. Replicates the visual of the legacy
+ * packages/slide-templates/minimalist/index.html with one architectural
+ * change: the right-edge vertical accent bar on the title layout is
+ * now a CSS pseudo-element so the layout HTML carries no theme markup.
+ */
+
+.theme-minimalist {
+  /* ─── Tokens ───────────────────────────────────────────────────── */
+  --bg: #ffffff;
+  --fg: #0F172A;
+  --fg-muted: #64748B;
+  --fg-faint: #94A3B8;
+
+  /* apply_brand overrides win via the var() chain: theme defines
+     `--accent` *from* `--brand-primary` if it exists, else falls back
+     to the canonical minimalist blue. */
+  --accent: var(--brand-primary, #2563EB);
+  --accent-2: var(--brand-accent, #93C5FD);
+
+  --font-body: var(--brand-font, 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif);
+  --font-display: 'DM Serif Display', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'Inter', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 140px;
+  --pad-y: 100px;
+  --bullet-size: 12px;
+}
+
+/* ─── Decorations specific to minimalist ───────────────────────── */
+
+/* Right-edge vertical accent bar on the title layout (no image). The
+ * legacy template painted this as an inline div; here it's a pseudo so
+ * the layout HTML stays neutral. */
+.theme-minimalist.layout-title:not(:has(.hero-img)) .slide::after {
+  content: "";
+  position: absolute;
+  right: 140px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8px;
+  height: 300px;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+/* Footer dot — minimalist's signature single accent dot on the right. */
+.theme-minimalist .footer::after {
+  content: "●";
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: auto;
+  font-size: 16px;
+}
+
+/* Slightly tighter title weight feels more "editorial" for minimalist. */
+.theme-minimalist .title { font-weight: 500; }
+.theme-minimalist .display { letter-spacing: -0.025em; }
+
+/* Kicker treatment — minimalist uses a thin accent-coloured uppercase
+ * label, no underline or bar. */
+.theme-minimalist .kicker { font-size: 14px; letter-spacing: 0.45em; }
+
+/* Metric: minimalist uses pure-accent metric, no gradient. Already the
+ * default in base.css; no override needed. */
+
+/* The legacy minimalist had no `.pretitle` decoration on body slides,
+ * so we hide the empty marker so it doesn't reserve vertical space. */
+.theme-minimalist .pretitle { display: none; }

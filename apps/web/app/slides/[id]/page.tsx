@@ -6,6 +6,7 @@ import { ArrowLeft } from "lucide-react";
 
 import { getSlideJob, type SlideJob } from "@/lib/api";
 import { Chat } from "@/components/chat/Chat";
+import { ChatThread } from "@/components/chat/ChatThread";
 import { AgentSessionProvider } from "@/components/chat/transport";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
 
@@ -25,6 +26,10 @@ export default function SlideJobPage() {
   const search = useSearchParams();
   const jobId = params.id;
   const sessionId = search.get("session") ?? "";
+  // Default UI is the ChatGPT/Claude-style conversation thread — the
+  // whole point of Dream-Waver is the agent dialogue. ?ui=log switches
+  // to the editorial composition log if the user explicitly asks for it.
+  const uiVariant = search.get("ui") === "log" ? "log" : "thread";
   const [job, setJob] = useState<SlideJob | null>(null);
 
   useEffect(() => {
@@ -99,7 +104,7 @@ export default function SlideJobPage() {
       {/* Body */}
       <div className="relative z-10 mx-auto max-w-[1480px] px-4 md:px-10">
         {job ? (
-          <Workspace job={job} sessionId={sessionId} />
+          <Workspace job={job} sessionId={sessionId} uiVariant={uiVariant} />
         ) : (
           <div className="px-2 py-20">
             <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
@@ -113,23 +118,43 @@ export default function SlideJobPage() {
 }
 
 // Workspace owns the two-column split + the shared event stream.
-// <AgentSessionProvider> opens the single WebSocket; both Chat (which
-// reads typed Turn[] via useAgentSession) and LivePreviewStack (which
-// just listens for slides.updated) subscribe to it. One connection,
+// <AgentSessionProvider> opens the single WebSocket; both the chat
+// (left) and LivePreviewStack (right) subscribe to it. One connection,
 // fan-out delivery, no duplication.
-function Workspace({ job, sessionId }: { job: SlideJob; sessionId: string }) {
+//
+// uiVariant picks the left-column renderer:
+//   "thread" → <ChatThread>  ChatGPT/Claude-style stacked thread (default)
+//   "log"    → <Chat>        editorial composition log (escape hatch)
+//
+// Layout note: the thread surface needs a fixed-height column so the
+// composer can stick to the bottom. We give the left section
+// `lg:h-[calc(100dvh-57px)]` (header is 57px) and let ChatThread own
+// its internal flex layout. The log surface still wants to scroll the
+// whole article, so we branch the wrapper accordingly.
+function Workspace({
+  job,
+  sessionId,
+  uiVariant,
+}: {
+  job: SlideJob;
+  sessionId: string;
+  uiVariant: "log" | "thread";
+}) {
   return (
     <AgentSessionProvider sessionId={sessionId || job.session_id}>
-      {/* CSS grid gives us reliable structure — explicit fr units rather
-          than flexbox math. Left column is narrower (the editor's notes);
-          right column gets the proof. The hairline centre divider is a
-          single rule, not a card border on either side. */}
       <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14">
-        {/* ── Left: chat / generation timeline ────────────────────────── */}
-        <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-10 xl:pr-14">
-          <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pb-10 lg:pt-2 lg:[scrollbar-width:thin]">
-            <Chat job={job} sessionId={sessionId} compact />
-          </div>
+        {/* ── Left: chat surface (variant-selected) ───────────────────── */}
+        <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">
+          <UiToggle current={uiVariant} />
+          {uiVariant === "thread" ? (
+            <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)]">
+              <ChatThread job={job} sessionId={sessionId} />
+            </div>
+          ) : (
+            <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pb-10 lg:pt-2 lg:[scrollbar-width:thin]">
+              <Chat job={job} sessionId={sessionId} compact />
+            </div>
+          )}
         </section>
 
         {/* ── Right: live HTML preview stack ──────────────────────────── */}
@@ -140,5 +165,39 @@ function Workspace({ job, sessionId }: { job: SlideJob; sessionId: string }) {
         </section>
       </div>
     </AgentSessionProvider>
+  );
+}
+
+// UiToggle is the tiny tab strip pinned at the top of the left column.
+// Default = Chat; Log is the escape hatch back to the editorial view.
+function UiToggle({ current }: { current: "log" | "thread" }) {
+  return (
+    <div className="ml-3 mt-3 inline-flex border border-[color:var(--rule)] lg:absolute lg:left-3 lg:top-2 lg:z-10">
+      <TabLink href="?" active={current === "thread"} label="Chat" />
+      <TabLink href="?ui=log" active={current === "log"} label="Log" />
+    </div>
+  );
+}
+
+function TabLink({
+  href,
+  active,
+  label,
+}: {
+  href: string;
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <a
+      href={href}
+      className={
+        active
+          ? "bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)]"
+          : "px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] hover:bg-[color:var(--paper)]/80"
+      }
+    >
+      {label}
+    </a>
   );
 }

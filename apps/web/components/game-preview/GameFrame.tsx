@@ -1,0 +1,197 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Loader2, RefreshCw, ExternalLink, Maximize2 } from "lucide-react";
+import clsx from "clsx";
+
+import type { GameJob } from "@/lib/api";
+
+// GameFrame is the right-hand preview pane. It hosts an iframe that points
+// at /api/v1/games/{id}/play (same-origin via Next.js rewrites) and bumps
+// the src's cache-buster every time the job's status flips back to
+// "finished" — that's how we get the iframe to reload after a follow-up
+// edit lands without a full page navigation.
+//
+// While the backend is generating (status==="running") we keep the prior
+// frame visible if we have one, and overlay a translucent "Composing" badge
+// so the user knows another iteration is in flight.
+
+export function GameFrame({ job }: { job: GameJob }) {
+  const [version, setVersion] = useState(0);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Track the previous finishedAt so we only bump the cache key on a real
+  // re-render. Useful when the polling loop keeps re-fetching the same
+  // finished job — we don't want to keep reloading the iframe.
+  const lastFinishedRef = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (job.status !== "finished") return;
+    if (!job.finished_at) return;
+    if (job.finished_at === lastFinishedRef.current) return;
+    lastFinishedRef.current = job.finished_at;
+    setVersion((v) => v + 1);
+    setHasLoaded(false);
+  }, [job.status, job.finished_at]);
+
+  const playable = job.status === "finished" && !!job.play_url;
+  const src = playable ? `${job.play_url}?v=${version}` : undefined;
+
+  const focusGame = () => {
+    // Click into the iframe so keyboard events flow to the game. Without
+    // this the first arrow-key press scrolls the parent page instead of
+    // moving the snake. With sandbox="allow-scripts" (null origin) we
+    // can't touch contentWindow cross-origin — but focusing the element
+    // is enough; the browser forwards subsequent keystrokes to the frame.
+    iframeRef.current?.focus();
+  };
+
+  const reload = () => {
+    setVersion((v) => v + 1);
+    setHasLoaded(false);
+  };
+
+  return (
+    <div className="flex h-full flex-col">
+      <FrameHeader
+        job={job}
+        onReload={reload}
+        onFullscreen={() => {
+          if (job.play_url) window.open(job.play_url, "_blank");
+        }}
+      />
+      <div className="relative flex-1 overflow-hidden border border-[color:var(--rule)] bg-[#0f1115]">
+        {src ? (
+          <iframe
+            ref={iframeRef}
+            key={src /* hard remount on version bump — cleanest reset */}
+            src={src}
+            title={job.title || "Game preview"}
+            onLoad={() => {
+              setHasLoaded(true);
+              focusGame();
+            }}
+            onClick={focusGame}
+            // sandbox=allow-scripts gives the iframe a unique null origin
+            // — requestAnimationFrame / keyboard / canvas all work, but
+            // the game cannot reach window.parent, read parent cookies,
+            // or top-navigate the tab. The artifact comes from an LLM so
+            // we treat it as untrusted content.
+            sandbox="allow-scripts"
+            className="h-full w-full bg-white"
+          />
+        ) : (
+          <PlaceholderCanvas status={job.status} error={job.error} />
+        )}
+
+        {/* Running overlay — semi-transparent so the user still sees the
+            previous game and gets a sense of continuity. */}
+        {job.status === "running" && hasLoaded ? (
+          <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
+            <Loader2 size={11} strokeWidth={2} className="animate-spin" />
+            <span>Composing</span>
+          </div>
+        ) : null}
+      </div>
+      <FrameFooter job={job} />
+    </div>
+  );
+}
+
+function FrameHeader({
+  job,
+  onReload,
+  onFullscreen,
+}: {
+  job: GameJob;
+  onReload: () => void;
+  onFullscreen: () => void;
+}) {
+  const ready = job.status === "finished" && !!job.play_url;
+  return (
+    <div className="flex items-center justify-between border-x border-t border-[color:var(--rule)] bg-white/60 px-3 py-2 backdrop-blur-[1px]">
+      <div className="flex items-baseline gap-3 truncate">
+        <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+          Live
+        </span>
+        <span className="truncate font-display text-[15px] text-[color:var(--ink)]">
+          {job.title || "Untitled game"}
+        </span>
+      </div>
+      <div className="flex items-center gap-1">
+        <IconButton onClick={onReload} disabled={!ready} title="Restart game">
+          <RefreshCw size={13} strokeWidth={1.8} />
+        </IconButton>
+        <IconButton onClick={onFullscreen} disabled={!ready} title="Open in new tab">
+          <ExternalLink size={13} strokeWidth={1.8} />
+        </IconButton>
+      </div>
+    </div>
+  );
+}
+
+function IconButton({
+  children,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      {...rest}
+      className={clsx(
+        "rounded p-1.5 transition-colors",
+        rest.disabled
+          ? "cursor-not-allowed text-[color:var(--ink-faint)]"
+          : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function FrameFooter({ job }: { job: GameJob }) {
+  // Footer surfaces byte size + a one-shot fullscreen affordance. Stays
+  // hairline thin so the iframe owns the visual real estate.
+  if (job.status !== "finished") {
+    return <div className="border border-t-0 border-[color:var(--rule)] px-3 py-2" />;
+  }
+  return (
+    <div className="flex items-center justify-between border border-t-0 border-[color:var(--rule)] bg-white/60 px-3 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+      <span>{(job.bytes ?? 0).toLocaleString()} bytes</span>
+      <a
+        href={job.play_url}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1 hover:text-[color:var(--ink)]"
+      >
+        <Maximize2 size={10} strokeWidth={1.8} />
+        Fullscreen
+      </a>
+    </div>
+  );
+}
+
+function PlaceholderCanvas({ status, error }: { status: GameJob["status"]; error?: string }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#0f1115] text-white/60">
+      {status === "error" ? (
+        <>
+          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-red-400">
+            Generation failed
+          </span>
+          <pre className="max-w-[80%] whitespace-pre-wrap text-center font-mono-jb text-[11px] text-white/50">
+            {error || "Unknown error"}
+          </pre>
+        </>
+      ) : (
+        <>
+          <Loader2 size={28} strokeWidth={1.6} className="animate-spin text-white/40" />
+          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em]">
+            Writing your game…
+          </span>
+        </>
+      )}
+    </div>
+  );
+}

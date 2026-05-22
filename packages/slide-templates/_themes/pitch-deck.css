@@ -1,0 +1,162 @@
+/* pitch-deck.css — dark canvas (Linear/Vercel marketing aesthetic),
+ * orange→amber gradient metric, mono-typographic accents.
+ * Replicates packages/slide-templates/pitch-deck/index.html, distilling
+ * the dot/pill/divider/corner system into pseudo-elements so the
+ * single shared layout HTML can carry it.
+ */
+
+.theme-pitch-deck {
+  --bg: #050505;
+  --fg: #FAFAFA;
+  --fg-muted: #A1A1AA;
+  --fg-faint: #71717A;
+
+  --accent: var(--brand-primary, #FF6B35);
+  --accent-2: var(--brand-accent, #FBBF24);
+
+  --font-body: var(--brand-font, 'Inter', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif);
+  --font-display: 'Space Grotesk', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'Space Grotesk', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 140px;
+  --pad-y: 120px;
+  --bullet-size: 0;  /* hidden; bullet uses a horizontal dash instead */
+}
+
+/* ─── Dark canvas + radial accent (the signature Linear/Vercel feel) */
+
+.theme-pitch-deck .slide {
+  background:
+    radial-gradient(900px 600px at 90% 110%, rgba(255,107,53,0.18), transparent 60%),
+    radial-gradient(700px 500px at -10% -10%, rgba(99,102,241,0.10), transparent 60%),
+    #050505;
+}
+
+/* ─── Top-left + bottom-right corner labels ──────────────────────── */
+
+.theme-pitch-deck .slide::before {
+  content: "DREAM-WAVER · PITCH";
+  position: absolute;
+  top: 60px; left: 140px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: var(--fg-faint);
+}
+.theme-pitch-deck .slide::after {
+  content: "2026";
+  position: absolute;
+  bottom: 60px; right: 140px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: var(--fg-faint);
+}
+
+/* ─── Display type — Space Grotesk, tight tracking ──────────────── */
+
+.theme-pitch-deck .title { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.03em; }
+.theme-pitch-deck .title-block .title    { font-size: 168px; line-height: 0.95; }
+.theme-pitch-deck .section-block .title  { font-size: 128px; }
+.theme-pitch-deck .closing-block .title  { font-size: 144px; }
+.theme-pitch-deck.layout-bullets .title,
+.theme-pitch-deck.layout-content .title,
+.theme-pitch-deck.layout-two-column .title { font-size: 64px; margin-bottom: 36px; }
+
+/* ─── Pretitle: orange divider line above body slides ───────────── */
+
+.theme-pitch-deck .pretitle {
+  display: block;
+  width: 80px;
+  height: 2px;
+  background: var(--accent);
+  margin-bottom: 32px;
+}
+.theme-pitch-deck.layout-title .pretitle,
+.theme-pitch-deck.layout-section .pretitle,
+.theme-pitch-deck.layout-closing .pretitle,
+.theme-pitch-deck.layout-quote .pretitle { display: none; }
+
+/* ─── Kicker — "— SECTION" mono caps ────────────────────────────── */
+
+.theme-pitch-deck .kicker {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  color: var(--accent);
+  letter-spacing: 0.18em;
+  margin-bottom: 28px;
+}
+.theme-pitch-deck .kicker::before { content: "— "; }
+
+/* ─── Bullets — horizontal dash glyph instead of dot ────────────── */
+
+.theme-pitch-deck .bullet {
+  font-size: 30px;
+  line-height: 1.5;
+  color: #E4E4E7;
+  gap: 20px;
+}
+.theme-pitch-deck .bullet::before {
+  content: "";
+  width: 24px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 0;
+  margin-top: 24px;
+  flex-shrink: 0;
+}
+
+/* ─── Metric — orange-to-amber gradient text ────────────────────── */
+
+.theme-pitch-deck .metric {
+  font-size: 240px;
+  font-weight: 700;
+  font-family: var(--font-display);
+  letter-spacing: -0.04em;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+}
+
+/* ─── Two-column with orange divider rule ───────────────────────── */
+
+.theme-pitch-deck .two-column .col.body {
+  color: #E4E4E7;
+  border-left: 2px solid #3F3F46;
+  padding-left: 32px;
+}
+.theme-pitch-deck .two-column .col.bullets {
+  border-left: 2px solid var(--accent);
+  padding-left: 32px;
+}
+
+/* ─── Quote — giant Space Grotesk + opacity-watermark "  ────── */
+
+.theme-pitch-deck .quote {
+  font-family: var(--font-display);
+  font-size: 64px;
+  line-height: 1.15;
+  position: relative;
+  padding-left: 80px;
+}
+.theme-pitch-deck .quote::before {
+  content: "\"";
+  position: absolute;
+  top: -40px; left: 0;
+  font-size: 200px;
+  font-weight: 700;
+  color: var(--accent);
+  opacity: 0.4;
+  line-height: 1;
+}
+.theme-pitch-deck .attribution { font-family: var(--font-mono); color: var(--fg-faint); }
+
+/* ─── Subtitle dimmer for the dark canvas ───────────────────────── */
+
+.theme-pitch-deck .subtitle { color: var(--fg-muted); }
+.theme-pitch-deck .body-text { color: #D4D4D8; }
+
+/* ─── Suppress the standard footer (we use corner labels instead) ─ */
+
+.theme-pitch-deck .footer { display: none; }

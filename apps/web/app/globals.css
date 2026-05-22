@@ -51,5 +51,22 @@ body { @apply bg-white text-ink font-sans antialiased; }
   animation: hairline-draw 900ms cubic-bezier(0.65, 0, 0.35, 1) both;
 }
 
+/* Typing-indicator dots for ChatBubbles. Three dots blink in sequence
+   when the agent is mid-thought; staggered via inline animation-delay. */
+@keyframes dw-blink {
+  0%, 80%, 100% { opacity: 0.25; }
+  40%           { opacity: 1; }
+}
+
+/* SlideFrame "just revised" pulse — single tick. Used right after a
+   slides.updated event lands so the user's eye catches which frame
+   changed. The keyframes ramp the outer glow from 18% → 32% → 18% so
+   the pulse reads as one breath, not a strobe. */
+@keyframes dw-frame-pulse {
+  0%   { box-shadow: 0 0 0 4px rgba(181,55,30,0.18), 0 18px 30px -22px rgba(181,55,30,0.35); }
+  40%  { box-shadow: 0 0 0 6px rgba(181,55,30,0.32), 0 22px 38px -22px rgba(181,55,30,0.45); }
+  100% { box-shadow: 0 0 0 4px rgba(181,55,30,0.18), 0 18px 30px -22px rgba(181,55,30,0.35); }
+}
+
 /* Soft grain we overlay on the paper background. Encoded as a data-URL in
    page.tsx so we don't add an asset to the build. */

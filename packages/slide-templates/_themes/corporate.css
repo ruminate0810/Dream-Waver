@@ -1,0 +1,97 @@
+/* corporate.css — clean off-white canvas, navy primary, amber accent,
+ * Manrope sans + IBM Plex Serif. Replicates the legacy
+ * packages/slide-templates/corporate/index.html structurally:
+ *
+ *   - 14px navy header bar at the very top (::before on .slide)
+ *   - 6px × 120px amber accent-bar above every body-slide title
+ *   - footer separated by a hairline border-top, "●●●" on the right
+ *   - bullet glyph is a 45°-rotated square (diamond), not a circle
+ *   - body slides start at the top; title/section/closing anchor at
+ *     the bottom (base.css already handles that)
+ */
+
+.theme-corporate {
+  --bg: #FAFAF9;
+  --fg: #0F172A;
+  --fg-muted: #475569;
+  --fg-faint: #94A3B8;
+
+  --accent: var(--brand-primary, #1E3A8A);
+  --accent-2: var(--brand-accent, #F59E0B);
+
+  --font-body: var(--brand-font, 'Manrope', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif);
+  --font-display: 'IBM Plex Serif', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'Manrope', ui-monospace, monospace;
+
+  --pad-x: 120px;
+  --pad-y: 80px;
+  --bullet-size: 18px;
+}
+
+/* ─── Top header bar ─────────────────────────────────────────────── */
+
+.theme-corporate .slide::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 14px;
+  background: var(--accent);
+  z-index: 1;
+}
+
+/* ─── Pretitle accent-bar (amber, body slides only) ──────────────── */
+
+.theme-corporate .pretitle {
+  display: block;
+  width: 120px;
+  height: 6px;
+  background: var(--accent-2);
+  border-radius: 999px;
+  margin-bottom: 32px;
+}
+
+/* Title / section / closing don't get the bar — they have their own
+ * "Chapter" / "Questions & Discussion" kickers instead. */
+.theme-corporate.layout-title .pretitle,
+.theme-corporate.layout-section .pretitle,
+.theme-corporate.layout-closing .pretitle,
+.theme-corporate.layout-quote .pretitle { display: none; }
+
+/* ─── Bullet glyph: rotated square ──────────────────────────────── */
+
+.theme-corporate .bullet::before {
+  border-radius: 0;
+  transform: rotate(45deg);
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+
+.theme-corporate .footer {
+  border-top: 1px solid #E2E8F0;
+  padding-top: 24px;
+  bottom: 40px;
+}
+.theme-corporate .footer::after {
+  content: "●●●";
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  font-size: 14px;
+  color: var(--accent);
+  margin-left: auto;
+}
+
+/* ─── Type weights — corporate is bolder than minimalist ─────────── */
+
+.theme-corporate .title { font-weight: 700; }
+.theme-corporate .display { letter-spacing: -0.025em; }
+
+/* Bigger metric — corporate's data slides love a huge number. */
+.theme-corporate .metric { font-size: 200px; font-weight: 800; }
+
+/* Kicker — corporate uses a tiny slate label with extra tracking. */
+.theme-corporate .kicker {
+  font-size: 13px;
+  color: var(--accent-2);
+  letter-spacing: 0.5em;
+  margin-bottom: 28px;
+}

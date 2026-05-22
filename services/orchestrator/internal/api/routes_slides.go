@@ -430,7 +430,14 @@ const slideBridgeScriptTpl = `
   }
   .__dw-editable.__dw-active {
     outline-color: rgba(181, 55, 30, 0.95);
-    background-color: rgba(181, 55, 30, 0.08);
+    outline-width: 2px;
+    background-color: rgba(181, 55, 30, 0.10);
+  }
+  /* Edit successfully landed — brief green flash before clearing. */
+  .__dw-editable.__dw-active.__dw-success {
+    outline-color: rgba(16, 122, 87, 0.95);
+    outline-width: 2px;
+    background-color: rgba(16, 122, 87, 0.12);
   }
 </style>
 <script>
@@ -473,9 +480,12 @@ const slideBridgeScriptTpl = `
     }
   }
 
-  // Use mousedown to flash the active outline + click for the actual
-  // submission. mousedown alone would fire on text-selection drags
-  // mid-edit.
+  // Click → highlight the element + post a dw-edit-request to the
+  // parent. The .__dw-active highlight PERSISTS until the parent
+  // explicitly posts a dw-clear-active message back — so during the
+  // whole popover-open-and-submitting lifecycle the user sees which
+  // element they're editing. Pre-refactor we fixed-timeout'd 900ms
+  // which lost the highlight while the agent was still working.
   function bind() {
     document.addEventListener('click', function(e) {
       // Climb to the nearest tagged ancestor so clicks on <strong>
@@ -489,13 +499,13 @@ const slideBridgeScriptTpl = `
       if (!text) return;
       e.preventDefault();
       e.stopPropagation();
-      // Brief active outline so the user sees the click registered
-      // even before the parent's popover animates in (~180ms).
+      // Clear any previously-active element (e.g. user clicked a
+      // different word before the parent told us to release) then
+      // mark this one. Stays marked until parent posts clear-active.
       document.querySelectorAll('.__dw-active').forEach(function(n) {
         n.classList.remove('__dw-active');
       });
       el.classList.add('__dw-active');
-      setTimeout(function() { el.classList.remove('__dw-active'); }, 900);
 
       var r = el.getBoundingClientRect();
       window.parent.postMessage({
@@ -509,6 +519,28 @@ const slideBridgeScriptTpl = `
                     h: document.documentElement.clientHeight }
       }, '*');
     }, true);
+
+    // Parent → iframe channel. Two messages:
+    //   dw-clear-active — release the click highlight (popover closed)
+    //   dw-edit-success — flash a green ring on the just-edited element
+    //                     for ~700ms before clearing the highlight
+    window.addEventListener('message', function(e) {
+      var d = e.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'dw-clear-active') {
+        document.querySelectorAll('.__dw-active').forEach(function(n) {
+          n.classList.remove('__dw-active');
+        });
+      } else if (d.type === 'dw-edit-success') {
+        document.querySelectorAll('.__dw-active').forEach(function(n) {
+          n.classList.add('__dw-success');
+          setTimeout(function() {
+            n.classList.remove('__dw-active');
+            n.classList.remove('__dw-success');
+          }, 700);
+        });
+      }
+    });
   }
 
   if (document.readyState === 'loading') {

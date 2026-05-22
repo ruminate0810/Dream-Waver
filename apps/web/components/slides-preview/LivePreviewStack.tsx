@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, Eye, FileWarning, Pencil } from "lucide-react";
 import clsx from "clsx";
 
@@ -29,48 +29,130 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   const [versions, setVersions] = useState<number[]>(() =>
     Array.from({ length: Math.max(slideCount, 0) }, () => 1),
   );
-  // The 1-based index of the slide that flashed most recently — used
-  // to tint that frame's chip in vermillion for ~1.4s post-update.
-  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  // activeSet — every 1-based index currently showing the vermillion
+  // "just revised" pulse. Plural (not single index) so batch updates
+  // can light multiple frames at once as the wave rolls through.
+  const [activeSet, setActiveSet] = useState<Set<number>>(() => new Set());
+  // focusTicks — bumping focusTicks[i] tells SlideFrame i to scrollIntoView.
+  // We only bump for SINGLE-slide updates (not batch refreshes for theme/brand).
+  const [focusTicks, setFocusTicks] = useState<Record<number, number>>({});
+  // clearTicks / successTicks — bump → SlideFrame posts the matching
+  // message to its iframe contentWindow to clear or success-flash the
+  // .__dw-active element (the one the user clicked to edit).
+  const [clearTicks, setClearTicks] = useState<Record<number, number>>({});
+  const [successTicks, setSuccessTicks] = useState<Record<number, number>>({});
+
+  // Rolling window of recent slides.updated arrivals. Used to detect
+  // batch refreshes (change_theme / apply_brand fire 5 events in
+  // milliseconds) vs single edits (edit_slide_text fires one event).
+  const recentRef = useRef<{ at: number; idx: number }[]>([]);
+  // Pending submission target — set when EditPopover is open and the
+  // user has submitted; cleared when the matching slides.updated event
+  // arrives (or after a 6s timeout). This is the thing that makes the
+  // popover stay open during the agent round-trip.
+  const pendingRef = useRef<{ slideIndex: number; postedAt: number } | null>(null);
 
   // Grow / shrink the versions array if the deck changes shape between
   // edits (delete_slide drops one, add_slide grows it). Keep existing
   // versions stable to avoid spurious reloads.
+  const prevCountRef = useRef<number>(slideCount);
   useEffect(() => {
-    setVersions((prev) => {
-      if (prev.length === slideCount) return prev;
-      const next = prev.slice(0, slideCount);
+    const prev = prevCountRef.current;
+    if (slideCount !== prev) {
+      prevCountRef.current = slideCount;
+      // The deck grew → scroll-focus the new last slide so the user
+      // immediately sees the addition. The deck shrunk → scroll-focus
+      // whichever slide now sits at the deleted position so the user
+      // sees what filled the gap. Both bump focusTicks for ONE slide.
+      if (slideCount > prev && slideCount > 0) {
+        setFocusTicks((t) => ({ ...t, [slideCount]: (t[slideCount] ?? 0) + 1 }));
+      } else if (slideCount < prev && slideCount > 0) {
+        // The deleted slide was somewhere in 1..prev; we don't know
+        // which exactly without inspecting events. Best heuristic:
+        // scroll to the index that previously held the deleted item.
+        // Without that info, scroll to the LAST surviving slide.
+        setFocusTicks((t) => ({ ...t, [slideCount]: (t[slideCount] ?? 0) + 1 }));
+      }
+    }
+    setVersions((prevVersions) => {
+      if (prevVersions.length === slideCount) return prevVersions;
+      const next = prevVersions.slice(0, slideCount);
       while (next.length < slideCount) next.push(1);
       return next;
     });
   }, [slideCount]);
 
-  // Subscribe to the shared event stream from <AgentSessionProvider>.
-  // The provider owns the single WebSocket + reconnect logic; we just
-  // listen for slides.updated and bump exactly one iframe's version.
+  // Subscribe to the shared event stream. We process slides.updated
+  // through a small dispatcher that classifies the event as single
+  // vs batch, then bumps versions + sets active highlight + optionally
+  // bumps focusTicks.
   const stream = useAgentEventStream();
   useEffect(() => {
     return stream.subscribe((ev) => {
       if (ev.kind !== "slides.updated") return;
-      const oneBased = ev.data.slide_index;
-      if (typeof oneBased !== "number") return;
-      setVersions((prev) => {
-        const next = prev.slice();
-        const i = oneBased - 1;
-        if (i >= 0 && i < next.length) next[i] = (next[i] ?? 1) + 1;
-        return next;
-      });
-      setActiveIdx(oneBased);
+      const idx = ev.data.slide_index;
+      if (typeof idx !== "number") return;
+
+      const now = Date.now();
+      // Slide window: keep only events within the last 250ms — the
+      // event budget for a batch refresh (chromedp emits each
+      // slide.updated as soon as that chromedp pass completes; for
+      // bulk updates these arrive within 50-150ms of each other).
+      recentRef.current = recentRef.current.filter((e) => now - e.at < 250);
+      recentRef.current.push({ at: now, idx });
+      const batchSize = recentRef.current.length;
+      const isBatch = batchSize > 2;
+
+      // Bump version for this slide. For batch, we stagger via a
+      // setTimeout so the wave reads as a sequence of pulses rather
+      // than a single simultaneous flash. The window above resets per
+      // event, so 5 quick events naturally space themselves to ~80ms
+      // intervals on the screen even though they arrive ~simultaneously.
+      const delay = isBatch ? (batchSize - 1) * 80 : 0;
+      setTimeout(() => {
+        setVersions((prev) => {
+          const next = prev.slice();
+          const i = idx - 1;
+          if (i >= 0 && i < next.length) next[i] = (next[i] ?? 1) + 1;
+          return next;
+        });
+        setActiveSet((prev) => {
+          const next = new Set(prev);
+          next.add(idx);
+          return next;
+        });
+        // Clear active after pulse animation finishes.
+        setTimeout(() => {
+          setActiveSet((prev) => {
+            const next = new Set(prev);
+            next.delete(idx);
+            return next;
+          });
+        }, 1500);
+      }, delay);
+
+      // Scroll only for single-slide edits. Batch refreshes
+      // (change_theme / apply_brand) shouldn't yank the viewport.
+      if (!isBatch) {
+        setFocusTicks((t) => ({ ...t, [idx]: (t[idx] ?? 0) + 1 }));
+      }
+
+      // If a popover submission is waiting on this slide's update,
+      // flash the clicked element green via dw-edit-success then
+      // close the popover.
+      const pending = pendingRef.current;
+      if (pending && pending.slideIndex === idx) {
+        setSuccessTicks((t) => ({ ...t, [idx]: (t[idx] ?? 0) + 1 }));
+        pendingRef.current = null;
+        // Delay popover close so the user sees the success state.
+        setTimeout(() => {
+          setBusy(false);
+          setTarget(null);
+          setAnchor(null);
+        }, 750);
+      }
     });
   }, [stream]);
-
-  // Clear the vermillion "just updated" highlight after a moment so the
-  // strip doesn't permanently scream for attention.
-  useEffect(() => {
-    if (activeIdx === null) return;
-    const id = setTimeout(() => setActiveIdx(null), 1400);
-    return () => clearTimeout(id);
-  }, [activeIdx]);
 
   // ────────── Edit popover state ──────────
   const [target, setTarget] = useState<EditTarget | null>(null);
@@ -83,24 +165,40 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   }, []);
   const handleEditClose = useCallback(() => {
     if (busy) return; // don't close while the agent is mid-edit
+    // Cleanly release the iframe's __dw-active highlight on the
+    // clicked element — without this, the orange dashed outline
+    // persists until the next click anywhere in that iframe.
+    const idx = target?.slideIndex;
+    if (idx) setClearTicks((t) => ({ ...t, [idx]: (t[idx] ?? 0) + 1 }));
     setTarget(null);
     setAnchor(null);
-  }, [busy]);
+  }, [busy, target]);
 
   const handleEditSubmit = useCallback(
     async (s: EditSubmit) => {
       const message = buildEditInstruction(s);
       try {
         setBusy(true);
+        // Mark this slide as pending — the slides.updated handler
+        // above will detect the match, flash the clicked element
+        // green via dw-edit-success, and only THEN close the popover.
+        pendingRef.current = { slideIndex: s.slideIndex, postedAt: Date.now() };
         await postSlideMessage(job.job_id, message);
-        // Optimistically close — the WS will push slides.updated when
-        // the new render lands.
-        setBusy(false);
-        setTarget(null);
-        setAnchor(null);
+        // Failsafe: if no slides.updated arrives within 12s (LLM stuck,
+        // ws drop, etc.) force-close so the user isn't trapped.
+        setTimeout(() => {
+          const p = pendingRef.current;
+          if (p && p.slideIndex === s.slideIndex) {
+            pendingRef.current = null;
+            setBusy(false);
+            // Don't close — let the user see what happened (still
+            // editing) but flip busy off so they can retry / cancel.
+          }
+        }, 12_000);
       } catch {
-        // Keep the popover open; flip busy off so the user can retry.
-        // A proper inline error chip is a follow-up.
+        // POST itself failed — back out the optimistic busy state and
+        // let the popover stay open for retry.
+        pendingRef.current = null;
         setBusy(false);
       }
     },
@@ -140,14 +238,18 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
       <ol className="space-y-12">
         {Array.from({ length: slideCount }).map((_, i) => {
           const oneBased = i + 1;
+          const isActive = activeSet.has(oneBased);
           return (
             <li key={oneBased} className="group/frame">
-              <NumberMarker oneBased={oneBased} active={activeIdx === oneBased} />
+              <NumberMarker oneBased={oneBased} active={isActive} />
               <SlideFrame
                 jobId={job.job_id}
                 index={oneBased}
                 version={versions[i] ?? 1}
-                active={activeIdx === oneBased}
+                active={isActive}
+                focusTick={focusTicks[oneBased]}
+                clearActiveTick={clearTicks[oneBased]}
+                successTick={successTicks[oneBased]}
                 onEdit={handleEditOpen}
                 numberLabel={`P · ${String(oneBased).padStart(2, "0")}`}
               />

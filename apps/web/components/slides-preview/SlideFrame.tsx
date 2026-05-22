@@ -37,13 +37,31 @@ export function SlideFrame({
   index, // 1-based
   version,
   active,
+  focusTick,
+  clearActiveTick,
+  successTick,
   onEdit,
   numberLabel,
 }: {
   jobId: string;
   index: number;
   version: number;
+  // `active` is the "just updated" highlight — vermillion border pulse
+  // for ~1.5s after slides.updated lands.
   active?: boolean;
+  // `focusTick` bumps when the parent wants this frame to scroll into
+  // view. Different value from prior render → smoothly scroll to centre.
+  // Decoupled from `active` so we can scroll without highlight (e.g.
+  // on initial mount of a new add_slide frame).
+  focusTick?: number;
+  // clearActiveTick bumps → post dw-clear-active to the iframe so it
+  // releases the .__dw-active highlight on the clicked element.
+  // (Triggered when the EditPopover closes.)
+  clearActiveTick?: number;
+  // successTick bumps → post dw-edit-success to the iframe so the
+  // clicked element gets a 700ms green flash before clearing.
+  // (Triggered when slides.updated lands for a pending submission.)
+  successTick?: number;
   onEdit?: (req: EditRequest, anchorRect: DOMRect) => void;
   numberLabel?: string;
 }) {
@@ -51,6 +69,12 @@ export function SlideFrame({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [scale, setScale] = useState(1);
   const [loaded, setLoaded] = useState(false);
+  // Track the last tick value of each control channel so its useEffect
+  // only fires when the parent intentionally bumps it (not on every
+  // unrelated render).
+  const lastFocusTick = useRef<number | undefined>(focusTick);
+  const lastClearTick = useRef<number | undefined>(clearActiveTick);
+  const lastSuccessTick = useRef<number | undefined>(successTick);
 
   // Compute (and keep current) the scale that maps the 1920px-wide slide
   // canvas onto whatever pixel width the host occupies. ResizeObserver
@@ -93,6 +117,34 @@ export function SlideFrame({
     return () => window.removeEventListener("message", handler);
   }, [index, onEdit, scale]);
 
+  // Scroll into view when the parent bumps focusTick. We use 'center'
+  // block alignment so the iframe lands in the middle of the viewport,
+  // not awkwardly at the top edge. The lastFocusTick guard means
+  // mount + ResizeObserver re-renders don't accidentally re-scroll.
+  useEffect(() => {
+    if (focusTick === undefined) return;
+    if (focusTick === lastFocusTick.current) return;
+    lastFocusTick.current = focusTick;
+    hostRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusTick]);
+
+  // Forward parent's clear/success ticks to the iframe via contentWindow
+  // postMessage. The bridge script (see slideBridgeScriptTpl) listens
+  // for these and toggles the .__dw-active / .__dw-success classes.
+  useEffect(() => {
+    if (clearActiveTick === undefined) return;
+    if (clearActiveTick === lastClearTick.current) return;
+    lastClearTick.current = clearActiveTick;
+    iframeRef.current?.contentWindow?.postMessage({ type: "dw-clear-active" }, "*");
+  }, [clearActiveTick]);
+
+  useEffect(() => {
+    if (successTick === undefined) return;
+    if (successTick === lastSuccessTick.current) return;
+    lastSuccessTick.current = successTick;
+    iframeRef.current?.contentWindow?.postMessage({ type: "dw-edit-success" }, "*");
+  }, [successTick]);
+
   // The URL bakes the version in so the browser fetches a fresh response
   // on every edit. We also remount via key={version} for paranoia — some
   // browsers cache HTML iframes aggressively even with no-store headers.
@@ -102,9 +154,15 @@ export function SlideFrame({
     <div
       ref={hostRef}
       className={clsx(
-        "relative w-full overflow-hidden border border-[color:var(--rule)] bg-white shadow-[0_1px_0_rgba(26,22,20,0.04),0_18px_30px_-22px_rgba(26,22,20,0.18)]",
-        "transition-shadow duration-300",
-        active && "ring-1 ring-[color:var(--vermillion)]/30 shadow-[0_0_0_4px_rgba(181,55,30,0.06)]",
+        "relative w-full overflow-hidden border bg-white",
+        "transition-all duration-300",
+        active
+          ? // "Just revised" state — vermillion border + soft outer glow
+            // for ~1.5s. The animate-pulse-once keyframe (in globals.css)
+            // gives it a single attention-grabbing tick instead of a
+            // continuous loop which would feel anxious.
+            "border-[color:var(--vermillion)] shadow-[0_0_0_4px_rgba(181,55,30,0.18),0_18px_30px_-22px_rgba(181,55,30,0.35)] animate-[dw-frame-pulse_1400ms_ease-out_1]"
+          : "border-[color:var(--rule)] shadow-[0_1px_0_rgba(26,22,20,0.04),0_18px_30px_-22px_rgba(26,22,20,0.18)]",
       )}
       style={{ aspectRatio: "16 / 9" }}
     >

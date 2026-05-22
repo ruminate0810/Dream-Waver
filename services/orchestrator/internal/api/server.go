@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -32,6 +33,11 @@ type Dependencies struct {
 	// Sessions exposes the in-memory deck state so live-preview / edit
 	// handlers can read the current Deck for a given job ID.
 	Sessions *slides.SessionStore
+	// Games is the single-shot HTML5 game pipeline backing /api/v1/games.
+	// GameSessions stores per-job HTML so /play can serve it; both are
+	// optional so the orchestrator still starts when this skill is unwired.
+	Games        *games.Pipeline
+	GameSessions *games.SessionStore
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -72,6 +78,14 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		// or bare integer) → the cached preview PNG.
 		r.Get("/slides/{id}/page/{n}", h.SlidePageAsset)
 		r.Post("/slides/{id}/messages", h.PostSlideMessage)
+
+		// Games — single-shot HTML5 game generation. POST /games returns
+		// {job_id, session_id}; play_url surfaces only once status==finished.
+		r.Post("/games", h.CreateGame)
+		r.Get("/games/{id}", h.GetGame)
+		r.Get("/games/{id}/play", h.PlayGame)
+		r.Post("/games/{id}/messages", h.PostGameMessage)
+
 		r.Get("/sessions/{id}/events", h.SessionEvents)
 	})
 

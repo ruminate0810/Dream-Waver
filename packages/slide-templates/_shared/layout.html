@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=1920, height=1080" />
+<title>{{with .Data.Title}}{{.}}{{else}}Slide{{end}}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Manrope:wght@400;600;700;800&family=DM+Serif+Display&family=IBM+Plex+Serif:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@400;700;900&display=swap" rel="stylesheet">
+
+<!--
+  Universal slide layout. ONE HTML file consumed by every theme. All
+  visual differences (colours, fonts, decorations, padding) come from
+  the theme CSS that's spliced into <head> by the Go renderer right
+  before this file is served. See packages/slide-templates/_themes/.
+
+  Class names here are intentionally semantic — `.slide`, `.title-block`,
+  `.kicker`, `.bullets`, `.metric` etc. — so each theme can paint its
+  own chrome via pseudo-elements without changing the markup.
+
+  CSS variables form the contract between layout and theme:
+    --bg / --fg / --fg-muted / --fg-faint
+    --accent / --accent-2 / --accent-glow
+    --font-body / --font-display / --font-mono
+    --pad-x / --pad-y
+    --bullet-size
+
+  Brand override variables (set by apply_brand) win over theme defaults:
+    --brand-primary, --brand-accent, --brand-font
+-->
+
+__BASE_STYLE__
+__THEME_STYLE__
+
+</head>
+<body class="theme-{{.Theme}} layout-{{.Layout}}">
+<section class="slide">
+
+{{if eq .Layout "title"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content title-block">
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="title-block">
+      {{with .Data.Subtitle}}<div class="kicker">{{.}}</div>{{end}}
+      <div class="display title">{{.Data.Title}}</div>
+    </div>
+  {{end}}
+
+{{else if eq .Layout "section"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content section-block">
+      <div class="kicker">Section</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="section-block">
+      <div class="kicker">Section</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+
+{{else if eq .Layout "bullets"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="bullets">
+    {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "two-column"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="two-column">
+    <div class="col body">{{.Data.Body}}</div>
+    <div class="col bullets">
+      {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "quote"}}
+  <div class="quote">&ldquo;{{.Data.Quote}}&rdquo;</div>
+  {{with .Data.Attribution}}<div class="attribution">— {{.}}</div>{{end}}
+
+{{else if eq .Layout "data"}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  <div class="metric-row">
+    <div class="metric">{{with .Data.Metric}}{{.}}{{else}}—{{end}}</div>
+    {{with .Data.Body}}<div class="metric-context">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "closing"}}
+  {{if .Data.Image}}
+    <div class="hero-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="hero-overlay" data-no-extract></div>
+    <div class="hero-content closing-block">
+      <div class="kicker">Thank you</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="closing-block">
+      <div class="kicker">Thank you</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Subtitle}}<div class="subtitle">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+
+{{else}}
+  <div class="pretitle" data-no-extract></div>
+  <div class="title">{{.Data.Title}}</div>
+  {{with .Data.Body}}<div class="body-text">{{.}}</div>{{end}}
+  {{if .Data.Bullets}}
+    <div class="bullets">
+      {{range .Data.Bullets}}<div class="bullet">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+{{end}}
+
+{{with .Data.Footer}}<div class="footer">{{.}}</div>{{end}}
+</section>
+</body>
+</html>

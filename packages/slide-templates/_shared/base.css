@@ -1,0 +1,109 @@
+/* base.css — fonts, slide canvas, layout-agnostic primitives.
+ * Concat'd above each theme's CSS by the Go renderer.
+ *
+ * Theme files override / extend; nothing here references colour, so
+ * every variable that affects look comes from the theme file.
+ */
+
+html, body {
+  width: 1920px; height: 1080px; margin: 0; padding: 0;
+  /* font-body is set by every theme; this fallback is just in case
+     someone serves a slide before the theme CSS lands. */
+  font-family: var(--font-body, system-ui, sans-serif);
+  /* brand-primary wins over theme accent when apply_brand has fired;
+     theme CSS sets --accent to the brand value with var() chaining. */
+}
+
+.slide {
+  width: 1920px; height: 1080px;
+  padding: var(--pad-y, 100px) var(--pad-x, 140px);
+  background: var(--bg, #fff);
+  color: var(--fg, #0F172A);
+  display: flex; flex-direction: column;
+  /* Default = body slides (bullets / content / data / two-column /
+     quote): content starts from the top. Title / section / closing
+     layouts override to flex-end or center via their body class. */
+  justify-content: flex-start;
+  position: relative; overflow: hidden;
+}
+
+/* Title / section / closing — content sits at the bottom (legacy
+ * minimalist + corporate behaviour: editorial "rule of thirds"
+ * with the headline anchored near the lower-left).  */
+body.layout-title    .slide,
+body.layout-section  .slide,
+body.layout-closing  .slide {
+  justify-content: flex-end;
+}
+/* Quote — vertically centered. */
+body.layout-quote    .slide { justify-content: center; }
+
+/* ─── Typography primitives ──────────────────────────────────────── */
+
+.display    { font-family: var(--font-display, var(--font-body)); }
+.mono       { font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace); letter-spacing: 0.04em; }
+
+/* `.title` sizes ladder from biggest (title slide) down to body
+ * slide. Sizes derived from auditing all 5 legacy templates — body
+ * titles cluster around 48px, section ~128px, opening title ~140-180px.
+ * Themes override individually where they want bigger or bolder. */
+.title      { font-size: 48px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+.subtitle   { margin-top: 32px; font-size: 36px; color: var(--fg-muted); line-height: 1.35; max-width: 1100px; }
+.kicker     { font-size: 16px; text-transform: uppercase; letter-spacing: 0.4em; color: var(--accent); font-weight: 600; margin-bottom: 40px; }
+.body-text  { font-size: 30px; line-height: 1.5; color: var(--fg-muted); max-width: 1400px; margin-top: 32px; }
+
+/* ─── Title / section / closing blocks ───────────────────────────── */
+
+.title-block, .section-block, .closing-block { display: flex; flex-direction: column; }
+.title-block .title    { font-size: 144px; line-height: 1.02; }
+.section-block .title  { font-size: 112px; line-height: 1.05; }
+.closing-block .title  { font-size: 112px; line-height: 1.05; }
+
+/* ─── Bullets ────────────────────────────────────────────────────── */
+
+.bullets    { display: flex; flex-direction: column; gap: 32px; margin-top: 48px; }
+.bullet     { display: flex; gap: 24px; align-items: flex-start; font-size: 34px; line-height: 1.5; }
+.bullet::before {
+  content: "";
+  width: var(--bullet-size, 12px);
+  height: var(--bullet-size, 12px);
+  background: var(--accent);
+  border-radius: 999px;
+  margin-top: 22px;
+  flex-shrink: 0;
+}
+
+/* ─── Two-column ─────────────────────────────────────────────────── */
+
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; margin-top: 48px; font-size: 30px; line-height: 1.55; }
+.two-column .body  { color: var(--fg); }
+.two-column .col.bullets { margin-top: 0; }
+
+/* ─── Quote ──────────────────────────────────────────────────────── */
+
+.quote      { font-family: var(--font-display, var(--font-body)); font-size: 86px; line-height: 1.15; max-width: 1500px; }
+.attribution{ margin-top: 48px; font-size: 28px; color: var(--fg-muted); }
+
+/* ─── Metric (data layout) ───────────────────────────────────────── */
+
+.metric-row { display: flex; align-items: flex-end; gap: 64px; margin-top: 32px; }
+.metric     { font-size: 168px; line-height: 0.95; font-weight: 800; letter-spacing: -0.03em; color: var(--accent); }
+.metric-context { font-size: 28px; line-height: 1.5; color: var(--fg-muted); max-width: 600px; padding-bottom: 24px; }
+
+/* ─── Footer ─────────────────────────────────────────────────────── */
+
+.footer {
+  position: absolute; left: var(--pad-x, 140px); right: var(--pad-x, 140px); bottom: 60px;
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 22px; color: var(--fg-muted);
+}
+
+/* ─── Hero image (title / section / closing layouts only) ────────── */
+
+.hero-img    { position: absolute; inset: 0; background-size: cover; background-position: center; z-index: 0; }
+.hero-overlay{ position: absolute; inset: 0; z-index: 1;
+               background: linear-gradient(180deg, rgba(15,23,42,0.55) 0%, rgba(15,23,42,0.85) 100%); }
+.hero-content{ position: relative; z-index: 2; }
+.hero-content .title   { color: #fff; }
+.hero-content .subtitle{ color: rgba(255,255,255,0.72); }
+.hero-credit { position: absolute; bottom: 20px; right: 24px; font-size: 14px; color: rgba(255,255,255,0.6); z-index: 2; }

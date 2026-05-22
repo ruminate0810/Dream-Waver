@@ -26,6 +26,13 @@ type SessionAccessor interface {
 	UpdateSlide(index int, fn func(s *schema.Slide)) error
 	DeleteSlide(index int) error
 	InsertSlide(index int, s schema.Slide) error
+	// ReorderSlide moves slide [from] (0-based) so it sits at position [to]
+	// (0-based, in the resulting slice). The Content + Outline parallel
+	// slices are reordered in lockstep.
+	ReorderSlide(from, to int) error
+	// DuplicateSlide inserts a deep copy of slide [index] immediately
+	// after it. The new slide takes index+1 in the resulting deck.
+	DuplicateSlide(index int) error
 	MarkDirty(indices ...int)
 
 	// SetTheme rewrites Deck.Theme and every slide.Template to the new

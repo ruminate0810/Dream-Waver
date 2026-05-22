@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import { postSlideMessage, type SlideJob } from "@/lib/api";
 import {
@@ -72,7 +72,12 @@ export type AgentSession = {
   // Bumped each time agent.finish closes a follow-up turn. The live
   // preview pane reads this so iframes can cache-bust.
   previewVersion: number;
+  // A message the user typed while the agent was still busy. It's
+  // shown in the thread as a "queued" row and auto-fires the moment
+  // the current turn closes. Null when nothing is queued.
+  pendingMessage: string | null;
   dispatchUserMessage: (text: string) => Promise<void>;
+  cancelPending: () => void;
 };
 
 // ─── Reducer ─────────────────────────────────────────────────────────
@@ -80,11 +85,18 @@ export type AgentSession = {
 type Action =
   | { type: "ws"; event: AgentEvent }
   | { type: "user_message"; id: string; text: string }
-  | { type: "post_error"; turnId: string; err: string };
+  | { type: "post_error"; turnId: string; err: string }
+  | { type: "queue"; text: string }
+  | { type: "unqueue" };
 
 type State = {
   turns: Turn[];
   previewVersion: number;
+  // Pending message held while the agent is busy. The hook below
+  // watches the busy → !busy transition and drains this slot by
+  // calling dispatchUserMessage for real. One-slot only; a second
+  // queued message replaces the first.
+  pending: string | null;
 };
 
 function emptyTurn(id: string, kind: TurnKind, userMessage?: string): Turn {
@@ -107,6 +119,7 @@ function emptyTurn(id: string, kind: TurnKind, userMessage?: string): Turn {
 const initialState: State = {
   turns: [emptyTurn("t0", "initial")],
   previewVersion: 0,
+  pending: null,
 };
 
 // Walk back to the most-recent turn that's still open. The fold rule:
@@ -147,7 +160,10 @@ function reduce(state: State, action: Action): State {
       // The backend will emit step.start shortly; if it doesn't, the
       // turn still shows the user's text so they get feedback.
       const t = emptyTurn(action.id, "edit", action.text);
-      return { ...state, turns: [...state.turns, t] };
+      // Sending a message always clears any pending slot — either it
+      // was the queued message being drained, or the user typed
+      // something new while busy=false.
+      return { ...state, turns: [...state.turns, t], pending: null };
     }
     case "post_error": {
       // postSlideMessage failed; mark the optimistic turn as error so
@@ -163,6 +179,13 @@ function reduce(state: State, action: Action): State {
         })),
       };
     }
+    case "queue":
+      // Single-slot queue: a second queued message replaces the first.
+      // The user just typed something newer; they probably meant the
+      // new one.
+      return { ...state, pending: action.text };
+    case "unqueue":
+      return { ...state, pending: null };
     case "ws":
       return reduceWS(state, action.event);
   }
@@ -397,32 +420,71 @@ export function useAgentSession(job: SlideJob): AgentSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.slide_count, job.status, job.error]);
 
-  const dispatchUserMessage = useCallback(
-    async (text: string) => {
-      const id =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : `turn-${Date.now()}`;
-      dispatch({ type: "user_message", id, text });
-      try {
-        await postSlideMessage(job.job_id, text);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        dispatch({ type: "post_error", turnId: id, err: msg });
-      }
-    },
-    [job.job_id],
-  );
-
   const busy =
     state.turns.length > 0 &&
     state.turns[state.turns.length - 1].status === "running";
+
+  // The actual send — opens a new turn + POSTs. Wrapped in a ref so
+  // the busy-drain effect below can call it without ending up as a
+  // useEffect dep that re-fires on every render.
+  const fireRef = useRef<(text: string) => Promise<void>>(async () => {});
+  fireRef.current = async (text: string) => {
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `turn-${Date.now()}`;
+    dispatch({ type: "user_message", id, text });
+    try {
+      await postSlideMessage(job.job_id, text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      dispatch({ type: "post_error", turnId: id, err: msg });
+    }
+  };
+
+  // dispatchUserMessage is what the composer calls. If the agent is
+  // busy, we queue (single slot, newer-wins). Otherwise we fire now.
+  // The hook contract is the same — caller does not have to know
+  // about queueing.
+  const dispatchUserMessage = useCallback(
+    async (text: string) => {
+      if (busy) {
+        dispatch({ type: "queue", text });
+        return;
+      }
+      await fireRef.current(text);
+    },
+    [busy],
+  );
+
+  const cancelPending = useCallback(() => {
+    dispatch({ type: "unqueue" });
+  }, []);
+
+  // Drain on busy → !busy. When the current turn closes (agent.finish
+  // or agent.error) we fire any queued message. The dispatch sets
+  // pending=null inside the user_message case so we don't re-fire on
+  // the next render.
+  useEffect(() => {
+    if (busy) return;
+    const text = state.pending;
+    if (!text) return;
+    // Schedule on the next tick so the closing turn's UI flush
+    // completes before the next turn opens. Avoids a one-frame jank
+    // where two "running" turns are visible simultaneously.
+    const id = setTimeout(() => {
+      fireRef.current(text);
+    }, 0);
+    return () => clearTimeout(id);
+  }, [busy, state.pending]);
 
   return {
     turns: state.turns,
     busy,
     previewVersion: state.previewVersion,
+    pendingMessage: state.pending,
     dispatchUserMessage,
+    cancelPending,
   };
 }
 

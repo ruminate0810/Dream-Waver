@@ -1,0 +1,170 @@
+/* playful.css — dark canvas with multi-coloured radial gradients,
+ * coral primary, Nunito bold display. The legacy template peppered
+ * emojis inside every badge ("📍 Chapter", "💡 Key points"); we drop
+ * the emojis here — text labels alone read cleaner and avoid the
+ * AI-generated tell while keeping the pill/badge geometry that gives
+ * the theme its character.
+ */
+
+.theme-playful {
+  --bg: #0A0A0F;
+  --fg: #FAFAFA;
+  --fg-muted: #A1A1AA;
+  --fg-faint: #71717A;
+
+  --accent: var(--brand-primary, #F472B6);
+  --accent-2: var(--brand-accent, #34D399);
+
+  --font-body: var(--brand-font, 'Nunito', 'Inter', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif);
+  --font-display: 'Nunito', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'Inter', ui-monospace, monospace;
+
+  --pad-x: 140px;
+  --pad-y: 120px;
+  --bullet-size: 0;
+}
+
+/* ─── Dark canvas + tri-radial gradient ──────────────────────────── */
+
+.theme-playful .slide {
+  background:
+    radial-gradient(800px 600px at 110% -10%, rgba(244,114,182,0.16), transparent 60%),
+    radial-gradient(700px 500px at -10% 110%, rgba(52,211,153,0.13), transparent 60%),
+    radial-gradient(600px 400px at 50% 50%, rgba(96,165,250,0.06), transparent 60%),
+    #0A0A0F;
+}
+
+/* ─── Corner labels ──────────────────────────────────────────────── */
+
+.theme-playful .slide::before {
+  content: "DREAM-WAVER";
+  position: absolute;
+  top: 60px; left: 140px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: var(--fg-faint);
+}
+.theme-playful .slide::after {
+  content: "2026";
+  position: absolute;
+  bottom: 60px; right: 140px;
+  font-family: var(--font-mono);
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: var(--fg-faint);
+}
+
+/* ─── Display type — Nunito heavy ───────────────────────────────── */
+
+.theme-playful .title { font-family: var(--font-display); font-weight: 800; letter-spacing: -0.02em; }
+.theme-playful .display { font-family: var(--font-display); font-weight: 900; letter-spacing: -0.02em; }
+.theme-playful .title-block .title    { font-size: 168px; line-height: 0.95; font-weight: 900; }
+.theme-playful .section-block .title  { font-size: 128px; }
+.theme-playful .closing-block .title  { font-size: 144px; }
+.theme-playful.layout-bullets .title,
+.theme-playful.layout-content .title,
+.theme-playful.layout-two-column .title { font-size: 72px; font-weight: 800; margin-bottom: 40px; }
+
+/* ─── Kicker — glassy pill badge (text only, no emoji) ──────────── */
+
+.theme-playful .kicker {
+  display: inline-flex; align-items: center;
+  padding: 14px 28px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 18px;
+  font-weight: 600;
+  color: #E4E4E7;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  margin-bottom: 32px;
+  width: fit-content;
+}
+
+/* ─── Pretitle — semantic kicker per layout via [data-layout] ──── */
+/* Layout-specific kicker text rendered as the pretitle pseudo. */
+
+.theme-playful .pretitle {
+  display: inline-flex; align-items: center;
+  padding: 12px 26px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 18px; font-weight: 600; letter-spacing: 0.04em;
+  color: #E4E4E7;
+  margin-bottom: 28px;
+  width: fit-content;
+}
+.theme-playful.layout-bullets .pretitle::before    { content: "Key points"; }
+.theme-playful.layout-two-column .pretitle::before { content: "Side by side"; }
+.theme-playful.layout-data .pretitle::before       { content: "By the numbers"; }
+.theme-playful.layout-content .pretitle::before    { content: "Notes"; }
+.theme-playful.layout-quote .pretitle, /* quote layout doesn't render pretitle */
+.theme-playful.layout-title .pretitle,
+.theme-playful.layout-section .pretitle,
+.theme-playful.layout-closing .pretitle { display: none; }
+
+/* ─── Numbered square bullet markers — counter-based, no markup ── */
+
+.theme-playful .bullets { counter-reset: pbnum; gap: 28px; }
+.theme-playful .bullet { font-size: 32px; line-height: 1.5; color: #FAFAFA; font-weight: 500; gap: 24px; }
+.theme-playful .bullet::before {
+  counter-increment: pbnum;
+  content: counter(pbnum);
+  width: 46px; height: 46px;
+  border-radius: 14px;
+  background: var(--accent);
+  color: #0A0A0F;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 22px;
+  margin-top: 6px;
+  flex-shrink: 0;
+}
+
+/* ─── Metric — accent-coloured, glassy card optional ────────────── */
+
+.theme-playful .metric {
+  font-family: var(--font-display);
+  font-size: 240px;
+  font-weight: 900;
+  color: var(--accent);
+  letter-spacing: -0.04em;
+}
+
+/* ─── Quote — glassy card with backdrop blur ────────────────────── */
+
+.theme-playful .quote {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 32px;
+  padding: 64px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 56px;
+  line-height: 1.2;
+  backdrop-filter: blur(20px);
+}
+
+/* ─── Two-column body / bullets in glassy cards ─────────────────── */
+
+.theme-playful .two-column { gap: 40px; }
+.theme-playful .two-column .col {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 28px;
+  padding: 40px;
+}
+
+/* ─── Subtitle + body dimmer for the dark canvas ────────────────── */
+
+.theme-playful .subtitle  { color: var(--fg-muted); }
+.theme-playful .body-text { color: #D4D4D8; }
+.theme-playful .attribution { color: var(--fg-faint); }
+
+/* ─── Suppress standard footer in favour of corner labels ───────── */
+
+.theme-playful .footer { display: none; }

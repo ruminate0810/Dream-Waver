@@ -175,6 +175,111 @@ func (s *SessionState) InsertSlide(index int, slide schema.Slide) error {
 	return nil
 }
 
+// ReorderSlide moves slide [from] (0-based) so it occupies position
+// [to] (0-based, in the resulting slice). Both indices must be in
+// [0, len(Deck.Slides)). The same swap is applied to Content.Slides
+// and Outline.Slides so all three stay length-aligned and order-aligned.
+func (s *SessionState) ReorderSlide(from, to int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return fmt.Errorf("no deck loaded")
+	}
+	n := len(s.Deck.Slides)
+	if from < 0 || from >= n || to < 0 || to >= n {
+		return fmt.Errorf("from=%d / to=%d out of range (have %d slides)", from, to, n)
+	}
+	if from == to {
+		return nil
+	}
+	s.Deck.Slides = reorderSlice(s.Deck.Slides, from, to)
+	if s.Content != nil {
+		s.Content.Slides = reorderSlice(s.Content.Slides, from, to)
+	}
+	if s.Outline != nil {
+		s.Outline.Slides = reorderSlice(s.Outline.Slides, from, to)
+	}
+	return nil
+}
+
+// DuplicateSlide inserts a deep copy of slide [index] (0-based) at
+// position index+1. The new slide carries the same Template / Layout /
+// Data / SpeakerNotes; the caller can immediately mutate it via
+// UpdateSlide(index+1, …) if it wants the copy to diverge.
+func (s *SessionState) DuplicateSlide(index int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return fmt.Errorf("no deck loaded")
+	}
+	if index < 0 || index >= len(s.Deck.Slides) {
+		return fmt.Errorf("slide index %d out of range (have %d slides)", index, len(s.Deck.Slides))
+	}
+	// Deep copy the slide. SlideData is a value (no pointers except the
+	// Brand/Image fields which are intentionally shared by reference —
+	// the copy and original share the same hero photo URL).
+	srcSlide := s.Deck.Slides[index]
+	copySlide := schema.Slide{
+		Template:     srcSlide.Template,
+		Layout:       srcSlide.Layout,
+		Data:         srcSlide.Data,
+		SpeakerNotes: srcSlide.SpeakerNotes,
+	}
+	// Bullets is a slice — copy it so mutating the dup's bullets doesn't
+	// reach back into the original.
+	if len(srcSlide.Data.Bullets) > 0 {
+		dupBullets := make([]string, len(srcSlide.Data.Bullets))
+		copy(dupBullets, srcSlide.Data.Bullets)
+		copySlide.Data.Bullets = dupBullets
+	}
+	insertAt := index + 1
+	s.Deck.Slides = append(s.Deck.Slides[:insertAt], append([]schema.Slide{copySlide}, s.Deck.Slides[insertAt:]...)...)
+	if s.Content != nil && index < len(s.Content.Slides) {
+		srcC := s.Content.Slides[index]
+		dupC := stages.ContentSlide{
+			Index:        insertAt,
+			Template:     srcC.Template,
+			Layout:       srcC.Layout,
+			Data:         copySlide.Data, // re-use the just-copied data
+			SpeakerNotes: srcC.SpeakerNotes,
+		}
+		s.Content.Slides = append(s.Content.Slides[:insertAt], append([]stages.ContentSlide{dupC}, s.Content.Slides[insertAt:]...)...)
+	}
+	if s.Outline != nil && index < len(s.Outline.Slides) {
+		srcO := s.Outline.Slides[index]
+		dupO := stages.OutlineSlide{
+			Index:        insertAt,
+			Type:         srcO.Type,
+			Headline:     srcO.Headline,
+			KeyPoints:    append([]string(nil), srcO.KeyPoints...),
+			SpeakerNotes: srcO.SpeakerNotes,
+		}
+		s.Outline.Slides = append(s.Outline.Slides[:insertAt], append([]stages.OutlineSlide{dupO}, s.Outline.Slides[insertAt:]...)...)
+	}
+	s.SlideCount = len(s.Deck.Slides)
+	return nil
+}
+
+// reorderSlice is a generic move-an-element-from-from-to-to operation
+// that preserves the relative order of every other element. Centralised
+// so Deck / Content / Outline reorder identically.
+func reorderSlice[T any](xs []T, from, to int) []T {
+	if from == to {
+		return xs
+	}
+	moved := xs[from]
+	// Remove from old position.
+	xs = append(xs[:from], xs[from+1:]...)
+	// Insert at new position. After the remove, indices >= from shifted
+	// down by 1 — but `to` is meant in the RESULTING slice's coords, so
+	// we don't adjust here. Bounded by len(xs) because xs is shorter now.
+	if to > len(xs) {
+		to = len(xs)
+	}
+	xs = append(xs[:to], append([]T{moved}, xs[to:]...)...)
+	return xs
+}
+
 // SetTheme rewrites Deck.Theme and overrides every slide.Template with
 // the new theme name so the next render picks up the new template family.
 // Per-slide Layout is preserved (a "bullets" layout stays "bullets" —

@@ -90,3 +90,68 @@ export function eventsURL(sessionId: string): string {
     : "");
   return `${base}/api/v1/sessions/${sessionId}/events`;
 }
+
+// ─── Games ────────────────────────────────────────────────────────────
+//
+// Single-shot pipeline that turns a natural-language brief into one
+// self-contained HTML5 game. Same event surface as slides — the
+// frontend connects to the WebSocket via AgentSessionProvider — but
+// the artifact is HTML served directly into an iframe, not PPTX.
+
+export type CreateGameRequest = {
+  prompt: string;
+  genre?: string;
+  difficulty?: string;
+};
+
+export type CreateGameResponse = {
+  job_id: string;
+  session_id: string;
+  events_url: string;
+};
+
+export type GameJob = {
+  job_id: string;
+  session_id: string;
+  status: "running" | "finished" | "error";
+  input: {
+    prompt: string;
+    genre?: string;
+    difficulty?: string;
+  };
+  title?: string;
+  bytes?: number;
+  /** Set when status==finished. Same-origin URL the iframe loads. */
+  play_url?: string;
+  error?: string;
+  started_at: string;
+  finished_at?: string;
+};
+
+export async function createGame(body: CreateGameRequest): Promise<CreateGameResponse> {
+  const res = await fetch("/api/v1/games", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<CreateGameResponse>(res);
+}
+
+export async function getGameJob(id: string): Promise<GameJob> {
+  const res = await fetch(`/api/v1/games/${id}`);
+  return unwrap<GameJob>(res);
+}
+
+/**
+ * Send a follow-up edit. The backend re-prompts with the prior HTML in
+ * system context so the model edits surgically; status flips back to
+ * "running" until the new artifact is ready.
+ */
+export async function postGameMessage(jobId: string, content: string): Promise<void> {
+  const res = await fetch(`/api/v1/games/${jobId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  await unwrap<{ job_id: string; session_id: string }>(res);
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -98,13 +99,26 @@ func main() {
 		Sessions:  sessions,
 	}
 
+	// ─── Games — single-shot HTML5 game generation ───────────────────
+	// Reuses the worker LLM tier and the same Hub for event streaming, so
+	// the frontend's WebSocket transport is one path regardless of whether
+	// it's rendering slides or a Snake clone.
+	gameSessions := games.NewSessionStore()
+	gamePipeline := &games.Pipeline{
+		Router:   router,
+		Emitter:  hub,
+		Sessions: gameSessions,
+	}
+
 	// ─── HTTP server ──────────────────────────────────────────────────
 	srv := api.NewServer(api.Dependencies{
-		Hub:         hub,
-		Pipeline:    pipeline,
-		AgentRunner: agentRunner,
-		Renderer:    renderer,
-		Sessions:    sessions,
+		Hub:          hub,
+		Pipeline:     pipeline,
+		AgentRunner:  agentRunner,
+		Renderer:     renderer,
+		Sessions:     sessions,
+		Games:        gamePipeline,
+		GameSessions: gameSessions,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

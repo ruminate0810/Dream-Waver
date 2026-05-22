@@ -79,29 +79,40 @@ edits. The Deck, Outline, and Content from the previous turn are in
 your memory above — read them before deciding what to do.
 
 Available edit tools:
-  - edit_slide_text  — overwrite a single field on one slide (title /
-                       subtitle / body / bullets / metric / quote /
-                       attribution / footer). Cheapest; no LLM call.
-  - regenerate_slide — rewrite one slide via the worker LLM, following a
-                       natural-language instruction.
-  - delete_slide     — remove one slide.
-  - add_slide        — insert a new slide at a given 1-based position;
-                       calls the worker LLM once to write its content.
-  - change_theme     — switch the whole deck to a different template
-                       family (minimalist / corporate / pitch-deck /
-                       academic / playful). No LLM call.
-  - apply_brand      — apply deck-wide colour and font overrides
-                       (primary_color in #RRGGBB, optional accent_color,
-                       optional font_family). No LLM call.
-  - terminate        — call this when the user's request is satisfied.
+  - edit_slide_text   — overwrite a single field on one slide (title /
+                        subtitle / body / bullets / metric / quote /
+                        attribution / footer). Cheapest; no LLM call.
+  - regenerate_slide  — rewrite one slide via the worker LLM, following a
+                        natural-language instruction.
+  - delete_slide      — remove one slide.
+  - add_slide         — insert a new slide at a given 1-based position;
+                        calls the worker LLM once to write its content.
+  - duplicate_slide   — deep-copy slide N to position N+1. No LLM call.
+  - reorder_slide     — move slide [from_position] to [to_position].
+                        No LLM call.
+  - change_theme      — switch the whole deck to a different template
+                        family (minimalist / corporate / pitch-deck /
+                        academic / playful). No LLM call.
+  - apply_brand       — apply deck-wide colour and font overrides
+                        (primary_color in #RRGGBB, optional accent_color,
+                        optional font_family). No LLM call.
+  - set_footer        — set the footer text on all slides (omit
+                        slide_index) or one slide. No LLM call.
+  - edit_speaker_notes — set the speaker_notes for one slide. Renders
+                        only in PowerPoint's presenter view. No LLM call.
+  - terminate         — call this when the user's request is satisfied.
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
   - "把第 3 页标题改成 X" → edit_slide_text
   - "把第 3 页改得更激进 / 加数据 / 换风格" → regenerate_slide
   - "删掉第 5 页" → delete_slide
   - "在第 3 页后加一页讲风险 / 加一页" → add_slide
+  - "复制第 3 页 / 再来一页类似的" → duplicate_slide
+  - "把第 5 页移到第 2 页前面 / 挪到最后" → reorder_slide
   - "换成 corporate 风 / 用极简模板" → change_theme
   - "主色调换成 #0066FF / 用思源黑体" → apply_brand
+  - "页脚加 'Q1 2026' / 给所有页加页脚" → set_footer
+  - "给第 3 页加演讲稿: ..." → edit_speaker_notes
   - Call exactly ONE edit tool per turn unless the user explicitly asks
     for multiple changes.
   - After the edit tool returns, IMMEDIATELY call terminate.
@@ -186,8 +197,12 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.RegenerateSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DeleteSlide{State: state, Renderer: rendererAdapter},
 		&tools.AddSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
+		&tools.DuplicateSlide{State: state, Renderer: rendererAdapter},
+		&tools.ReorderSlide{State: state, Renderer: rendererAdapter},
 		&tools.ChangeTheme{State: state, Renderer: rendererAdapter},
 		&tools.ApplyBrand{State: state, Renderer: rendererAdapter},
+		&tools.SetFooter{State: state, Renderer: rendererAdapter},
+		&tools.EditSpeakerNotes{State: state, Renderer: rendererAdapter},
 		tool.Terminate{},
 	}
 	registry := tool.NewRegistry(registryTools...)
