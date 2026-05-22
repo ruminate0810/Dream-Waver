@@ -1,0 +1,187 @@
+/* retro.css — 80s synthwave. Purple-magenta canvas with neon
+ * pink/cyan accents, CRT scanline overlay, glowing text-shadow on
+ * the titles. VT323 for headings (the original game-system font),
+ * Press Start 2P for kickers, JetBrains Mono body.
+ *
+ * Use case: game devs, retro 主题课件, 游戏发布, fun creator content.
+ */
+
+.theme-retro {
+  --bg: #0F0524;
+  --fg: #FFFFFF;
+  --fg-muted: #C4B5FD;
+  --fg-faint: #8B5CF6;
+
+  --accent: var(--brand-primary, #FF2D95);   /* hot pink */
+  --accent-2: var(--brand-accent, #00F0FF);  /* cyan */
+
+  --font-body: var(--brand-font, 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', ui-monospace, monospace);
+  --font-display: 'VT323', 'JetBrains Mono', 'Noto Sans SC', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --pad-x: 140px;
+  --pad-y: 120px;
+  --bullet-size: 0;
+}
+
+/* ─── Magenta→purple gradient canvas + scanlines ─────────────── */
+
+.theme-retro .slide {
+  background:
+    /* CRT scanlines — 2px stripe */
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 3px,
+      rgba(0, 0, 0, 0.18) 3px,
+      rgba(0, 0, 0, 0.18) 4px
+    ),
+    /* hot pink → deep purple → indigo */
+    linear-gradient(135deg, #FF2D95 0%, #6B21A8 50%, #1E1B4B 100%),
+    #0F0524;
+}
+
+/* ─── Top + bottom corner labels (terminal-style) ─────────────── */
+
+.theme-retro .slide::before {
+  content: "[SYS] DREAM-WAVER v1.0 — INSERT COIN";
+  position: absolute;
+  top: 56px; left: 140px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.15em;
+  color: var(--accent-2);
+  text-shadow: 0 0 10px var(--accent-2);
+}
+.theme-retro .slide::after {
+  content: "[ENTER] CONTINUE >";
+  position: absolute;
+  bottom: 56px; right: 140px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.15em;
+  color: var(--accent);
+  text-shadow: 0 0 10px var(--accent);
+}
+
+/* ─── Type — VT323 display with cyan/pink neon glow ──────────── */
+
+.theme-retro .title, .theme-retro .display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow:
+    0 0 12px var(--accent),
+    0 0 28px var(--accent),
+    0 0 48px rgba(255,45,149,0.5);
+}
+.theme-retro .title-block .title    { font-size: 220px; line-height: 0.95; }
+.theme-retro .section-block .title  { font-size: 160px; }
+.theme-retro .closing-block .title  { font-size: 200px; }
+.theme-retro.layout-bullets .title,
+.theme-retro.layout-content .title,
+.theme-retro.layout-two-column .title { font-size: 84px; }
+
+/* ─── Kicker — Press Start 2P-style tiny mono caps ───────────── */
+
+.theme-retro .kicker {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.4em;
+  color: var(--accent-2);
+  text-shadow: 0 0 12px var(--accent-2);
+  margin-bottom: 40px;
+}
+.theme-retro .kicker::before { content: "▶ "; }
+
+/* ─── Pretitle — section divider with arrow ──────────────────── */
+
+.theme-retro .pretitle {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.35em;
+  color: var(--accent-2);
+  text-shadow: 0 0 8px var(--accent-2);
+  margin-bottom: 24px;
+}
+.theme-retro.layout-bullets .pretitle::before    { content: "▶ STAGE LIST"; }
+.theme-retro.layout-two-column .pretitle::before { content: "▶ DUAL PORT"; }
+.theme-retro.layout-data .pretitle::before       { content: "▶ HIGH SCORE"; }
+.theme-retro.layout-content .pretitle::before    { content: "▶ INTEL"; }
+.theme-retro.layout-title .pretitle,
+.theme-retro.layout-section .pretitle,
+.theme-retro.layout-closing .pretitle,
+.theme-retro.layout-quote .pretitle { display: none; }
+
+/* ─── Bullets — caret marker with glow ───────────────────────── */
+
+.theme-retro .bullet {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  line-height: 1.55;
+  color: #fff;
+  gap: 16px;
+}
+.theme-retro .bullet::before {
+  content: ">";
+  background: transparent;
+  border-radius: 0;
+  width: auto; height: auto;
+  margin-top: 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-shadow: 0 0 12px var(--accent);
+  flex-shrink: 0;
+  min-width: 32px;
+}
+
+/* ─── Metric — rainbow gradient text ─────────────────────────── */
+
+.theme-retro .metric {
+  font-family: var(--font-display);
+  font-size: 320px;
+  font-weight: 400;
+  letter-spacing: 0;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 50%, #FBBF24 100%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 40px rgba(255, 45, 149, 0.4);
+}
+
+/* ─── Quote ──────────────────────────────────────────────────── */
+
+.theme-retro .quote {
+  font-family: var(--font-display);
+  font-size: 96px;
+  line-height: 1.15;
+  color: #fff;
+  text-shadow: 0 0 16px var(--accent), 0 0 32px var(--accent);
+  padding-left: 64px;
+  border-left: 4px solid var(--accent-2);
+}
+.theme-retro .attribution {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.25em;
+  color: var(--accent-2);
+  text-shadow: 0 0 8px var(--accent-2);
+}
+
+/* ─── Subtitle ───────────────────────────────────────────────── */
+
+.theme-retro .subtitle {
+  font-family: var(--font-mono);
+  color: var(--fg-muted);
+  font-size: 28px;
+  letter-spacing: 0.04em;
+}
+
+/* Body text dimmer for the dark bg. */
+.theme-retro .body-text { color: var(--fg-muted); font-family: var(--font-mono); font-size: 26px; }
+
+/* Footer suppressed — corner labels carry it. */
+.theme-retro .footer { display: none; }

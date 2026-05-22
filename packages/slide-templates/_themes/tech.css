@@ -1,0 +1,175 @@
+/* tech.css — IDE / terminal aesthetic. Dark zinc canvas, terminal-
+ * green prompt, monospace everywhere, "window chrome" decorations.
+ * Built for engineering audiences: open-source releases, hackathons,
+ * dev-tool launches, infra postmortems.
+ *
+ * Distinctive markers:
+ *   - Macos-style traffic-light dots (red/yellow/green) top-left
+ *   - $ shell-prompt prefix on titles
+ *   - ▸ bullet glyph (chevron)
+ *   - All-monospace type
+ *   - ASCII-art `// ----` dividers between blocks
+ */
+
+.theme-tech {
+  --bg: #0B0E13;          /* not pure black — closer to VS Code Dark+ canvas */
+  --fg: #E5E7EB;
+  --fg-muted: #94A3B8;
+  --fg-faint: #475569;
+
+  --accent: var(--brand-primary, #4ADE80);   /* terminal green */
+  --accent-2: var(--brand-accent, #FBBF24);  /* warning amber */
+
+  --font-body: var(--brand-font, 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', ui-monospace, monospace);
+  --font-display: 'JetBrains Mono', 'Noto Sans SC', system-ui, monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --pad-x: 140px;
+  --pad-y: 100px;
+  --bullet-size: 0;
+}
+
+/* ─── Window chrome (traffic-light dots) top-left ────────────── */
+
+.theme-tech .slide::before {
+  content: "";
+  position: absolute;
+  top: 56px; left: 140px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #FF5F57;
+  box-shadow:
+    20px 0 0 #FEBC2E,
+    40px 0 0 #28C840;
+}
+
+/* Bottom path-prompt — "~/dream-waver $ "  */
+.theme-tech .slide::after {
+  content: "~/dream-waver/slide $ _";
+  position: absolute;
+  bottom: 56px; left: 140px;
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0;
+  color: var(--accent);
+}
+
+/* ─── Type — pure monospace ──────────────────────────────────── */
+
+.theme-tech .title, .theme-tech .display {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+.theme-tech .title-block .title    { font-size: 144px; line-height: 1.02; }
+.theme-tech .section-block .title  { font-size: 112px; }
+.theme-tech .closing-block .title  { font-size: 120px; }
+.theme-tech.layout-bullets .title,
+.theme-tech.layout-content .title,
+.theme-tech.layout-two-column .title { font-size: 56px; font-weight: 600; }
+
+/* Prefix every title with the shell prompt. */
+.theme-tech .title::before {
+  content: "$ ";
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ─── Kicker — //-comment style ──────────────────────────────── */
+
+.theme-tech .kicker {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  letter-spacing: 0.04em;
+  color: var(--accent-2);
+  font-weight: 400;
+  text-transform: none;
+  margin-bottom: 32px;
+}
+.theme-tech .kicker::before { content: "// "; color: var(--fg-faint); }
+
+/* ─── Pretitle — // section comment ──────────────────────────── */
+
+.theme-tech .pretitle {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--fg-faint);
+  margin-bottom: 24px;
+}
+.theme-tech.layout-bullets .pretitle::before    { content: "// bullets"; }
+.theme-tech.layout-two-column .pretitle::before { content: "// compare(a, b)"; }
+.theme-tech.layout-data .pretitle::before       { content: "// metric"; }
+.theme-tech.layout-content .pretitle::before    { content: "// notes"; }
+.theme-tech.layout-title .pretitle,
+.theme-tech.layout-section .pretitle,
+.theme-tech.layout-closing .pretitle,
+.theme-tech.layout-quote .pretitle { display: none; }
+
+/* ─── Bullets — chevron marker ───────────────────────────────── */
+
+.theme-tech .bullet {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  line-height: 1.55;
+  color: var(--fg);
+  gap: 16px;
+}
+.theme-tech .bullet::before {
+  content: "▸";
+  background: transparent;
+  border-radius: 0;
+  width: auto; height: auto;
+  margin-top: 0;
+  color: var(--accent);
+  font-weight: 700;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+/* ─── Metric — bold mono, big ─────────────────────────────────── */
+
+.theme-tech .metric {
+  font-family: var(--font-display);
+  font-size: 220px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.04em;
+}
+.theme-tech .metric-context { font-family: var(--font-mono); color: var(--fg-muted); }
+
+/* ─── Quote — block-quote style with > prefix ─────────────────── */
+
+.theme-tech .quote {
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 64px;
+  line-height: 1.2;
+  padding-left: 56px;
+  border-left: 3px solid var(--accent);
+  color: var(--fg);
+}
+.theme-tech .quote::before { content: ""; }
+.theme-tech .attribution {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  color: var(--accent-2);
+  letter-spacing: 0.04em;
+}
+
+/* ─── Subtitle / body text ──────────────────────────────────── */
+
+.theme-tech .subtitle { font-family: var(--font-mono); color: var(--fg-muted); font-size: 26px; }
+.theme-tech .body-text { font-family: var(--font-mono); color: var(--fg-muted); font-size: 24px; }
+
+/* ─── Two-column with terminal-style borders ─────────────────── */
+
+.theme-tech .two-column .col {
+  border: 1px solid rgba(255,255,255,0.10);
+  padding: 32px;
+  font-family: var(--font-mono);
+}
+
+/* Footer suppressed — prompt + traffic lights carry the chrome. */
+.theme-tech .footer { display: none; }

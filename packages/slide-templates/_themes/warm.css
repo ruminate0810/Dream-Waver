@@ -1,0 +1,196 @@
+/* warm.css — vintage paper / kraft notebook aesthetic. Cream→tan
+ * paper background with subtle grain, warm cocoa fg, burnt-orange
+ * accent. EB Garamond for the body, Caveat handwritten for kickers
+ * and section markers. Inline SVG arrow scribbles between blocks.
+ *
+ * Use case: 课程笔记 / 手帐风 PPT / 复古品牌 / 慢内容博主 /
+ * 个人成长讲座 — anything wanting a "this was hand-made" feel
+ * without going full skeuomorphic.
+ */
+
+.theme-warm {
+  --bg: #F4ECDD;            /* warm cream */
+  --fg: #3D2E1F;            /* cocoa ink */
+  --fg-muted: #6B5443;
+  --fg-faint: #B5A28A;
+
+  --accent: var(--brand-primary, #C84B1A);    /* burnt orange */
+  --accent-2: var(--brand-accent, #C84B1A);
+
+  --font-body: var(--brand-font, 'EB Garamond', 'Noto Serif SC', Georgia, serif);
+  --font-display: 'EB Garamond', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'Caveat', 'Inter', system-ui, cursive;
+
+  --pad-x: 140px;
+  --pad-y: 120px;
+  --bullet-size: 0;
+}
+
+/* ─── Paper grain — subtle SVG-noise overlay ─────────────────── */
+
+.theme-warm .slide {
+  background:
+    /* radial warm spotlight (mimics how light hits a page) */
+    radial-gradient(1200px 800px at 30% 20%, rgba(255,236,200,0.45), transparent 70%),
+    /* base kraft */
+    linear-gradient(180deg, #F4ECDD 0%, #ECE0CB 100%),
+    #F4ECDD;
+}
+
+/* SVG noise grain via pseudo. Keep opacity low so type stays sharp. */
+.theme-warm .slide::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.08;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.22 0 0 0 0 0.16 0 0 0 0 0.11 0 0 0 0.9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 240px 240px;
+}
+
+/* Handwritten corner mark bottom-right */
+.theme-warm .slide::after {
+  content: "— Dream-Waver ~";
+  position: absolute;
+  bottom: 56px; right: 140px;
+  font-family: var(--font-mono);
+  font-size: 26px;
+  color: var(--accent);
+  font-weight: 500;
+  transform: rotate(-2deg);
+}
+
+/* ─── Type — Garamond serif, generous leading ─────────────────── */
+
+.theme-warm .title, .theme-warm .display {
+  font-family: var(--font-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  line-height: 1.05;
+}
+.theme-warm .title-block .title    { font-size: 160px; font-weight: 600; }
+.theme-warm .section-block .title  { font-size: 128px; font-style: italic; font-weight: 500; }
+.theme-warm .closing-block .title  { font-size: 120px; font-style: italic; }
+.theme-warm.layout-bullets .title,
+.theme-warm.layout-content .title,
+.theme-warm.layout-two-column .title { font-size: 64px; font-weight: 600; }
+
+/* Hand-drawn underline on body slide titles */
+.theme-warm.layout-bullets .title,
+.theme-warm.layout-content .title {
+  padding-bottom: 12px;
+  border-bottom: 3px solid var(--accent);
+  border-radius: 0 0 8px 0;  /* slightly wonky right edge — feels hand-drawn */
+  display: inline-block;
+  margin-bottom: 36px;
+}
+
+/* ─── Kicker — handwritten label with arrow ──────────────────── */
+
+.theme-warm .kicker {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  font-weight: 500;
+  text-transform: none;
+  margin-bottom: 32px;
+  transform: rotate(-1deg);
+}
+.theme-warm .kicker::before { content: "↳ "; }
+
+/* ─── Pretitle ───────────────────────────────────────────────── */
+
+.theme-warm .pretitle {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 28px;
+  color: var(--accent);
+  font-weight: 500;
+  margin-bottom: 16px;
+  transform: rotate(-1deg);
+}
+.theme-warm.layout-bullets .pretitle::before    { content: "✦ jotted down"; }
+.theme-warm.layout-two-column .pretitle::before { content: "✦ on the other hand…"; }
+.theme-warm.layout-data .pretitle::before       { content: "✦ a number"; }
+.theme-warm.layout-content .pretitle::before    { content: "✦ a note"; }
+.theme-warm.layout-title .pretitle,
+.theme-warm.layout-section .pretitle,
+.theme-warm.layout-closing .pretitle,
+.theme-warm.layout-quote .pretitle { display: none; }
+
+/* ─── Bullets — small filled circle in accent ────────────────── */
+
+.theme-warm .bullets { gap: 28px; }
+.theme-warm .bullet {
+  font-family: var(--font-body);
+  font-size: 30px;
+  line-height: 1.55;
+  color: var(--fg);
+  gap: 20px;
+}
+.theme-warm .bullet::before {
+  content: "•";
+  background: transparent;
+  border-radius: 0;
+  width: auto; height: auto;
+  margin-top: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1;
+  flex-shrink: 0;
+  min-width: 24px;
+}
+
+/* ─── Metric — large serif, warm fg (not accent) ──────────────── */
+
+.theme-warm .metric {
+  font-family: var(--font-display);
+  font-size: 240px;
+  font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.04em;
+}
+.theme-warm .metric-context { font-family: var(--font-display); font-style: italic; color: var(--fg-muted); }
+
+/* ─── Quote — italic serif with handwritten attribution ───────── */
+
+.theme-warm .quote {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 72px;
+  line-height: 1.25;
+  padding-left: 56px;
+  border-left: 6px solid var(--accent);
+  color: var(--fg);
+}
+.theme-warm .attribution {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+/* ─── Subtitle ───────────────────────────────────────────────── */
+
+.theme-warm .subtitle {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 32px;
+  color: var(--fg-muted);
+}
+
+/* ─── Body text ──────────────────────────────────────────────── */
+
+.theme-warm .body-text {
+  font-family: var(--font-body);
+  font-size: 26px;
+  line-height: 1.7;
+  color: var(--fg);
+}
+
+/* Footer — replaced by the bottom-right ~ signature */
+.theme-warm .footer { display: none; }

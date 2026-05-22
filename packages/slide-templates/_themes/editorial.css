@@ -1,0 +1,188 @@
+/* editorial.css — magazine/newspaper aesthetic. The New Yorker meets
+ * the NYT long-read: cream paper, deep ink fg, crimson accent. Fraunces
+ * variable serif for display, JetBrains Mono caps for kickers/folio.
+ *
+ * Distinctive markers (vs minimalist):
+ *   - Drop-cap-style large initial on body slide titles
+ *   - Running head bar at the very top with folio number
+ *   - Pull-quote layout has a giant opening quotation mark
+ *   - Hairline horizontal rules between title and content
+ *   - Generous serif body with ample line-height
+ */
+
+.theme-editorial {
+  --bg: #F7F4ED;          /* same paper as the Dream-Waver workspace canvas */
+  --fg: #1A1614;          /* ink */
+  --fg-muted: #57534E;
+  --fg-faint: #A8A29E;
+
+  --accent: var(--brand-primary, #B5371E);     /* vermillion crimson */
+  --accent-2: var(--brand-accent, #B5371E);
+
+  --font-body: var(--brand-font, 'Fraunces', 'Noto Serif SC', Georgia, serif);
+  --font-display: 'Fraunces', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 160px;
+  --pad-y: 120px;
+  --bullet-size: 0;
+}
+
+/* ─── Running head bar at the top ─────────────────────────────── */
+
+.theme-editorial .slide::before {
+  content: "DREAM·WAVER · Vol I";
+  position: absolute;
+  top: 56px; left: 160px; right: 160px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(26,22,20,0.20);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* Folio number bottom-right (mimics page number in a real magazine). */
+.theme-editorial .slide::after {
+  content: "— composition log";
+  position: absolute;
+  bottom: 56px; right: 160px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* ─── Type — Fraunces serif everywhere, tight tracking ───────── */
+
+.theme-editorial .title { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.025em; line-height: 1.05; }
+.theme-editorial .display { font-family: var(--font-display); font-weight: 400; }
+.theme-editorial .title-block .title    { font-size: 168px; font-weight: 500; }
+.theme-editorial .section-block .title  { font-size: 128px; font-style: italic; }
+.theme-editorial .closing-block .title  { font-size: 120px; font-style: italic; }
+.theme-editorial.layout-bullets .title,
+.theme-editorial.layout-content .title,
+.theme-editorial.layout-two-column .title { font-size: 60px; font-weight: 500; padding-bottom: 24px; border-bottom: 1px solid rgba(26,22,20,0.15); margin-bottom: 32px; }
+
+/* ─── Kicker — folio-style label with leading section mark ────── */
+
+.theme-editorial .kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-weight: 500;
+  margin-bottom: 32px;
+}
+.theme-editorial .kicker::before { content: "§ "; color: var(--accent); }
+
+/* ─── Pretitle — italic serif slug above body slide titles ─── */
+
+.theme-editorial .pretitle {
+  display: block;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 20px;
+  color: var(--fg-muted);
+  margin-bottom: 16px;
+}
+.theme-editorial.layout-bullets .pretitle::before    { content: "Notes on the topic"; }
+.theme-editorial.layout-two-column .pretitle::before { content: "Two perspectives"; }
+.theme-editorial.layout-data .pretitle::before       { content: "By the numbers"; }
+.theme-editorial.layout-content .pretitle::before    { content: "Continued"; }
+.theme-editorial.layout-title .pretitle,
+.theme-editorial.layout-section .pretitle,
+.theme-editorial.layout-closing .pretitle,
+.theme-editorial.layout-quote .pretitle { display: none; }
+
+/* ─── Bullets — em-dash markers, serif body ─────────────────── */
+
+.theme-editorial .bullet {
+  font-family: var(--font-body);
+  font-size: 28px;
+  line-height: 1.55;
+  color: var(--fg);
+  gap: 16px;
+}
+.theme-editorial .bullet::before {
+  content: "—";
+  background: transparent;
+  border-radius: 0;
+  width: auto; height: auto;
+  margin-top: 0;
+  color: var(--accent);
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+/* ─── Metric — serif, ink (not accent), giant Fraunces ──────── */
+
+.theme-editorial .metric {
+  font-family: var(--font-display);
+  font-size: 200px;
+  font-weight: 500;
+  color: var(--fg);
+  letter-spacing: -0.04em;
+}
+.theme-editorial .metric-context {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--fg-muted);
+}
+
+/* ─── Quote — giant opening quotation mark watermark ────────── */
+
+.theme-editorial .quote {
+  position: relative;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 72px;
+  line-height: 1.2;
+  padding-left: 88px;
+  color: var(--fg);
+}
+.theme-editorial .quote::before {
+  content: "\201C";   /* unicode left double quotation mark */
+  position: absolute;
+  top: -56px; left: 0;
+  font-family: var(--font-display);
+  font-size: 220px;
+  font-weight: 500;
+  color: var(--accent);
+  opacity: 0.6;
+  line-height: 1;
+}
+.theme-editorial .attribution {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* ─── Subtitle — italic serif ────────────────────────────────── */
+
+.theme-editorial .subtitle {
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--fg-muted);
+  font-size: 32px;
+}
+
+/* ─── Body text ──────────────────────────────────────────────── */
+
+.theme-editorial .body-text {
+  font-family: var(--font-body);
+  font-size: 26px;
+  line-height: 1.65;
+  color: var(--fg);
+  max-width: 56ch;
+}
+
+/* ─── Suppress the default footer — running head / folio carry it */
+
+.theme-editorial .footer { display: none; }
