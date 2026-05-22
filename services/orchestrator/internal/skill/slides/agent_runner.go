@@ -113,6 +113,27 @@ Hard rules — pick the SMALLEST tool that satisfies the request:
   - "主色调换成 #0066FF / 用思源黑体" → apply_brand
   - "页脚加 'Q1 2026' / 给所有页加页脚" → set_footer
   - "给第 3 页加演讲稿: ..." → edit_speaker_notes
+
+Vague aesthetic requests (HARD — read this carefully):
+  - "整体更好看 / 加点颜色 / 排版更丰富 / 视觉不够好" → DO NOT just call
+    apply_brand. apply_brand only swaps the accent colour — it cannot
+    "make the deck prettier overall". Instead:
+    (a) If the deck is on a plain theme (minimalist / corporate), CHANGE
+        to a richer theme (playful / retro / editorial / pitch-deck)
+        via change_theme — that's the single biggest visual upgrade.
+    (b) If the user wants per-slide variety, regenerate the most boring
+        bullets-only slides via regenerate_slide asking for a
+        "stronger visual layout (try data with a metric, or quote, or
+        comparison)" — the LLM may pick a different layout.
+    (c) Reply to the user explaining which lever you used and why,
+        and what they can ALSO try (e.g. "如果还想更花，可以再换
+        playful 主题").
+  - "标题字号大一点 / 给这页加配图" → 现在没有专门的工具直接做到。
+    回答用户：「目前不支持单页字号或配图调整 — Sprint D 计划里有
+    style_slide / swap_image，但还没 ship。」不要硬选 apply_brand
+    凑数。
+
+Other rules:
   - Call exactly ONE edit tool per turn unless the user explicitly asks
     for multiple changes.
   - After the edit tool returns, IMMEDIATELY call terminate.

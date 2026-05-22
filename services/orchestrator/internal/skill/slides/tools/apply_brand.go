@@ -103,11 +103,15 @@ func (t *ApplyBrand) Execute(ctx context.Context, args json.RawMessage) (schema.
 		return schema.ToolResult{Error: "rerender: " + err.Error()}, nil
 	}
 
+	msg := fmt.Sprintf(
+		"应用品牌色：accent 改为 %s。所有 %d 张 slide 的强调色（bullets / accent bar / metric 数字 / 边线 / footer dot）都已切换。注意：apply_brand 只改强调色，不改背景 / 不改字号 / 不改版式 — 如果用户想要「整体更花 / 排版更丰富」，应该用 change_theme 切到 playful / retro / editorial 等视觉更丰富的主题，或对单页用 regenerate_slide 重写为 data / quote / two-column 等不同 layout 增加视觉变化。",
+		primary, newCount,
+	)
 	out, _ := json.Marshal(map[string]any{
 		"brand":       brand,
 		"slide_count": newCount,
 		"pptx_path":   pptxPath,
-		"message":     "Brand persisted; live preview's <style> block now carries --brand-primary / --brand-accent / --brand-font. Per-template colour adoption ships in Sprint B2.",
+		"message":     msg,
 	})
 	return schema.ToolResult{Output: string(out)}, nil
 }
