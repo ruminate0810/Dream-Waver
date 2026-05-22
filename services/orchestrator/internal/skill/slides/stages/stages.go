@@ -15,12 +15,62 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/prompts"
 )
+
+// askWithRetry wraps a single LLM call so that two recurring DeepSeek
+// failure modes don't bubble up as opaque errors:
+//
+//   1. Empty content (deepseek provider now returns "empty content
+//      (finish_reason=…)" — we treat as transient)
+//   2. JSON parse failure on response (LLM dropped a partial JSON or
+//      returned prose; one retry usually recovers)
+//
+// One retry only. Backoff 800ms. If the second attempt also fails, the
+// error includes both failure reasons so the user can see what's going
+// wrong (network? prompt-too-long? model glitch?).
+//
+// `parse` runs against the LLM's content string. Return non-nil only
+// if the content is unusable; that triggers the retry. Provider-level
+// errors (network drops, empty-content guard, rate limits) ALWAYS
+// trigger the retry regardless of parse.
+func askWithRetry(
+	ctx context.Context,
+	client llm.Client,
+	stage string,
+	req llm.AskToolRequest,
+	parse func(content string) error,
+) (*llm.AskToolResponse, error) {
+	var lastErr error
+	for attempt := 1; attempt <= 2; attempt++ {
+		resp, err := client.AskTool(ctx, req)
+		if err == nil {
+			if perr := parse(resp.Content); perr == nil {
+				return resp, nil
+			} else {
+				err = perr
+			}
+		}
+		lastErr = err
+		// Don't sleep on the last attempt.
+		if attempt < 2 {
+			slog.Warn("llm transient failure — retrying",
+				"stage", stage, "attempt", attempt, "err", err.Error())
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(800 * time.Millisecond):
+			}
+		}
+	}
+	return nil, fmt.Errorf("%s failed after 2 attempts: %w", stage, lastErr)
+}
 
 // ─── Input / output structures ──────────────────────────────────────
 
@@ -89,19 +139,24 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 		in.ReferenceText,
 	)
 	client := router.For("planner")
-	resp, err := client.AskTool(ctx, llm.AskToolRequest{
+	var out OutlineResult
+	resp, err := askWithRetry(ctx, client, "outline", llm.AskToolRequest{
 		Model:             router.ModelFor("planner"),
 		SystemPrompt:      prompts.Outline,
 		Messages:          []schema.Message{schema.NewUser(user)},
 		MaxTokens:         3000,
 		EnablePromptCache: true,
+	}, func(content string) error {
+		// Reset the struct on each retry so a partial unmarshal from a
+		// prior attempt doesn't leak through.
+		out = OutlineResult{}
+		if err := json.Unmarshal(stripFences(content), &out); err != nil {
+			return fmt.Errorf("parse outline json: %w; raw=%q", err, truncate(content, 200))
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, llm.Usage{}, err
-	}
-	var out OutlineResult
-	if err := json.Unmarshal(stripFences(resp.Content), &out); err != nil {
-		return nil, resp.Usage, fmt.Errorf("parse outline json: %w; raw=%s", err, truncate(resp.Content, 500))
 	}
 	if out.Theme == "" {
 		out.Theme = schema.ThemeMinimalist
@@ -120,19 +175,22 @@ func Content(ctx context.Context, router llm.Router, outline *OutlineResult) (*C
 	user := fmt.Sprintf("Outline (JSON):\n%s\n\nProduce the final slide content.", string(outlineJSON))
 
 	client := router.For("worker")
-	resp, err := client.AskTool(ctx, llm.AskToolRequest{
+	var out ContentResult
+	resp, err := askWithRetry(ctx, client, "content", llm.AskToolRequest{
 		Model:             router.ModelFor("worker"),
 		SystemPrompt:      prompts.Content,
 		Messages:          []schema.Message{schema.NewUser(user)},
 		MaxTokens:         6000,
 		EnablePromptCache: true,
+	}, func(content string) error {
+		out = ContentResult{}
+		if err := json.Unmarshal(stripFences(content), &out); err != nil {
+			return fmt.Errorf("parse content json: %w; raw=%q", err, truncate(content, 200))
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, llm.Usage{}, err
-	}
-	var out ContentResult
-	if err := json.Unmarshal(stripFences(resp.Content), &out); err != nil {
-		return nil, resp.Usage, fmt.Errorf("parse content json: %w; raw=%s", err, truncate(resp.Content, 500))
 	}
 	return &out, resp.Usage, nil
 }
@@ -167,19 +225,22 @@ func WriteOneSlide(ctx context.Context, router llm.Router, p WriteOneParams) (*s
 	)
 
 	client := router.For("worker")
-	resp, err := client.AskTool(ctx, llm.AskToolRequest{
+	var data schema.SlideData
+	resp, err := askWithRetry(ctx, client, "slide_one", llm.AskToolRequest{
 		Model:             router.ModelFor("worker"),
 		SystemPrompt:      prompts.SlideOne,
 		Messages:          []schema.Message{schema.NewUser(user)},
 		MaxTokens:         1200,
 		EnablePromptCache: true,
+	}, func(content string) error {
+		data = schema.SlideData{}
+		if err := json.Unmarshal(stripFences(content), &data); err != nil {
+			return fmt.Errorf("parse slide_one json: %w; raw=%q", err, truncate(content, 200))
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, llm.Usage{}, err
-	}
-	var data schema.SlideData
-	if err := json.Unmarshal(stripFences(resp.Content), &data); err != nil {
-		return nil, resp.Usage, fmt.Errorf("parse slide_one json: %w; raw=%s", err, truncate(resp.Content, 400))
 	}
 	return &data, resp.Usage, nil
 }

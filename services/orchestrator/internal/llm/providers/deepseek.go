@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -135,6 +136,25 @@ func (d *DeepSeek) AskTool(ctx context.Context, req llm.AskToolRequest) (*llm.As
 		return nil, fmt.Errorf("deepseek: empty choices")
 	}
 	choice := resp.Choices[0]
+
+	// Defensive: DeepSeek occasionally returns choice.Message.Content == ""
+	// AND ToolCalls == nil with a 200 status. The OpenAI SDK presents this
+	// as a successful response, but downstream parsers (e.g. stages.Outline
+	// → json.Unmarshal) then fail with "unexpected end of JSON input".
+	//
+	// Treat as a transient error so the caller can retry. Include
+	// finish_reason to help debug — common values:
+	//   - "length"        → MaxTokens hit before content produced
+	//   - "content_filter" → safety filter ate the response
+	//   - "stop" / ""     → genuinely empty model output (transient)
+	if strings.TrimSpace(choice.Message.Content) == "" && len(choice.Message.ToolCalls) == 0 {
+		return nil, fmt.Errorf(
+			"deepseek: empty content (finish_reason=%q, prompt_tokens=%d, completion_tokens=%d) — usually transient",
+			choice.FinishReason,
+			resp.Usage.PromptTokens,
+			resp.Usage.CompletionTokens,
+		)
+	}
 
 	out := &llm.AskToolResponse{
 		Content: choice.Message.Content,
