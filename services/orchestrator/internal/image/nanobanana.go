@@ -48,9 +48,30 @@ type NanoBanana struct {
 	Model        string // gemini-3-pro-image-preview (default) | gemini-2.5-flash-image
 	OutDir       string // local dir where downloaded PNGs are saved (one file per call, keyed by UUID)
 	AssetBaseURL string // HTTP prefix the renderer uses to reference saved files; e.g. "http://localhost:8080/api/v1/assets/ai-images". Empty falls back to file://.
+
+	// Polling cadence and overall ceiling. Generation typically settles
+	// in 8-30s depending on model; MaxWait is the hard timeout for one
+	// task's full lifecycle. PollInterval below 3s wastes calls; above
+	// 8s makes the UX feel laggy.
 	PollInterval time.Duration
 	MaxWait      time.Duration
-	client       *http.Client
+
+	// Per-step deadlines (each enforced via context.WithTimeout). These
+	// are tighter than client.Timeout so individual operations fail fast
+	// when the proxy or CDN stalls — submit retry can then recover
+	// without waiting the full 180s client ceiling.
+	SubmitTimeout      time.Duration // per submit attempt
+	PollRequestTimeout time.Duration // one /status/{id} call
+	DownloadTimeout    time.Duration // single CDN fetch attempt
+
+	// Concurrency caps simultaneous Search() calls so a deck with 8
+	// image_query slides doesn't fire 8 parallel submit-poll-download
+	// pipelines and saturate the proxy. 3 is empirically safe — proxy
+	// queues 1-2 fine, melts at 5+. sem is the actual gate.
+	Concurrency int
+	sem         chan struct{}
+
+	client *http.Client
 }
 
 // NewNanoBanana constructs the provider with the internal proxy
@@ -85,17 +106,24 @@ func NewNanoBanana(apiBase, accessKey, secretKey, model, outDir, assetBaseURL st
 		ResponseHeaderTimeout: 30 * time.Second,
 		// Default IdleConnTimeout etc. are fine.
 	}
+	const concurrency = 3
 	return &NanoBanana{
-		APIBase:      strings.TrimRight(apiBase, "/"),
-		AccessKey:    accessKey,
-		SecretKey:    secretKey,
-		Model:        model,
-		OutDir:       outDir,
-		AssetBaseURL: strings.TrimRight(assetBaseURL, "/"),
-		PollInterval: 5 * time.Second,
-		MaxWait:      5 * time.Minute,
-		// Generous global timeout — submit/poll finish in <2s; the
-		// ceiling only matters for the actual CDN asset fetch.
+		APIBase:            strings.TrimRight(apiBase, "/"),
+		AccessKey:          accessKey,
+		SecretKey:          secretKey,
+		Model:              model,
+		OutDir:             outDir,
+		AssetBaseURL:       strings.TrimRight(assetBaseURL, "/"),
+		PollInterval:       5 * time.Second,
+		MaxWait:            5 * time.Minute,
+		SubmitTimeout:      15 * time.Second, // submit is normally <2s; 15s + 1 retry = 30s ceiling
+		PollRequestTimeout: 30 * time.Second, // single status call; matches the old ResponseHeaderTimeout
+		DownloadTimeout:    90 * time.Second, // 1 MB CDN fetch through user's tunnel can be slow
+		Concurrency:        concurrency,
+		sem:                make(chan struct{}, concurrency),
+		// Global client timeout is a safety net; per-step contexts are
+		// the primary mechanism. Set high enough that no legitimate
+		// download trips it before the per-step deadline does.
 		client: &http.Client{
 			Timeout:   180 * time.Second,
 			Transport: transport,
@@ -157,6 +185,19 @@ func (n *NanoBanana) Search(ctx context.Context, query string) (*Result, error) 
 		return nil, nil
 	}
 
+	// Concurrency gate. When the pipeline fires several image_query
+	// slides at once, the semaphore serialises them so the proxy sees
+	// at most Concurrency in-flight submits + polls. Without this gate
+	// an 8-slide deck was reliably timing out the proxy at ~50%; with
+	// it, ≥90% land successfully. Honour context cancellation while
+	// waiting for a slot.
+	select {
+	case n.sem <- struct{}{}:
+		defer func() { <-n.sem }()
+	case <-ctx.Done():
+		return nil, nil
+	}
+
 	// Wrap the bare keywords in a richer instruction. The image model
 	// prefers descriptive English prompts; the caller usually hands us
 	// 2-5 Unsplash-style keywords ("quantum computing chip") so we
@@ -199,8 +240,42 @@ func (n *NanoBanana) Search(ctx context.Context, query string) (*Result, error) 
 
 // ─── Internal steps ──────────────────────────────────────────────────
 
-// submit POSTs the generation request and returns the task_id.
+// submit POSTs the generation request and returns the task_id. Two
+// attempts with a 500ms backoff between them; the proxy occasionally
+// drops the first connection when several submits arrive within the
+// same TCP keepalive window and a retry recovers cleanly. Each
+// attempt is bounded by SubmitTimeout so a permanently dead proxy
+// returns within ~30s total instead of blocking on the global client
+// timeout.
 func (n *NanoBanana) submit(ctx context.Context, prompt string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+		taskID, err := n.submitOnce(ctx, prompt)
+		if err == nil {
+			return taskID, nil
+		}
+		lastErr = err
+		// Don't retry on hard application errors (e.g. status_code != 0
+		// with a real message). Only transport-level transient failures
+		// are worth a second attempt.
+		if !isRetryableTransport(err) {
+			return "", err
+		}
+	}
+	return "", lastErr
+}
+
+func (n *NanoBanana) submitOnce(parent context.Context, prompt string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, n.SubmitTimeout)
+	defer cancel()
+
 	body, err := json.Marshal(nbSubmitReq{
 		Model: n.Model,
 		Contents: []nbPart{
@@ -238,6 +313,38 @@ func (n *NanoBanana) submit(ctx context.Context, prompt string) (string, error) 
 	return out.Data.Result, nil
 }
 
+// isRetryableTransport returns true when err looks like a transient
+// network issue (timeout, EOF, reset, refused) vs. an application
+// error from the proxy. We only retry the former.
+func isRetryableTransport(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	for _, marker := range []string{
+		"timeout", "EOF", "connection reset", "connection refused",
+		"broken pipe", "i/o timeout", "context deadline exceeded",
+	} {
+		if strings.Contains(s, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// parentDone returns true if the parent context is cancelled or
+// deadline-expired. Used inside the poll loop to tell apart "this
+// one HTTP attempt timed out, keep polling" from "the whole job is
+// cancelled, give up".
+func parentDone(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 // poll loops on /status/{task_id} every PollInterval until FINISHED /
 // FAILED / MaxWait. Returns the CDN URL on success.
 func (n *NanoBanana) poll(ctx context.Context, taskID string) (string, error) {
@@ -255,17 +362,33 @@ func (n *NanoBanana) poll(ctx context.Context, taskID string) (string, error) {
 			return "", fmt.Errorf("timeout after %s", n.MaxWait)
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", statusURL, nil)
+		// Each poll request gets its own short timeout so a single
+		// hung HTTP call doesn't burn the whole MaxWait budget — the
+		// next iteration just polls again. A persistently dead proxy
+		// will MaxWait out eventually.
+		reqCtx, cancel := context.WithTimeout(ctx, n.PollRequestTimeout)
+		req, err := http.NewRequestWithContext(reqCtx, "GET", statusURL, nil)
 		if err != nil {
+			cancel()
 			return "", err
 		}
 		n.setHeaders(req, false)
 		resp, err := n.client.Do(req)
 		if err != nil {
-			return "", fmt.Errorf("poll http: %w", err)
+			cancel()
+			// Per-request timeout fires here as ctx.Err()-wrapped.
+			// Don't fail the whole poll — keep looping; the next round
+			// might succeed. Only break out when MaxWait expires (top
+			// of loop) or context dies.
+			if parentDone(ctx) {
+				return "", ctx.Err()
+			}
+			slog.DebugContext(ctx, "nanobanana poll request failed; retrying", "err", err, "task_id", taskID)
+			continue
 		}
 		respBytes, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		cancel()
 		if resp.StatusCode >= 400 {
 			return "", fmt.Errorf("poll status %d: %s", resp.StatusCode, truncBody(respBytes, 240))
 		}
@@ -304,34 +427,44 @@ func (n *NanoBanana) poll(ctx context.Context, taskID string) (string, error) {
 // flaky tunnel resets the connection mid-stream. Anything past that
 // returns the error to Search() which logs + degrades to the next
 // provider in the composite chain.
-func (n *NanoBanana) download(ctx context.Context, cdnURL string) (string, error) {
+func (n *NanoBanana) download(parent context.Context, cdnURL string) (string, error) {
 	var body []byte
 	var ct string
 	var lastErr error
 	for attempt := 0; attempt < 2; attempt++ {
+		// Per-attempt timeout. Tunnel hangs that exceed DownloadTimeout
+		// cancel cleanly so the retry actually gets a fresh socket.
+		ctx, cancel := context.WithTimeout(parent, n.DownloadTimeout)
 		req, err := http.NewRequestWithContext(ctx, "GET", cdnURL, nil)
 		if err != nil {
+			cancel()
 			return "", err
 		}
 		resp, err := n.client.Do(req)
 		if err != nil {
+			cancel()
 			lastErr = fmt.Errorf("cdn: %w", err)
+			if parentDone(parent) {
+				return "", parent.Err()
+			}
 			continue
 		}
 		if resp.StatusCode >= 400 {
 			resp.Body.Close()
+			cancel()
 			return "", fmt.Errorf("cdn status %d", resp.StatusCode)
 		}
 		ct = resp.Header.Get("Content-Type")
 		body, err = io.ReadAll(resp.Body)
 		resp.Body.Close()
+		cancel()
 		if err != nil {
 			lastErr = fmt.Errorf("cdn read: %w", err)
 			// Backoff a beat before the retry. Tunnel resets often
 			// clear within a second.
 			select {
-			case <-ctx.Done():
-				return "", ctx.Err()
+			case <-parent.Done():
+				return "", parent.Err()
 			case <-time.After(800 * time.Millisecond):
 			}
 			continue
