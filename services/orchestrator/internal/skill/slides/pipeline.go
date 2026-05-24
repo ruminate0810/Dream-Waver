@@ -146,14 +146,29 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 	if searcher == nil {
 		return
 	}
+	// gridIdx == -1 means "write result into slide's Image (singular)";
+	// gridIdx >= 0 means "write into Images[gridIdx]" — used for the
+	// image-grid layout where one slide carries 3-4 parallel queries.
 	type job struct {
-		idx   int
-		query string
+		idx     int
+		query   string
+		gridIdx int
 	}
 	jobs := []job{}
 	for i, s := range deck.Slides {
 		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
-			jobs = append(jobs, job{i, q})
+			jobs = append(jobs, job{i, q, -1})
+		}
+		// image-grid: pre-allocate the Images slice in the same length
+		// as ImageQueries so goroutines can write into it by index
+		// without any locking — each goroutine owns one slot.
+		if len(s.Data.ImageQueries) > 0 {
+			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
+			for gi, q := range s.Data.ImageQueries {
+				if q = strings.TrimSpace(q); q != "" {
+					jobs = append(jobs, job{i, q, gi})
+				}
+			}
 		}
 	}
 	if len(jobs) == 0 {
@@ -173,8 +188,7 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			if r, ok := cache[j.query]; ok {
 				cacheMu.Unlock()
 				if r != nil {
-					deck.Slides[j.idx].Data.Image = r.URL
-					deck.Slides[j.idx].Data.ImageCredit = r.Credit
+					writeImageResult(deck, j.idx, j.gridIdx, r)
 				}
 				return
 			}
@@ -189,12 +203,26 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			cache[j.query] = r // record nil too so we don't retry empty hits
 			cacheMu.Unlock()
 			if r != nil {
-				deck.Slides[j.idx].Data.Image = r.URL
-				deck.Slides[j.idx].Data.ImageCredit = r.Credit
+				writeImageResult(deck, j.idx, j.gridIdx, r)
 			}
 		}()
 	}
 	wg.Wait()
+}
+
+// writeImageResult routes one image.Result into the right field of
+// the right slide. Centralised so the single-image and grid paths
+// can't drift apart.
+func writeImageResult(deck *Deck, slideIdx, gridIdx int, r *image.Result) {
+	if gridIdx >= 0 {
+		deck.Slides[slideIdx].Data.Images[gridIdx] = r.URL
+		// Image-grid shows one shared credit (last writer wins —
+		// they're all AI-gen with the same attribution anyway).
+		deck.Slides[slideIdx].Data.ImageCredit = r.Credit
+		return
+	}
+	deck.Slides[slideIdx].Data.Image = r.URL
+	deck.Slides[slideIdx].Data.ImageCredit = r.Credit
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

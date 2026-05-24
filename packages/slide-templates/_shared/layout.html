@@ -227,6 +227,70 @@ __THEME_STYLE__
     </div>
   {{end}}
 
+{{else if eq .Layout "photo-essay"}}
+  {{/* Full-bleed image; one-line editorial title bottom-left + optional italic caption.
+       Image-as-statement; the title is the only typography. Falls back to text-only
+       slide framed by a wash if the image fetch failed. */}}
+  {{if .Data.Image}}
+    <div class="photo-essay-img" data-no-extract style="background-image:url('{{.Data.Image}}')"></div>
+    <div class="photo-essay-overlay" data-no-extract></div>
+    <div class="photo-essay-block">
+      <div class="kicker mono-caps">{{with .Data.Subtitle}}{{.}}{{else}}Photo essay{{end}}</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}
+    </div>
+    {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
+  {{else}}
+    <div class="photo-essay-fallback">
+      <div class="kicker mono-caps">{{with .Data.Subtitle}}{{.}}{{else}}Photo essay{{end}}</div>
+      <div class="display title">{{.Data.Title}}</div>
+      {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}
+    </div>
+  {{end}}
+
+{{else if eq .Layout "split-image"}}
+  {{/* 50:50 magazine spread. Image on .image-side, text on .text-side; the
+       data-pos attribute drives a CSS flex-direction reverse when set to
+       "right" so the LLM can vary the rhythm across consecutive split-image
+       slides instead of always pinning the image left. */}}
+  <div class="split-image-grid" data-pos="{{with .Data.ImagePosition}}{{.}}{{else}}left{{end}}">
+    <div class="image-side" data-no-extract>
+      {{if .Data.Image}}
+        <div class="image-fill" style="background-image:url('{{.Data.Image}}')"></div>
+        {{with .Data.ImageCredit}}<div class="image-credit">{{.}}</div>{{end}}
+      {{else}}
+        <div class="image-fallback"></div>
+      {{end}}
+    </div>
+    <div class="text-side">
+      {{with .Data.Subtitle}}<div class="kicker">{{.}}</div>{{end}}
+      <div class="title">{{.Data.Title}}</div>
+      {{with .Data.Body}}<div class="body-text">{{.}}</div>{{end}}
+      {{if .Data.Bullets}}
+        <ul class="bullets">
+          {{range .Data.Bullets}}<li class="bullet">{{.}}</li>{{end}}
+        </ul>
+      {{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "image-grid"}}
+  {{/* Moodboard / examples grid — 3 or 4 AI images arranged in a flex grid
+       with a single caption underneath. data-count switches between 1x3
+       (3 images, panoramic feel) and 2x2 (4 images, dense gallery). */}}
+  <div class="image-grid-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <div class="image-grid" data-count="{{len .Data.Images}}">
+      {{range .Data.Images}}
+        <div class="grid-tile" data-no-extract style="background-image:url('{{.}}')"></div>
+      {{end}}
+      {{if not .Data.Images}}
+        {{range .Data.ImageQueries}}<div class="grid-tile grid-tile-fallback"></div>{{end}}
+      {{end}}
+    </div>
+    {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}
+  </div>
+
 {{else}}
   <div class="pretitle" data-no-extract></div>
   <div class="title">{{.Data.Title}}</div>

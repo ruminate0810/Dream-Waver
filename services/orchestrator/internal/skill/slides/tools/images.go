@@ -20,14 +20,26 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 	if searcher == nil {
 		return
 	}
+	// gridIdx == -1 → write into slide.Data.Image (singular);
+	// gridIdx >= 0 → write into slide.Data.Images[gridIdx] for the
+	// image-grid layout's 3-4 parallel queries.
 	type job struct {
-		idx   int
-		query string
+		idx     int
+		query   string
+		gridIdx int
 	}
 	jobs := []job{}
 	for i, s := range deck.Slides {
 		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
-			jobs = append(jobs, job{i, q})
+			jobs = append(jobs, job{i, q, -1})
+		}
+		if len(s.Data.ImageQueries) > 0 {
+			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
+			for gi, q := range s.Data.ImageQueries {
+				if q = strings.TrimSpace(q); q != "" {
+					jobs = append(jobs, job{i, q, gi})
+				}
+			}
 		}
 	}
 	if len(jobs) == 0 {
@@ -47,8 +59,7 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			if r, ok := cache[j.query]; ok {
 				cacheMu.Unlock()
 				if r != nil {
-					deck.Slides[j.idx].Data.Image = r.URL
-					deck.Slides[j.idx].Data.ImageCredit = r.Credit
+					writeImageResult(deck, j.idx, j.gridIdx, r)
 				}
 				return
 			}
@@ -63,10 +74,22 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			cache[j.query] = r
 			cacheMu.Unlock()
 			if r != nil {
-				deck.Slides[j.idx].Data.Image = r.URL
-				deck.Slides[j.idx].Data.ImageCredit = r.Credit
+				writeImageResult(deck, j.idx, j.gridIdx, r)
 			}
 		}()
 	}
 	wg.Wait()
+}
+
+// writeImageResult is the tools-package twin of slides.writeImageResult;
+// keep them in sync. Centralised so the single-image and image-grid
+// paths can't drift apart.
+func writeImageResult(deck *schema.Deck, slideIdx, gridIdx int, r *image.Result) {
+	if gridIdx >= 0 {
+		deck.Slides[slideIdx].Data.Images[gridIdx] = r.URL
+		deck.Slides[slideIdx].Data.ImageCredit = r.Credit
+		return
+	}
+	deck.Slides[slideIdx].Data.Image = r.URL
+	deck.Slides[slideIdx].Data.ImageCredit = r.Credit
 }

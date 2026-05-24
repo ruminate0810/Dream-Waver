@@ -7,7 +7,7 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
     {
       "index": 1,
       "template": "matches the deck theme",
-      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot",
+      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid",
       "data": {
         "title": "...",
         "subtitle": "optional",
@@ -34,7 +34,11 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
         "strengths": "REQUIRED for layout=swot. 3-5 short bullets (≤ 14 words each) — the deck's / topic's internal strong points.",
         "weaknesses": "REQUIRED for layout=swot. 3-5 short bullets — internal weak points.",
         "opportunities": "REQUIRED for layout=swot. 3-5 short bullets — external opportunities.",
-        "threats": "REQUIRED for layout=swot. 3-5 short bullets — external threats."
+        "threats": "REQUIRED for layout=swot. 3-5 short bullets — external threats.",
+
+        "caption": "Optional small italic caption rendered under the title in layout=photo-essay, and as the single caption under the grid in layout=image-grid. ≤ 16 words; mood-setting line (not a body paragraph).",
+        "image_position": "Optional for layout=split-image. 'left' (default) puts image on the left half; 'right' puts it on the right. Vary across consecutive split-image slides for rhythm.",
+        "image_queries": "REQUIRED for layout=image-grid. Array of 3 or 4 short ENGLISH queries (2-5 words each), one per tile. The pipeline resolves each to its own AI-generated image. Examples: ['urban skyline night','quiet forest path','industrial loft interior']."
       },
       "speaker_notes": "..."
     }
@@ -57,6 +61,9 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - For layout=`comparison-table`, ALWAYS include `table_headers`+`table_rows`. Every `row.cells` length MUST equal `table_headers` length. Omit `bullets`/`body`. Each cell is exactly one of `{text}` OR `{rating}` — never both.
 - For layout=`toc`, ALWAYS include `sections`. Title defaults to "Table of Contents" / "目录" if omitted. Omit `bullets`/`body`.
 - For layout=`swot`, ALWAYS include `strengths`+`weaknesses`+`opportunities`+`threats` (each 3-5 bullets). Omit `bullets`/`body`.
+- For layout=`photo-essay`, REQUIRED: `title` (one impactful line, ≤ 8 words) + `image_query` (vivid English description). Optional: `subtitle` (rendered as a small caps kicker; ≤ 3 words; defaults to "Photo essay"), `caption` (italic mood line, ≤ 16 words). Omit `bullets`/`body`.
+- For layout=`split-image`, REQUIRED: `title` + `image_query`. Recommended: `body` (1 short paragraph, ≤ 40 words) AND/OR `bullets` (2-3 items, ≤ 12 words each). Optional: `subtitle` (kicker; ≤ 3 words), `image_position` ("left"|"right"). The image carries half the slide — keep the text side disciplined, not overloaded.
+- For layout=`image-grid`, REQUIRED: `image_queries` (array of 3 or 4). Optional: `title` (small headline above the grid; ≤ 8 words), `caption` (italic line under the grid; ≤ 16 words). Omit slide-level `image_query` (the array supersedes it). Omit `bullets`/`body`.
 
 # When to emit image_query
 

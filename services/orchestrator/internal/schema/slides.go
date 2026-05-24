@@ -22,6 +22,12 @@ const (
 	LayoutComparisonTable SlideLayout = "comparison-table" // N-column × M-row data table with optional star ratings per cell
 	LayoutTOC             SlideLayout = "toc"              // table-of-contents — huge title + numbered section list with decoration
 	LayoutSWOT            SlideLayout = "swot"             // 2x2 strategic grid (strengths / weaknesses / opportunities / threats)
+	// Sprint H8 — image-led layouts that REQUIRE an image_query to look
+	// good. Designed to showcase nano-banana AI imagery as the slide's
+	// primary content rather than as background.
+	LayoutPhotoEssay SlideLayout = "photo-essay" // full-bleed image + 1-line editorial title bottom-left + optional caption — "image-as-statement"
+	LayoutSplitImage SlideLayout = "split-image" // 50:50 image-left / text-right (or swapped) — magazine feature feel
+	LayoutImageGrid  SlideLayout = "image-grid"  // 3-4 image moodboard grid with single caption — for "concepts / examples / visual references"
 )
 
 // Theme picks a base template family. The renderer falls back to LayoutTitle
@@ -99,6 +105,29 @@ type SlideData struct {
 	Weaknesses    []string `json:"weaknesses,omitempty"`
 	Opportunities []string `json:"opportunities,omitempty"`
 	Threats       []string `json:"threats,omitempty"`
+
+	// Sprint H8 image-led layout fields:
+
+	// Caption is a small italic caption rendered under the title block
+	// in layout=photo-essay (and reused as the single caption on
+	// layout=image-grid). ≤ 16 words; mood-setting line, not a body
+	// paragraph. Renders in serif italic when the theme has one.
+	Caption string `json:"caption,omitempty"`
+
+	// ImagePosition controls layout=split-image — "left" (default) puts
+	// the image on the left half, "right" puts it on the right. No
+	// effect on other layouts.
+	ImagePosition string `json:"image_position,omitempty"`
+
+	// ImageQueries populates layout=image-grid. 3-4 short English
+	// queries; the pipeline resolves each to its own AI image. The
+	// renderer arranges them in a 2x2 (or 1x3) grid. The slide-level
+	// ImageQuery field is ignored in favour of this slice for grids.
+	ImageQueries []string `json:"image_queries,omitempty"`
+
+	// Images is the resolved URL slice for layout=image-grid, parallel
+	// to ImageQueries. Set by the pipeline, not the LLM.
+	Images []string `json:"images,omitempty"`
 }
 
 // TableRow is one data row inside a comparison-table slide. Cells
