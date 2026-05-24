@@ -141,10 +141,18 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 	client := router.For("planner")
 	var out OutlineResult
 	resp, err := askWithRetry(ctx, client, "outline", llm.AskToolRequest{
-		Model:             router.ModelFor("planner"),
-		SystemPrompt:      prompts.Outline,
-		Messages:          []schema.Message{schema.NewUser(user)},
-		MaxTokens:         3000,
+		Model:        router.ModelFor("planner"),
+		SystemPrompt: prompts.Outline,
+		Messages:     []schema.Message{schema.NewUser(user)},
+		// 6000 to match Content's cap — the outline schema grew (theme
+		// + per-slide headlines + key_points) and 3000 turns out to be
+		// tight enough that topics with 15+ slides (or any topic the
+		// model wants to riff on, e.g. media analysis with editorial
+		// theme) trip finish_reason="length" mid-string. F1's retry
+		// path can't recover from that because both attempts use the
+		// same cap. Cost delta is negligible: ~¥0.02 worst case per
+		// outline call at deepseek-v4-pro pricing.
+		MaxTokens:         6000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		// Reset the struct on each retry so a partial unmarshal from a
