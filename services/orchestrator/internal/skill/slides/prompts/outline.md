@@ -135,6 +135,38 @@ specialised types. Specialised types make for stronger slides but only
 when the underlying content really is "a timeline", "a comparison", or
 "several KPIs".
 
+# Image-led layout preference (when topic is visual)
+
+When the topic contains any of these signals, AGGRESSIVELY prefer the
+H8 image-led layouts (photo-essay / split-image / image-grid) over
+section / content / bullets:
+
+  - 摄影 / 写真 / 视觉 / 镜头 / 写真集
+  - 旅行 / 旅游 / 游记 / 旅记 / 旅行日记
+  - 时尚 / 时装 / 街拍 / look book / lookbook
+  - 美食 / 餐饮 / 食谱 / 料理
+  - 产品 / 设计 / 案例 / 展示 / showcase
+  - 建筑 / 室内 / 空间 / 家居
+  - 艺术 / 绘画 / 插画 / illustration
+
+Specifically for those topics:
+  - Use `photo-essay` for "chapter break" / "scene change" slides —
+    typically replacing what would otherwise be a section divider.
+  - Use `split-image` for the deepest content slides — replacing
+    bullets-heavy slides where one strong image carries half the
+    weight.
+  - Use `image-grid` ONCE per deck for "here are 3-4 examples / looks
+    / variations" — explicit moodboard moments.
+
+A 5-page travel diary deck should look like:
+  slide 1 = title (with image_query)
+  slide 2-4 = photo-essay (each a different scene)
+  slide 5 = closing (with image_query)
+NOT:
+  slide 1 = title
+  slide 2-4 = section / content / bullets       ← wrong; loses imagery
+  slide 5 = closing
+
 # Hard constraints
 - `slides` length MUST equal the requested slide count.
 - First slide MUST be `type=title`. Last slide MUST be `type=closing`.
