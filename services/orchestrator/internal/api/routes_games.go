@@ -270,6 +270,10 @@ func (h *handlers) RestoreGameRevision(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusBadRequest, "bad revision index")
 		return
 	}
+	if h.deps.Games == nil || h.deps.GameSessions == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "games not configured")
+		return
+	}
 	gameJobsMu.RLock()
 	job, ok := gameJobs[id]
 	gameJobsMu.RUnlock()
