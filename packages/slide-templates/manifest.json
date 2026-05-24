@@ -110,6 +110,17 @@
       "accent_color": "#C84B1A",
       "thumbnail": "/theme-previews/warm-1.png",
       "previews": ["/theme-previews/warm-1.png", "/theme-previews/warm-2.png", "/theme-previews/warm-3.png"]
+    },
+    {
+      "name": "noir",
+      "label": "Noir",
+      "description": "High-contrast cinematic. Pure black canvas, paper-white Bodoni Moda type, single acid cadmium-yellow accent. Subtle SVG film-grain noise. Built expressly to pair with nano-banana B&W AI photography on photo-essay / split-image layouts.",
+      "best_for": ["fashion editorial", "film & photography portfolios", "couture lookbooks", "moody product launches", "dramatic stories"],
+      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing", "photo-essay", "split-image", "image-grid"],
+      "primary_color": "#0A0A0B",
+      "accent_color": "#E8FF3C",
+      "thumbnail": "/theme-previews/noir-1.svg",
+      "previews": ["/theme-previews/noir-1.svg", "/theme-previews/noir-2.svg", "/theme-previews/noir-3.svg"]
     }
   ]
 }

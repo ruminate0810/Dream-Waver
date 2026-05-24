@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Noir theme — bullets slide preview">
+  <rect width="640" height="360" fill="#0A0A0B"/>
+  <!-- subtle grain dots -->
+  <g fill="#F4F1E8" opacity="0.05">
+    <circle cx="60" cy="80" r="0.5"/>
+    <circle cx="200" cy="120" r="0.4"/>
+    <circle cx="380" cy="200" r="0.5"/>
+    <circle cx="520" cy="60" r="0.4"/>
+    <circle cx="160" cy="280" r="0.5"/>
+    <circle cx="440" cy="320" r="0.4"/>
+  </g>
+
+  <!-- Contact-sheet header -->
+  <line x1="40" y1="48" x2="600" y2="48" stroke="#F4F1E8" stroke-opacity="0.16" stroke-width="0.5"/>
+  <text x="40" y="40" font-family="ui-monospace, Menlo, monospace" font-size="7" letter-spacing="3" fill="#9A9590">NOIR · NEGATIVE 35MM · DREAM·WAVER</text>
+
+  <!-- Kicker with yellow sprocket -->
+  <rect x="40" y="80" width="6" height="6" fill="#E8FF3C"/>
+  <text x="52" y="85" font-family="ui-monospace, Menlo, monospace" font-size="7" letter-spacing="3" fill="#E8FF3C">CHAPTER · 03</text>
+
+  <!-- Title -->
+  <text x="40" y="125" font-family="'Bodoni Moda', Didot, Georgia, serif" font-size="32" font-weight="300" letter-spacing="0.5" fill="#F4F1E8">A study in shadow</text>
+
+  <!-- Bullets — yellow dashes + paper-white text -->
+  <g font-family="'Bodoni Moda', Georgia, serif" font-size="14" fill="#F4F1E8">
+    <rect x="40" y="174" width="14" height="2" fill="#E8FF3C"/>
+    <text x="62" y="180">Low-key lighting · 5 sources max</text>
+
+    <rect x="40" y="204" width="14" height="2" fill="#E8FF3C"/>
+    <text x="62" y="210">Asymmetric framing · rule-of-thirds broken</text>
+
+    <rect x="40" y="234" width="14" height="2" fill="#E8FF3C"/>
+    <text x="62" y="240">Bodoni for type-on-image — high contrast holds</text>
+
+    <rect x="40" y="264" width="14" height="2" fill="#E8FF3C"/>
+    <text x="62" y="270">Single accent colour discipline</text>
+  </g>
+
+  <!-- Frame code -->
+  <text x="528" y="338" font-family="ui-monospace, Menlo, monospace" font-size="7" letter-spacing="3" fill="#5A5650">— FRAME 003</text>
+</svg>

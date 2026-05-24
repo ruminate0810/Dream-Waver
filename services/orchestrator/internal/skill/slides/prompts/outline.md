@@ -44,6 +44,7 @@ Output the bare key — no quotes, no extra words.
 - `tech`       — IDE-aesthetic. Dark canvas, terminal-green prompt, JetBrains Mono, macOS traffic-light dots, $ prefix. Use for open-source releases, infra postmortems, dev-tool launches, engineering team updates.
 - `retro`      — 80s synthwave. Magenta-purple gradient + neon cyan/pink + CRT scanlines + VT323 display. Use for game dev launches, hackathons, nostalgia-themed talks, self-consciously fun decks.
 - `zen`        — Japanese minimalism. Washi paper + sumi ink + 朱印 vermillion. Noto Serif JP, generous asymmetric padding (yohaku-no-bi). Use for wellness/meditation, design philosophy, 茶道 / 慢内容, contemplative topics.
+- `noir`       — High-contrast cinematic. Pure black canvas + Bodoni Moda thin display + single acid cadmium-yellow accent + subtle film-grain. Designed expressly to pair with B&W AI photography on photo-essay / split-image layouts. Use for fashion editorial, film/photography portfolios, couture lookbooks, moody product launches, dramatic narratives.
 
 # Theme selection hints
 
@@ -57,6 +58,7 @@ Match the AUDIENCE field first, then content type:
 - game devs / 游戏 / 怀旧 / 复古主题 → `retro`
 - 媒体记者 / 长文 / 思想类 / 评论 / 文学 / 设计批评 → `editorial`
 - 禅修 / 冥想 / 慢生活 / 设计哲学 / 茶道 / 日式美学 → `zen`
+- 时装 / 摄影集 / 黑白片 / 电影 / 时尚大片 / 高定 / fashion editorial / lookbook → `noir`
 - (no strong signal) → `minimalist`
 
 # Slide type selection

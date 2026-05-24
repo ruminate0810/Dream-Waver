@@ -40,6 +40,14 @@ const (
 	ThemePitchDeck  Theme = "pitch-deck"
 	ThemeAcademic   Theme = "academic"
 	ThemePlayful    Theme = "playful"
+	// Sprint E1 — extra themes for richer visual variety
+	ThemeEditorial Theme = "editorial"
+	ThemeRetro     Theme = "retro"
+	ThemeTech      Theme = "tech"
+	ThemeZen       Theme = "zen"
+	ThemeWarm      Theme = "warm"
+	// Sprint H11 — high-contrast cinematic, designed for B&W AI photography
+	ThemeNoir Theme = "noir"
 )
 
 // SlideData carries every datum any layout might use. Layouts pick the
