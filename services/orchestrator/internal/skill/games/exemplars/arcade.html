@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="zh">
+<!--
+  JUICE NOTES — read this before copying.
+  This Snake variant is the reference for what an *arcade* feel looks like
+  when generated from natural language. Notice what makes it good:
+
+    PALETTE         #131826 / #f06b5b / #f5e7c4 — warm vermilion on cool
+                    indigo, off-white food. No pure black/white grid.
+    AUDIO           Pure Web Audio sine/triangle blips synthesized at
+                    runtime. No external files. Different pitches per
+                    event (eat: 660 Hz, die: 220 Hz).
+    SCREEN SHAKE    On eat (small) and death (large). Implemented by
+                    translating the canvas origin by random offsets that
+                    decay each frame.
+    EASING          Snake head interpolates between cells using cubic
+                    ease-out so movement looks alive instead of stepping.
+    PARTICLES       Burst of 10 short-lived particles at every eat event,
+                    color-matched to the food.
+    STATE MACHINE   Single `game.state` string ("menu" | "play" | "over").
+                    Start screen, game-over, replay all wired.
+    INPUT           Keyboard + swipe. Space to start / restart.
+    HUD             Top-left score in display font with text-shadow for
+                    legibility against the dark cell grid.
+-->
+<head>
+<meta charset="utf-8"/>
+<title>蛇形游园</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b1020;color:#f5e7c4;font-family:"Helvetica Neue",sans-serif;overflow:hidden}
+  #wrap{position:relative;display:flex;align-items:center;justify-content:center;height:100%}
+  canvas{display:block;background:#131826;box-shadow:0 10px 40px rgba(0,0,0,0.5)}
+  #hud{position:absolute;top:18px;left:24px;font-size:28px;font-weight:300;letter-spacing:.02em;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+  #title{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+  #title h1{font-size:64px;font-weight:200;letter-spacing:.06em;margin:0;color:#f5e7c4;text-shadow:0 4px 24px rgba(240,107,91,.4)}
+  #title p{font-size:14px;letter-spacing:.3em;text-transform:uppercase;opacity:.6;margin-top:24px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="720" height="540"></canvas>
+  <div id="hud" style="display:none">0</div>
+  <div id="title">
+    <h1>蛇形游园</h1>
+    <p>Space · 开始</p>
+  </div>
+</div>
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+const hud=document.getElementById("hud"),title=document.getElementById("title");
+const COLS=24,ROWS=18,CELL=30;
+const PALETTE={bg:"#131826",grid:"#1a2138",snake:"#f06b5b",snakeTail:"#a83f33",food:"#f5e7c4"};
+const game={state:"menu",snake:[],dir:{x:1,y:0},next:{x:1,y:0},food:null,score:0,tick:0,speed:8,shake:0,particles:[],trans:0};
+
+function reset(){
+  game.snake=[{x:8,y:9},{x:7,y:9},{x:6,y:9}];
+  game.dir={x:1,y:0};game.next={x:1,y:0};
+  game.score=0;game.tick=0;game.speed=8;game.shake=0;game.particles=[];game.trans=0;
+  spawnFood();hud.textContent=0;
+}
+function spawnFood(){
+  while(true){
+    const f={x:(Math.random()*COLS)|0,y:(Math.random()*ROWS)|0};
+    if(!game.snake.some(s=>s.x===f.x&&s.y===f.y)){game.food=f;return;}
+  }
+}
+function blip(freq,dur,type){
+  const a=new (window.AudioContext||window.webkitAudioContext)();
+  const o=a.createOscillator(),g=a.createGain();
+  o.type=type||"sine";o.frequency.value=freq;
+  o.connect(g);g.connect(a.destination);
+  g.gain.setValueAtTime(.2,a.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001,a.currentTime+dur);
+  o.start();o.stop(a.currentTime+dur);
+}
+function burst(x,y,col){
+  for(let i=0;i<10;i++){
+    const a=Math.random()*Math.PI*2,s=1+Math.random()*3;
+    game.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,col});
+  }
+}
+function step(){
+  if(game.state!=="play")return;
+  game.tick++;
+  game.trans=Math.max(0,game.trans-1/game.speed);
+  if(game.tick%Math.max(2,(20-game.speed)|0)!==0)return;
+  game.dir=game.next;
+  const head={x:(game.snake[0].x+game.dir.x+COLS)%COLS,y:(game.snake[0].y+game.dir.y+ROWS)%ROWS};
+  if(game.snake.some(s=>s.x===head.x&&s.y===head.y)){
+    game.state="over";game.shake=18;blip(220,.4,"sawtooth");return;
+  }
+  game.snake.unshift(head);
+  game.trans=1;
+  if(head.x===game.food.x&&head.y===game.food.y){
+    game.score++;hud.textContent=game.score;game.speed=Math.min(18,8+game.score*.5);
+    game.shake=6;blip(660+game.score*30,.08,"triangle");
+    burst(head.x*CELL+CELL/2,head.y*CELL+CELL/2,PALETTE.food);spawnFood();
+  }else{
+    game.snake.pop();
+  }
+}
+function draw(){
+  const sx=game.shake>0?(Math.random()-.5)*game.shake:0,sy=game.shake>0?(Math.random()-.5)*game.shake:0;
+  game.shake*=.85;
+  ctx.save();ctx.translate(sx,sy);
+  ctx.fillStyle=PALETTE.bg;ctx.fillRect(0,0,c.width,c.height);
+  ctx.fillStyle=PALETTE.grid;
+  for(let x=0;x<COLS;x++)for(let y=0;y<ROWS;y++)if((x+y)%2)ctx.fillRect(x*CELL,y*CELL,CELL,CELL);
+  const e=1-Math.pow(1-game.trans,3); // ease-out cubic
+  for(let i=game.snake.length-1;i>=0;i--){
+    const s=game.snake[i];
+    let x=s.x*CELL,y=s.y*CELL;
+    if(i===0){x-=game.dir.x*CELL*(1-e);y-=game.dir.y*CELL*(1-e);}
+    const t=i/game.snake.length;
+    ctx.fillStyle=i===0?PALETTE.snake:`hsl(${10+t*8},65%,${55-t*30}%)`;
+    ctx.shadowColor=PALETTE.snake;ctx.shadowBlur=i===0?20:0;
+    ctx.fillRect(x+3,y+3,CELL-6,CELL-6);
+    ctx.shadowBlur=0;
+  }
+  if(game.food){
+    const p=Math.sin(game.tick*.2)*3;
+    ctx.fillStyle=PALETTE.food;
+    ctx.beginPath();ctx.arc(game.food.x*CELL+CELL/2,game.food.y*CELL+CELL/2,CELL/2-6+p*.3,0,Math.PI*2);ctx.fill();
+  }
+  for(const p of game.particles){
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+    ctx.fillRect(p.x-2,p.y-2,4,4);
+    p.x+=p.vx;p.y+=p.vy;p.vy+=.15;p.life-=.04;
+  }
+  ctx.globalAlpha=1;
+  game.particles=game.particles.filter(p=>p.life>0);
+  ctx.restore();
+  if(game.state==="over"){
+    ctx.fillStyle="rgba(11,16,32,.75)";ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle=PALETTE.snake;ctx.textAlign="center";
+    ctx.font="200 56px Helvetica Neue";ctx.fillText("Game Over",c.width/2,c.height/2-10);
+    ctx.font="14px Helvetica Neue";ctx.fillStyle=PALETTE.food;
+    ctx.fillText("SPACE 重新开始 · 得分 "+game.score,c.width/2,c.height/2+30);
+  }
+}
+function loop(){step();draw();requestAnimationFrame(loop);}
+function start(){title.style.display="none";hud.style.display="block";game.state="play";reset();}
+addEventListener("keydown",e=>{
+  const k=e.key;
+  if((k===" "||k==="Enter")&&game.state!=="play"){start();return;}
+  const d={"ArrowUp":[0,-1],"ArrowDown":[0,1],"ArrowLeft":[-1,0],"ArrowRight":[1,0],"w":[0,-1],"s":[0,1],"a":[-1,0],"d":[1,0]}[k];
+  if(d&&(d[0]!==-game.dir.x||d[1]!==-game.dir.y))game.next={x:d[0],y:d[1]};
+});
+let ts=null;
+addEventListener("touchstart",e=>{ts=e.touches[0];});
+addEventListener("touchend",e=>{
+  if(!ts)return;const t=e.changedTouches[0],dx=t.clientX-ts.clientX,dy=t.clientY-ts.clientY;
+  if(Math.abs(dx)<20&&Math.abs(dy)<20){if(game.state!=="play")start();return;}
+  const d=Math.abs(dx)>Math.abs(dy)?[Math.sign(dx),0]:[0,Math.sign(dy)];
+  if(d[0]!==-game.dir.x||d[1]!==-game.dir.y)game.next={x:d[0],y:d[1]};
+});
+loop();
+</script>
+</body>
+</html>

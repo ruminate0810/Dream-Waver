@@ -27,6 +27,14 @@ const GENRES: Array<{ value: string; label: string; note: string }> = [
   { value: "rogue", label: "Roguelike", note: "随机 · 重玩" },
 ];
 
+const AESTHETICS: Array<{ value: string; label: string; note: string }> = [
+  { value: "minimalist", label: "Minimalist", note: "极简 · 大面积留白" },
+  { value: "neon", label: "Neon", note: "霓虹 · 深紫底荧光" },
+  { value: "paper", label: "Paper", note: "纸感 · 水彩墨笔" },
+  { value: "pixel", label: "Pixel", note: "像素 · 8-bit 复古" },
+  { value: "editorial", label: "Editorial", note: "编辑设计 · 杂志感" },
+];
+
 const DIFFICULTIES = ["easy", "normal", "hard"] as const;
 
 export default function NewGamePage() {
@@ -42,6 +50,7 @@ function NewGameChat() {
   const search = useSearchParams();
   const [prompt, setPrompt] = useState("");
   const [genre, setGenre] = useState<string>("");
+  const [aesthetic, setAesthetic] = useState<string>("");
   const [difficulty, setDifficulty] = useState<(typeof DIFFICULTIES)[number]>("normal");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -68,6 +77,7 @@ function NewGameChat() {
       const res = await createGame({
         prompt: t,
         genre: genre || undefined,
+        aesthetic: aesthetic || undefined,
         difficulty,
       });
       router.push(`/code/${res.job_id}?session=${res.session_id}`);
@@ -142,7 +152,9 @@ function NewGameChat() {
               />
               <span>Fine-tune</span>
               <span className="text-[color:var(--ink-faint)]">·</span>
-              <span>{genre ? labelFor(genre) : "Auto genre"}</span>
+              <span>{genre ? labelFor(genre, GENRES) : "Auto genre"}</span>
+              <span className="text-[color:var(--ink-faint)]">·</span>
+              <span>{aesthetic ? labelFor(aesthetic, AESTHETICS) : "Auto style"}</span>
               <span className="text-[color:var(--ink-faint)]">·</span>
               <span className="capitalize">{difficulty}</span>
             </button>
@@ -183,6 +195,8 @@ function NewGameChat() {
             <FineTuneStrip
               genre={genre}
               setGenre={setGenre}
+              aesthetic={aesthetic}
+              setAesthetic={setAesthetic}
               difficulty={difficulty}
               setDifficulty={setDifficulty}
             />
@@ -199,72 +213,46 @@ function NewGameChat() {
   );
 }
 
-function labelFor(value: string): string {
-  return GENRES.find((g) => g.value === value)?.label ?? value;
+function labelFor(value: string, table: Array<{ value: string; label: string }>): string {
+  return table.find((g) => g.value === value)?.label ?? value;
 }
 
 function FineTuneStrip({
   genre,
   setGenre,
+  aesthetic,
+  setAesthetic,
   difficulty,
   setDifficulty,
 }: {
   genre: string;
   setGenre: (s: string) => void;
+  aesthetic: string;
+  setAesthetic: (s: string) => void;
   difficulty: (typeof DIFFICULTIES)[number];
   setDifficulty: (s: (typeof DIFFICULTIES)[number]) => void;
 }) {
   return (
-    <div className="grid gap-6 border-t border-[color:var(--rule)] pt-5 md:grid-cols-[2fr_1fr]">
-      <div>
-        <p className="mb-2 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
-          Genre
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setGenre("")}
-            className={clsx(
-              "border px-3 py-2 text-left transition-colors",
-              !genre
-                ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-                : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
-            )}
-          >
-            <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
-              Auto
-            </span>
-            <span className="font-display text-[13px] italic opacity-80">
-              让模型决定
-            </span>
-          </button>
-          {GENRES.map((g) => (
-            <button
-              key={g.value}
-              type="button"
-              onClick={() => setGenre(g.value)}
-              className={clsx(
-                "border px-3 py-2 text-left transition-colors",
-                genre === g.value
-                  ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-                  : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
-              )}
-            >
-              <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
-                {g.label}
-              </span>
-              <span className="font-display text-[13px] italic opacity-80">
-                {g.note}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="flex flex-col gap-6 border-t border-[color:var(--rule)] pt-5">
+      <PickerGroup
+        label="Genre"
+        sub="决定机制（街机短局 / 解谜 / 平台跳跃 / 射击 / Rogue）"
+        value={genre}
+        setValue={setGenre}
+        options={GENRES}
+      />
+      <PickerGroup
+        label="Aesthetic"
+        sub="决定视觉与音效风格（覆盖默认色板）"
+        value={aesthetic}
+        setValue={setAesthetic}
+        options={AESTHETICS}
+      />
       <div>
         <p className="mb-2 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
           Difficulty
         </p>
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-2">
           {DIFFICULTIES.map((d) => (
             <button
               key={d}
@@ -283,6 +271,64 @@ function FineTuneStrip({
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function PickerGroup({
+  label,
+  sub,
+  value,
+  setValue,
+  options,
+}: {
+  label: string;
+  sub: string;
+  value: string;
+  setValue: (s: string) => void;
+  options: Array<{ value: string; label: string; note: string }>;
+}) {
+  return (
+    <div>
+      <p className="mb-1 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+        {label}
+      </p>
+      <p className="mb-2 font-display text-[13px] italic text-[color:var(--ink-soft)]">{sub}</p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => setValue("")}
+          className={clsx(
+            "border px-3 py-2 text-left transition-colors",
+            !value
+              ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
+              : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
+          )}
+        >
+          <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+            Auto
+          </span>
+          <span className="font-display text-[13px] italic opacity-80">让模型决定</span>
+        </button>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => setValue(o.value)}
+            className={clsx(
+              "border px-3 py-2 text-left transition-colors",
+              value === o.value
+                ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
+                : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
+            )}
+          >
+            <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+              {o.label}
+            </span>
+            <span className="font-display text-[13px] italic opacity-80">{o.note}</span>
+          </button>
+        ))}
       </div>
     </div>
   );

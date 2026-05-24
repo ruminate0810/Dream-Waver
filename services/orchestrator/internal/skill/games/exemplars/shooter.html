@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh">
+<!--
+  JUICE NOTES — read this before copying.
+  This vertical shooter is the reference for *shooter* feel. Shooters are
+  about readability under chaos — the player needs to see bullets clearly
+  and feel impact on hit.
+
+    PALETTE         #0d0a18 / #ff3b6e / #4adfff / #fff3cf — deep violet
+                    void, neon magenta enemies, cyan player bullets,
+                    warm parchment HUD. High contrast so danger reads.
+    AUDIO           Two synthesized blips — short laser (sawtooth 880Hz
+                    descending) and crunchier explosion (filtered noise
+                    via gain envelope). No external audio.
+    SCREEN SHAKE    Small on enemy-hit, large on player-death. Decays
+                    by 0.85 each frame.
+    HIT CIRCLE      Player's collision is a 6px radius circle, much
+                    smaller than the 20px visual — same trick every
+                    bullet-hell uses so brushing bullets feels skilled,
+                    not unfair. Visible as a tiny inner dot during play.
+    INPUT BUFFER    Holding Z auto-fires every 6 frames. Arrow keys
+                    move continuously, no key-repeat latency.
+    PARTICLES       Each kill spawns 12 short-lived sparks in the
+                    enemy's color.
+    PARALLAX BG     Two layers of slow-scrolling star dots give depth
+                    without GPU work.
+    STATE MACHINE   game.state ∈ "menu" | "play" | "over".
+-->
+<head>
+<meta charset="utf-8"/>
+<title>霓虹回廊</title>
+<style>
+  html,body{margin:0;height:100%;background:#0d0a18;color:#fff3cf;font-family:"Helvetica Neue",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+  #wrap{position:relative;display:flex;align-items:center;justify-content:center;height:100%}
+  canvas{display:block;background:#0d0a18;box-shadow:0 0 80px rgba(255,59,110,.18)}
+  #hud{position:absolute;top:18px;left:24px;font-size:13px;letter-spacing:.22em;text-transform:uppercase}
+  #hud b{color:#4adfff;font-weight:500}
+  #title{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+  #title h1{margin:0;font-size:64px;font-weight:100;letter-spacing:.1em;color:#ff3b6e;text-shadow:0 0 30px rgba(255,59,110,.6)}
+  #title p{font-size:12px;letter-spacing:.4em;text-transform:uppercase;color:#fff3cf;opacity:.7;margin-top:24px}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c" width="540" height="720"></canvas>
+  <div id="hud" style="display:none">score <b id="score">0</b> · lives <b id="lives">3</b></div>
+  <div id="title"><h1>霓虹回廊</h1><p>Arrows · Z 射击 · Space 开始</p></div>
+</div>
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+const W=c.width,H=c.height;
+const PAL={bg:"#0d0a18",player:"#4adfff",bullet:"#fff3cf",enemy:"#ff3b6e",hit:"#fff"};
+const game={state:"menu",p:{x:W/2,y:H-80,r:6},vx:0,vy:0,bullets:[],enemies:[],particles:[],stars:[],keys:{},frame:0,score:0,lives:3,shake:0,fire:0};
+function init(){
+  for(let i=0;i<60;i++)game.stars.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()<.5?.4:1});
+}
+function audio(){return new (window.AudioContext||window.webkitAudioContext)();}
+function laser(){
+  const a=audio(),o=a.createOscillator(),g=a.createGain();
+  o.type="sawtooth";o.frequency.setValueAtTime(880,a.currentTime);
+  o.frequency.exponentialRampToValueAtTime(220,a.currentTime+.12);
+  o.connect(g);g.connect(a.destination);
+  g.gain.setValueAtTime(.08,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.12);
+  o.start();o.stop(a.currentTime+.13);
+}
+function boom(){
+  const a=audio(),len=.25,buf=a.createBuffer(1,a.sampleRate*len,a.sampleRate);
+  const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const s=a.createBufferSource(),g=a.createGain(),f=a.createBiquadFilter();
+  s.buffer=buf;f.type="lowpass";f.frequency.value=800;
+  s.connect(f);f.connect(g);g.connect(a.destination);
+  g.gain.setValueAtTime(.18,a.currentTime);g.gain.exponentialRampToValueAtTime(.001,a.currentTime+len);
+  s.start();s.stop(a.currentTime+len);
+}
+function spawn(){
+  if(game.frame%40===0){
+    const lane=(Math.random()*5|0);
+    game.enemies.push({x:60+lane*100,y:-20,vy:1.5+Math.random(),r:14,t:game.frame});
+  }
+}
+function fire(){game.bullets.push({x:game.p.x,y:game.p.y-14,vy:-9});laser();}
+function spark(x,y,col){for(let i=0;i<12;i++){const a=Math.random()*Math.PI*2,s=2+Math.random()*3;game.particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,col});}}
+function step(){
+  game.frame++;
+  if(game.state!=="play")return;
+  const ks=game.keys;
+  game.vx=((ks.ArrowRight||ks.d)?1:0)-((ks.ArrowLeft||ks.a)?1:0);
+  game.vy=((ks.ArrowDown||ks.s)?1:0)-((ks.ArrowUp||ks.w)?1:0);
+  game.p.x=Math.max(20,Math.min(W-20,game.p.x+game.vx*5));
+  game.p.y=Math.max(40,Math.min(H-40,game.p.y+game.vy*5));
+  if((ks.z||ks.Z||ks[" "])&&game.frame-game.fire>=6){fire();game.fire=game.frame;}
+  spawn();
+  for(const b of game.bullets)b.y+=b.vy;
+  for(const e of game.enemies){e.y+=e.vy;e.x+=Math.sin((e.t+game.frame)*.04)*1.5;}
+  // bullet-vs-enemy
+  for(let i=game.enemies.length-1;i>=0;i--){
+    const e=game.enemies[i];
+    for(let j=game.bullets.length-1;j>=0;j--){
+      const b=game.bullets[j];const dx=b.x-e.x,dy=b.y-e.y;
+      if(dx*dx+dy*dy<(e.r+4)*(e.r+4)){
+        game.enemies.splice(i,1);game.bullets.splice(j,1);
+        spark(e.x,e.y,PAL.enemy);game.score+=10;game.shake=4;boom();
+        document.getElementById("score").textContent=game.score;break;
+      }
+    }
+  }
+  // enemy-vs-player (small hit-circle)
+  for(let i=game.enemies.length-1;i>=0;i--){
+    const e=game.enemies[i];const dx=e.x-game.p.x,dy=e.y-game.p.y;
+    if(dx*dx+dy*dy<(e.r+game.p.r)*(e.r+game.p.r)){
+      game.enemies.splice(i,1);spark(game.p.x,game.p.y,PAL.hit);
+      game.lives--;game.shake=20;boom();
+      document.getElementById("lives").textContent=game.lives;
+      if(game.lives<=0)game.state="over";
+    }
+  }
+  game.bullets=game.bullets.filter(b=>b.y>-20);
+  game.enemies=game.enemies.filter(e=>e.y<H+20);
+}
+function draw(){
+  const sx=game.shake>0?(Math.random()-.5)*game.shake:0,sy=game.shake>0?(Math.random()-.5)*game.shake:0;
+  game.shake*=.85;
+  ctx.fillStyle="#0d0a18";ctx.fillRect(0,0,W,H);
+  ctx.save();ctx.translate(sx,sy);
+  for(const st of game.stars){
+    st.y+=st.s;if(st.y>H)st.y=0;
+    ctx.fillStyle=`rgba(255,243,207,${st.s*.4})`;ctx.fillRect(st.x,st.y,st.s*2,st.s*2);
+  }
+  // player (triangle ship)
+  if(game.state==="play"){
+    ctx.fillStyle=PAL.player;ctx.shadowColor=PAL.player;ctx.shadowBlur=14;
+    ctx.beginPath();ctx.moveTo(game.p.x,game.p.y-16);ctx.lineTo(game.p.x-14,game.p.y+10);ctx.lineTo(game.p.x+14,game.p.y+10);ctx.closePath();ctx.fill();
+    ctx.shadowBlur=0;ctx.fillStyle=PAL.hit;ctx.beginPath();ctx.arc(game.p.x,game.p.y,2,0,Math.PI*2);ctx.fill();
+  }
+  ctx.fillStyle=PAL.bullet;
+  for(const b of game.bullets)ctx.fillRect(b.x-2,b.y-8,4,12);
+  ctx.fillStyle=PAL.enemy;ctx.shadowColor=PAL.enemy;ctx.shadowBlur=18;
+  for(const e of game.enemies){ctx.beginPath();ctx.arc(e.x,e.y,e.r,0,Math.PI*2);ctx.fill();}
+  ctx.shadowBlur=0;
+  for(const p of game.particles){
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);
+    p.x+=p.vx;p.y+=p.vy;p.life-=.04;
+  }
+  ctx.globalAlpha=1;game.particles=game.particles.filter(p=>p.life>0);
+  ctx.restore();
+  if(game.state==="over"){
+    ctx.fillStyle="rgba(13,10,24,.8)";ctx.fillRect(0,0,W,H);
+    ctx.fillStyle=PAL.enemy;ctx.font="100 56px Helvetica Neue";ctx.textAlign="center";
+    ctx.fillText("End of Run",W/2,H/2-10);
+    ctx.font="12px Helvetica Neue";ctx.fillStyle=PAL.bullet;
+    ctx.fillText("SPACE 重玩 · 得分 "+game.score,W/2,H/2+22);
+  }
+}
+function loop(){step();draw();requestAnimationFrame(loop);}
+function start(){document.getElementById("title").style.display="none";document.getElementById("hud").style.display="block";game.state="play";game.score=0;game.lives=3;game.enemies=[];game.bullets=[];game.particles=[];game.p.x=W/2;game.p.y=H-80;document.getElementById("score").textContent=0;document.getElementById("lives").textContent=3;}
+addEventListener("keydown",e=>{game.keys[e.key]=true;if(e.key===" "&&game.state!=="play"){start();e.preventDefault();}});
+addEventListener("keyup",e=>{game.keys[e.key]=false;});
+init();loop();
+</script>
+</body>
+</html>

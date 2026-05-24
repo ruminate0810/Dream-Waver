@@ -14,8 +14,10 @@ package games
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
@@ -33,6 +35,11 @@ type Input struct {
 	Genre string `json:"genre,omitempty"`
 	// Difficulty is "easy" / "normal" / "hard" — folded into the prompt.
 	Difficulty string `json:"difficulty,omitempty"`
+	// Aesthetic selects a visual style preset that overrides the default
+	// look ("minimalist" / "neon" / "paper" / "pixel" / "editorial"). The
+	// preset's palette + typography + motion guidance is injected into the
+	// system prompt, taking priority over the exemplar's specific colors.
+	Aesthetic string `json:"aesthetic,omitempty"`
 }
 
 // Output is the result envelope. HTML is the entire playable artifact; Title
@@ -71,11 +78,30 @@ type SessionStore struct {
 	sessions map[string]*Session
 }
 
+// Revision is one immutable snapshot of the game artifact produced by a
+// single LLM turn. Revisions are append-only inside a Session; restoring to
+// an earlier revision truncates the trailing entries (and the matching
+// History tail) so the next Continue edits forward from that point.
+type Revision struct {
+	Idx         int       `json:"idx"`
+	HTML        string    `json:"-"` // body omitted from list JSON; served by /play & /source
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Bytes       int       `json:"bytes"`
+	At          time.Time `json:"at"`
+}
+
 type Session struct {
-	mu       sync.RWMutex
-	History  []schema.Message
-	LastHTML string
-	Title    string
+	mu        sync.RWMutex
+	History   []schema.Message
+	Revisions []Revision
+	// Genre is the optional hint captured at Run-time so follow-up edits
+	// (and the prompt builder) can re-apply genre-specific guidance.
+	Genre string
+	// Aesthetic is the visual style preset captured at Run-time. Re-applied
+	// on every Continue so the look stays consistent across edits.
+	Aesthetic string
+	Title     string
 }
 
 func NewSessionStore() *SessionStore {
@@ -95,11 +121,41 @@ func (s *SessionStore) Put(id string, sess *Session) {
 	s.sessions[id] = sess
 }
 
-// Snapshot returns the latest HTML and title under a read lock.
+// Snapshot returns the latest HTML and title under a read lock. Derived
+// from the trailing Revision so there's a single source of truth for the
+// artifact body.
 func (sess *Session) Snapshot() (html, title string) {
 	sess.mu.RLock()
 	defer sess.mu.RUnlock()
-	return sess.LastHTML, sess.Title
+	if n := len(sess.Revisions); n > 0 {
+		return sess.Revisions[n-1].HTML, sess.Title
+	}
+	return "", sess.Title
+}
+
+// RevisionAt returns a copy of the revision at idx, or (Revision{}, false)
+// when idx is out of range. The HTML body is intentionally included on the
+// copy — the historical /play and /source endpoints need it.
+func (sess *Session) RevisionAt(idx int) (Revision, bool) {
+	sess.mu.RLock()
+	defer sess.mu.RUnlock()
+	if idx < 0 || idx >= len(sess.Revisions) {
+		return Revision{}, false
+	}
+	return sess.Revisions[idx], true
+}
+
+// RevisionList returns a copy of the revision metadata (no HTML bodies) for
+// the list endpoint.
+func (sess *Session) RevisionList() []Revision {
+	sess.mu.RLock()
+	defer sess.mu.RUnlock()
+	out := make([]Revision, len(sess.Revisions))
+	for i, r := range sess.Revisions {
+		r.HTML = ""
+		out[i] = r
+	}
+	return out
 }
 
 // Run is the cold-start path: builds the system prompt + first user message,
@@ -107,7 +163,9 @@ func (sess *Session) Snapshot() (html, title string) {
 func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, error) {
 	user := buildUserPrompt(in)
 	sess := &Session{
-		History: []schema.Message{schema.NewUser(user)},
+		History:   []schema.Message{schema.NewUser(user)},
+		Genre:     in.Genre,
+		Aesthetic: in.Aesthetic,
 	}
 	if p.Sessions != nil {
 		p.Sessions.Put(jobID, sess)
@@ -135,54 +193,116 @@ func (p *Pipeline) Continue(ctx context.Context, jobID string, userMessage strin
 // generate is the shared LLM-call core. Both Run and Continue funnel here so
 // the prompt construction, retry semantics, and event emission live in one
 // place.
+//
+// Retry policy: a single corrective retry triggers when either the static
+// check (validateGeneratedHTML — empty / no canvas/RAF / no title / under
+// 1KB) or the chromedp smoke test (runtime exceptions, console.error)
+// reports issues. The two share one retry budget; smoke only runs when
+// the static check already passed (chromedp would just choke on broken
+// HTML anyway). The retry's user message containing the issues is built
+// into a local history, NOT persisted to sess.History — only the final
+// assistant turn is, so the next Continue() doesn't inherit a polluted
+// conversation.
 func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*Output, error) {
 	p.emit(ctx, event.NewStepStart("game-writer", 1))
 	p.emit(ctx, event.NewToolStart("write_game", jobID))
 
 	sess.mu.RLock()
 	history := append([]schema.Message(nil), sess.History...)
-	prior := sess.LastHTML
+	var prior string
+	if n := len(sess.Revisions); n > 0 {
+		prior = sess.Revisions[n-1].HTML
+	}
+	genre := sess.Genre
+	aesthetic := sess.Aesthetic
 	sess.mu.RUnlock()
 
-	sys := systemPrompt(prior)
+	sys := systemPrompt(prior, genre, aesthetic)
 	worker := p.Router.For("worker")
 	model := p.Router.ModelFor("worker")
 
-	// Generous token cap: a self-contained Canvas game commonly runs
-	// 6–12k tokens. We trade latency for completeness here — truncated
-	// HTML is unrecoverable for the user.
-	resp, err := worker.AskTool(ctx, llm.AskToolRequest{
-		Model:        model,
-		SystemPrompt: sys,
-		Messages:     history,
-		MaxTokens:    8192,
-		Temperature:  0.4,
-	})
+	// Attempt 1.
+	resp1, err := p.askWorker(ctx, worker, model, sys, history)
 	if err != nil {
 		p.emit(ctx, event.NewError("game.generate", err))
 		return nil, fmt.Errorf("llm: %w", err)
 	}
-
-	desc, html, title := parseResponse(resp.Content)
-	if strings.TrimSpace(html) == "" {
-		err := fmt.Errorf("model returned no HTML block (got %d bytes of text)", len(resp.Content))
-		p.emit(ctx, event.NewError("game.parse", err))
-		return nil, err
+	desc, html, title := parseResponse(resp1.Content)
+	finalRaw := resp1.Content
+	cost := Cost{
+		InputTokens:     resp1.Usage.InputTokens,
+		OutputTokens:    resp1.Usage.OutputTokens,
+		CacheReadTokens: resp1.Usage.CacheReadTokens,
 	}
 
-	cost := Cost{
-		InputTokens:     resp.Usage.InputTokens,
-		OutputTokens:    resp.Usage.OutputTokens,
-		CacheReadTokens: resp.Usage.CacheReadTokens,
+	// Decide whether a corrective retry is needed. Two signals contribute,
+	// sharing one retry budget:
+	//   1. Static reasons (empty, no canvas/RAF, no title, too small).
+	//   2. Runtime reasons from a chromedp smoke test — only run when the
+	//      static check already passed (broken HTML would just produce
+	//      noisy chrome errors that don't help the model fix anything).
+	issues := weakReasons(html)
+	if len(issues) == 0 {
+		smokeErrs, smokeErr := SmokeTest(ctx, html)
+		switch {
+		case smokeErr != nil:
+			// chromedp failed (no chrome, timeout, etc.) — log and
+			// skip; do NOT penalise the model for an infra issue.
+			slog.WarnContext(ctx, "game smoke skipped", "err", smokeErr, "job", jobID)
+		case len(smokeErrs) > 0:
+			issues = smokeErrs
+		}
+	}
+
+	if len(issues) > 0 {
+		p.emit(ctx, event.NewLLMThought(
+			"校正输出 — "+strings.Join(issues, "；"),
+			nil, event.Tokens{},
+		))
+		retryHist := append(append([]schema.Message(nil), history...),
+			schema.NewAssistant(resp1.Content),
+			schema.NewUser(buildRetryMessage(issues)),
+		)
+		resp2, err2 := p.askWorker(ctx, worker, model, sys, retryHist)
+		if err2 == nil {
+			d2, h2, t2 := parseResponse(resp2.Content)
+			// Accept retry only if it improves on the first attempt
+			// (non-empty HTML when first was empty, OR validates clean).
+			if strings.TrimSpace(h2) != "" {
+				ok, _ := validateGeneratedHTML(h2)
+				if strings.TrimSpace(html) == "" || ok {
+					desc, html, title, finalRaw = d2, h2, t2, resp2.Content
+				}
+			}
+			cost.InputTokens += resp2.Usage.InputTokens
+			cost.OutputTokens += resp2.Usage.OutputTokens
+			cost.CacheReadTokens += resp2.Usage.CacheReadTokens
+		}
+		// If retry errored, we fall through with attempt-1's data —
+		// surfacing a partial game beats surfacing nothing.
+	}
+
+	if strings.TrimSpace(html) == "" {
+		err := fmt.Errorf("model returned no HTML block")
+		p.emit(ctx, event.NewError("game.parse", err))
+		return nil, err
 	}
 	cost.EstimatedUSD = estimateCost(cost)
 
 	sess.mu.Lock()
-	sess.History = append(sess.History, schema.NewAssistant(resp.Content))
-	sess.LastHTML = html
+	sess.History = append(sess.History, schema.NewAssistant(finalRaw))
 	if title != "" {
 		sess.Title = title
 	}
+	rev := Revision{
+		Idx:         len(sess.Revisions),
+		HTML:        html,
+		Title:       sess.Title,
+		Description: desc,
+		Bytes:       len(html),
+		At:          time.Now().UTC(),
+	}
+	sess.Revisions = append(sess.Revisions, rev)
 	sess.mu.Unlock()
 
 	p.emit(ctx, event.NewLLMThought(desc, nil, event.Tokens{
@@ -200,6 +320,72 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 		Cost:        cost,
 		Description: desc,
 	}, nil
+}
+
+// askWorker is the single LLM call site. Generous token cap because a
+// self-contained game with juice runs 8–12k tokens — truncated HTML is
+// unrecoverable for the user.
+func (p *Pipeline) askWorker(ctx context.Context, worker llm.Client, model, sys string, history []schema.Message) (*llm.AskToolResponse, error) {
+	return worker.AskTool(ctx, llm.AskToolRequest{
+		Model:        model,
+		SystemPrompt: sys,
+		Messages:     history,
+		MaxTokens:    12288,
+		Temperature:  0.4,
+	})
+}
+
+// weakReasons returns the list of validateGeneratedHTML reasons plus an
+// "empty HTML" reason when parseResponse returned nothing. Empty list
+// means "no retry needed".
+func weakReasons(html string) []string {
+	if strings.TrimSpace(html) == "" {
+		return []string{"上一次回复中找不到 HTML 代码块"}
+	}
+	ok, missing := validateGeneratedHTML(html)
+	if ok {
+		return nil
+	}
+	return missing
+}
+
+// Restore truncates the session back to the given revision index so the next
+// Continue() edits forward from that point. The History trailing user+assistant
+// turns are dropped in lockstep — Revisions[idx] corresponds to the assistant
+// message at History[2*idx+1], so we keep History[:2*(idx+1)].
+//
+// Emits a thought event so the chat UI can surface the rewind in the same
+// stream as model output.
+func (p *Pipeline) Restore(ctx context.Context, jobID string, idx int) error {
+	if p.Sessions == nil {
+		return fmt.Errorf("session store not configured")
+	}
+	sess, ok := p.Sessions.Get(jobID)
+	if !ok {
+		return fmt.Errorf("session not found: %s", jobID)
+	}
+	sess.mu.Lock()
+	if idx < 0 || idx >= len(sess.Revisions) {
+		sess.mu.Unlock()
+		return fmt.Errorf("revision %d out of range (have %d)", idx, len(sess.Revisions))
+	}
+	sess.Revisions = sess.Revisions[:idx+1]
+	keep := 2 * (idx + 1)
+	if keep > len(sess.History) {
+		keep = len(sess.History)
+	}
+	sess.History = sess.History[:keep]
+	sess.Title = sess.Revisions[idx].Title
+	sess.mu.Unlock()
+
+	p.emit(ctx, event.NewLLMThought(
+		fmt.Sprintf("已回到 v%d — 后续修改将以此版本为基础。", idx),
+		nil, event.Tokens{},
+	))
+	// Match the lifecycle of a normal generation turn so the chat's
+	// "thinking" bubble flips to "done" instead of spinning forever.
+	p.emit(ctx, event.NewAgentFinish("game-writer"))
+	return nil
 }
 
 func (p *Pipeline) emit(ctx context.Context, ev event.Event) {

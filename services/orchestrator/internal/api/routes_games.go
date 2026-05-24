@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +41,7 @@ type createGameRequest struct {
 	Prompt     string `json:"prompt"`
 	Genre      string `json:"genre,omitempty"`
 	Difficulty string `json:"difficulty,omitempty"`
+	Aesthetic  string `json:"aesthetic,omitempty"`
 }
 
 type createGameResponse struct {
@@ -65,7 +67,7 @@ func (h *handlers) CreateGame(w http.ResponseWriter, r *http.Request) {
 		ID:        jobID,
 		SessionID: sessionID,
 		Status:    "running",
-		Input:     games.Input{Prompt: prompt, Genre: req.Genre, Difficulty: req.Difficulty},
+		Input:     games.Input{Prompt: prompt, Genre: req.Genre, Difficulty: req.Difficulty, Aesthetic: req.Aesthetic},
 		StartedAt: time.Now().UTC(),
 	}
 	gameJobsMu.Lock()
@@ -82,7 +84,7 @@ func (h *handlers) CreateGame(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) runGameJob(job *gameJob) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
@@ -170,6 +172,131 @@ func (h *handlers) PlayGame(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(html))
 }
 
+// SourceGame returns the same artifact as text/plain so the frontend's Source
+// tab can render it as a code listing instead of executing it. Mirrors
+// PlayGame's lookup logic — kept separate so the Content-Type and cache
+// posture stay explicit at the route layer.
+func (h *handlers) SourceGame(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if h.deps.GameSessions == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "games not configured")
+		return
+	}
+	sess, ok := h.deps.GameSessions.Get(id)
+	if !ok {
+		errorJSON(w, http.StatusNotFound, "game not found")
+		return
+	}
+	html, _ := sess.Snapshot()
+	if strings.TrimSpace(html) == "" {
+		errorJSON(w, http.StatusNotFound, "game not ready")
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(html))
+}
+
+// ListGameRevisions returns the immutable history of generated revisions
+// (metadata only; HTML body is fetched via /revisions/{idx}/play|source).
+func (h *handlers) ListGameRevisions(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if h.deps.GameSessions == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "games not configured")
+		return
+	}
+	sess, ok := h.deps.GameSessions.Get(id)
+	if !ok {
+		errorJSON(w, http.StatusNotFound, "game not found")
+		return
+	}
+	revs := sess.RevisionList()
+	writeJSON(w, http.StatusOK, map[string]any{"revisions": revs})
+}
+
+// PlayGameRevision serves a historical revision's HTML for the read-only
+// preview ("Viewing v2"). Identical Content-Type / framing posture as
+// PlayGame so the same iframe can render either.
+func (h *handlers) PlayGameRevision(w http.ResponseWriter, r *http.Request) {
+	h.serveRevisionHTML(w, r, "text/html; charset=utf-8", true)
+}
+
+// SourceGameRevision serves a historical revision's HTML as text/plain.
+func (h *handlers) SourceGameRevision(w http.ResponseWriter, r *http.Request) {
+	h.serveRevisionHTML(w, r, "text/plain; charset=utf-8", false)
+}
+
+func (h *handlers) serveRevisionHTML(w http.ResponseWriter, r *http.Request, contentType string, sameOrigin bool) {
+	id := chi.URLParam(r, "id")
+	idx, err := strconv.Atoi(chi.URLParam(r, "idx"))
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, "bad revision index")
+		return
+	}
+	if h.deps.GameSessions == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "games not configured")
+		return
+	}
+	sess, ok := h.deps.GameSessions.Get(id)
+	if !ok {
+		errorJSON(w, http.StatusNotFound, "game not found")
+		return
+	}
+	rev, ok := sess.RevisionAt(idx)
+	if !ok {
+		errorJSON(w, http.StatusNotFound, "revision not found")
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "no-store")
+	if sameOrigin {
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	}
+	_, _ = w.Write([]byte(rev.HTML))
+}
+
+// RestoreGameRevision truncates the session back to the given revision so
+// follow-up edits fork from that point. 202 because the chat-side surfacing
+// happens via a thought event on the SSE bus, not the HTTP body.
+//
+// We also re-sync the gameJob's Title/Bytes/FinishedAt with the restored
+// head so the next GET /games/{id} reflects what the user is actually
+// looking at — otherwise the header would keep showing the discarded
+// title and the iframe wouldn't pick a fresh cache-buster.
+func (h *handlers) RestoreGameRevision(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	idx, err := strconv.Atoi(chi.URLParam(r, "idx"))
+	if err != nil {
+		errorJSON(w, http.StatusBadRequest, "bad revision index")
+		return
+	}
+	gameJobsMu.RLock()
+	job, ok := gameJobs[id]
+	gameJobsMu.RUnlock()
+	if !ok {
+		errorJSON(w, http.StatusNotFound, "job not found")
+		return
+	}
+	ctx := event.WithSessionID(r.Context(), job.SessionID)
+	if err := h.deps.Games.Restore(ctx, id, idx); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if sess, ok := h.deps.GameSessions.Get(id); ok {
+		if rev, ok := sess.RevisionAt(idx); ok {
+			gameJobsMu.Lock()
+			job.Title = rev.Title
+			job.Bytes = rev.Bytes
+			job.FinishedAt = time.Now().UTC()
+			gameJobsMu.Unlock()
+		}
+	}
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"job_id":      job.ID,
+		"restored_to": idx,
+	})
+}
+
 // PostGameMessage is the follow-up edit endpoint. The user's natural-language
 // instruction is appended to history; Pipeline.Continue re-prompts with the
 // prior HTML in the system context. Returns 202 immediately and the frontend
@@ -210,7 +337,7 @@ func (h *handlers) PostGameMessage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) continueGameJob(job *gameJob, userMessage string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
 

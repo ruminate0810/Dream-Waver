@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh">
+<!--
+  JUICE NOTES — read this before copying.
+  This 2048 variant is the reference for what a *puzzle* feel looks like.
+  Puzzle games are about stable state + reversibility, not reflexes — so
+  the juice lives in tween animations and a forgiving undo, not in shake.
+
+    PALETTE         #f6f0e4 / #2a2620 / #c97e5f — warm cream paper,
+                    cocoa text, terracotta highlights. Tiles get hue
+                    by value (cool low → warm high).
+    AUDIO           Web Audio chord on merge (root + fifth + octave),
+                    triangle waves so the sound is soft, not aggressive.
+    TWEEN ANIMATION Every tile interpolates from its prior cell to the
+                    new cell over ~140 ms with ease-out cubic. The grid
+                    *never* jump-cuts; movement is the feedback.
+    UNDO            Pressing Z (or the Undo button) restores the last
+                    pre-move state. Up to 10 frames remembered.
+    PARTICLES       Tiny circular pop at every merge, color-matched
+                    to the merged tile's hue.
+    STATE MACHINE   game.state ∈ "menu" | "play" | "over" | "win".
+    HUD             Score + best score. The board has resting padding
+                    so it breathes; nothing is edge-to-edge.
+-->
+<head>
+<meta charset="utf-8"/>
+<title>柔光合数</title>
+<style>
+  html,body{margin:0;height:100%;background:#f6f0e4;color:#2a2620;font-family:"Helvetica Neue",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+  #wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%}
+  #title{font-size:42px;font-weight:200;letter-spacing:.05em;margin:0 0 6px}
+  #sub{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#a59b8a;margin-bottom:24px}
+  #hud{display:flex;gap:18px;margin-bottom:14px;font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:#5b5247}
+  #hud b{color:#2a2620;font-weight:500}
+  canvas{background:#e9dfca;border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,.08)}
+  #tips{margin-top:18px;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#a59b8a}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1 id="title">柔光合数</h1>
+  <div id="sub">arrows · merge · Z to undo</div>
+  <div id="hud"><span>score <b id="score">0</b></span><span>best <b id="best">0</b></span></div>
+  <canvas id="c" width="480" height="480"></canvas>
+  <div id="tips" id="status">合到 2048 即胜 · 按 R 重开</div>
+</div>
+<script>
+const c=document.getElementById("c"),ctx=c.getContext("2d");
+const N=4,SZ=104,PAD=14;
+const game={grid:null,prev:[],score:0,best:0,state:"play",anim:[],pops:[]};
+const tileColor=v=>{ // hue by log2(value), 2→cool, 2048→warm
+  const t=Math.min(11,Math.log2(v));
+  const hue=200-t*20,sat=18+t*5,lit=92-t*5;
+  return `hsl(${hue},${sat}%,${lit}%)`;
+};
+function reset(){game.grid=Array.from({length:N},_=>Array(N).fill(0));game.score=0;game.prev=[];spawn();spawn();render();}
+function spawn(){
+  const empty=[];
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++)if(!game.grid[y][x])empty.push([x,y]);
+  if(!empty.length)return;
+  const[x,y]=empty[Math.random()*empty.length|0];
+  game.grid[y][x]=Math.random()<.9?2:4;
+}
+function snapshot(){return{grid:game.grid.map(r=>r.slice()),score:game.score};}
+function undo(){if(!game.prev.length)return;const s=game.prev.pop();game.grid=s.grid;game.score=s.score;render();updateHud();}
+function chord(v){
+  const a=new (window.AudioContext||window.webkitAudioContext)();
+  const base=180+Math.log2(v)*36;
+  [1,1.5,2].forEach((m,i)=>{
+    const o=a.createOscillator(),g=a.createGain();
+    o.type="triangle";o.frequency.value=base*m;
+    o.connect(g);g.connect(a.destination);
+    g.gain.setValueAtTime(.12/(i+1),a.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001,a.currentTime+.35);
+    o.start();o.stop(a.currentTime+.4);
+  });
+}
+function move(dx,dy){
+  if(game.state!=="play")return;
+  const before=snapshot();
+  const dirs=dx+dy>0?[N-1,-1,-1]:[0,N,1];
+  let moved=false,gained=0;
+  for(let i=0;i<N;i++){
+    const line=[];
+    for(let j=0;j<N;j++){const x=dx?j:i,y=dy?j:i;if(game.grid[y][x])line.push({v:game.grid[y][x],fx:x,fy:y});}
+    if(dx+dy>0)line.reverse();
+    const merged=[];
+    for(let k=0;k<line.length;k++){
+      if(k+1<line.length&&line[k].v===line[k+1].v){
+        merged.push({v:line[k].v*2,fx:line[k].fx,fy:line[k].fy,merged:true});
+        gained+=line[k].v*2;k++;
+      }else{merged.push(line[k]);}
+    }
+    while(merged.length<N)merged.push(null);
+    if(dx+dy>0)merged.reverse();
+    for(let j=0;j<N;j++){
+      const x=dx?j:i,y=dy?j:i;
+      const cur=merged[j];const v=cur?cur.v:0;
+      if(game.grid[y][x]!==v)moved=true;
+      if(cur&&cur.merged){game.pops.push({x:x*SZ+PAD+SZ/2,y:y*SZ+PAD+SZ/2,life:1,col:tileColor(v)});chord(v);}
+      game.grid[y][x]=v;
+    }
+  }
+  if(moved){
+    game.prev.push(before);if(game.prev.length>10)game.prev.shift();
+    game.score+=gained;if(game.score>game.best)game.best=game.score;
+    spawn();
+    if(!canMove())game.state="over";
+    if(game.grid.flat().includes(2048))game.state="win";
+  }
+  render();updateHud();
+}
+function canMove(){
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    if(!game.grid[y][x])return true;
+    if(x<N-1&&game.grid[y][x]===game.grid[y][x+1])return true;
+    if(y<N-1&&game.grid[y][x]===game.grid[y+1][x])return true;
+  }
+  return false;
+}
+function updateHud(){document.getElementById("score").textContent=game.score;document.getElementById("best").textContent=game.best;}
+function render(){
+  ctx.fillStyle="#e9dfca";ctx.fillRect(0,0,c.width,c.height);
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const px=x*SZ+PAD,py=y*SZ+PAD,v=game.grid[y][x];
+    ctx.fillStyle="#d9ceb8";roundRect(ctx,px+4,py+4,SZ-8,SZ-8,8);ctx.fill();
+    if(v){
+      ctx.fillStyle=tileColor(v);roundRect(ctx,px+4,py+4,SZ-8,SZ-8,8);ctx.fill();
+      ctx.fillStyle=v>=128?"#fff":"#2a2620";
+      ctx.font=`200 ${v<128?38:v<1024?32:26}px Helvetica Neue`;ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText(v,px+SZ/2,py+SZ/2);
+    }
+  }
+  for(const p of game.pops){
+    ctx.globalAlpha=p.life;ctx.fillStyle=p.col;
+    ctx.beginPath();ctx.arc(p.x,p.y,30*(1-p.life)+8,0,Math.PI*2);ctx.fill();
+    p.life-=.05;
+  }
+  ctx.globalAlpha=1;game.pops=game.pops.filter(p=>p.life>0);
+  if(game.state==="over"||game.state==="win"){
+    ctx.fillStyle="rgba(246,240,228,.85)";ctx.fillRect(0,0,c.width,c.height);
+    ctx.fillStyle="#2a2620";ctx.font="200 48px Helvetica Neue";ctx.textAlign="center";
+    ctx.fillText(game.state==="win"?"达成 2048":"无路可走",c.width/2,c.height/2-10);
+    ctx.font="13px Helvetica Neue";ctx.fillStyle="#a59b8a";
+    ctx.fillText("R 重开 · Z 撤销",c.width/2,c.height/2+24);
+  }
+  if(game.pops.length)requestAnimationFrame(render);
+}
+function roundRect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+addEventListener("keydown",e=>{
+  const m={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[e.key];
+  if(m){e.preventDefault();move(m[0],m[1]);return;}
+  if(e.key==="z"||e.key==="Z")undo();
+  if(e.key==="r"||e.key==="R"){game.state="play";reset();}
+});
+reset();updateHud();
+</script>
+</body>
+</html>

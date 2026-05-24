@@ -92,11 +92,16 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/games", h.CreateGame)
 		r.Get("/games/{id}", h.GetGame)
 		r.Get("/games/{id}/play", h.PlayGame)
+		// Source returns the raw HTML as text/plain so the frontend can
+		// show it in a Source tab without the browser rendering it.
 		r.Get("/games/{id}/source", h.SourceGame)
-		// Workspace file server. The iframe loads
-		// /games/{id}/files/index.html; relative paths inside resolve
-		// to siblings under the same prefix. {*} is chi's catch-all.
-		r.Get("/games/{id}/files/*", h.FilesGame)
+		// Revision history. The session keeps every successful generation
+		// as an immutable snapshot; restoring forks the next edit from that
+		// point instead of from the latest.
+		r.Get("/games/{id}/revisions", h.ListGameRevisions)
+		r.Get("/games/{id}/revisions/{idx}/play", h.PlayGameRevision)
+		r.Get("/games/{id}/revisions/{idx}/source", h.SourceGameRevision)
+		r.Post("/games/{id}/revisions/{idx}/restore", h.RestoreGameRevision)
 		r.Post("/games/{id}/messages", h.PostGameMessage)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)

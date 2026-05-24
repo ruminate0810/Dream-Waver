@@ -102,6 +102,12 @@ export type CreateGameRequest = {
   prompt: string;
   genre?: string;
   difficulty?: string;
+  /**
+   * Visual style preset: "minimalist" | "neon" | "paper" | "pixel" |
+   * "editorial". Overrides the default palette in the system prompt.
+   * Omit (or pass undefined) to let the exemplar's palette dominate.
+   */
+  aesthetic?: string;
 };
 
 export type CreateGameResponse = {
@@ -118,6 +124,7 @@ export type GameJob = {
     prompt: string;
     genre?: string;
     difficulty?: string;
+    aesthetic?: string;
   };
   title?: string;
   bytes?: number;
@@ -154,4 +161,52 @@ export async function postGameMessage(jobId: string, content: string): Promise<v
     body: JSON.stringify({ content }),
   });
   await unwrap<{ job_id: string; session_id: string }>(res);
+}
+
+// ─── Game revisions ───────────────────────────────────────────────────
+//
+// Every successful generation appends one immutable Revision to the
+// session. The frontend lists them as v0/v1/v2/… and lets the user
+// preview an older version (read-only) or restore to fork from there.
+
+export type GameRevision = {
+  idx: number;
+  title: string;
+  description: string;
+  bytes: number;
+  /** RFC3339 timestamp. */
+  at: string;
+};
+
+export async function listGameRevisions(jobId: string): Promise<GameRevision[]> {
+  const res = await fetch(`/api/v1/games/${jobId}/revisions`);
+  const data = await unwrap<{ revisions: GameRevision[] }>(res);
+  return data.revisions ?? [];
+}
+
+/**
+ * Truncate the session back to revision idx. Subsequent edits fork from
+ * this point. A thought event "已回到 vN" streams via the existing SSE
+ * channel so the chat picks it up alongside normal output.
+ */
+export async function restoreGameRevision(jobId: string, idx: number): Promise<void> {
+  const res = await fetch(`/api/v1/games/${jobId}/revisions/${idx}/restore`, {
+    method: "POST",
+  });
+  await unwrap<{ job_id: string; restored_to: number }>(res);
+}
+
+/** URL the iframe should load to preview a historical revision. */
+export function gameRevisionPlayURL(jobId: string, idx: number): string {
+  return `/api/v1/games/${jobId}/revisions/${idx}/play`;
+}
+
+/** URL the Source view should fetch for a historical revision. */
+export function gameRevisionSourceURL(jobId: string, idx: number): string {
+  return `/api/v1/games/${jobId}/revisions/${idx}/source`;
+}
+
+/** URL the Source view should fetch for the current head revision. */
+export function gameSourceURL(jobId: string): string {
+  return `/api/v1/games/${jobId}/source`;
 }

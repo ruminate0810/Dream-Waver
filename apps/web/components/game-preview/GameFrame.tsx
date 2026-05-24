@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, RefreshCw, ExternalLink, Maximize2 } from "lucide-react";
+import { Loader2, RefreshCw, ExternalLink, Maximize2, Eye } from "lucide-react";
 import clsx from "clsx";
 
-import type { GameJob } from "@/lib/api";
+import { gameRevisionPlayURL, type GameJob } from "@/lib/api";
+import { RevisionStrip } from "./RevisionStrip";
+import { GameSource } from "./GameSource";
+
+type View = "preview" | "source";
 
 // GameFrame is the right-hand preview pane. It hosts an iframe that points
 // at /api/v1/games/{id}/play (same-origin via Next.js rewrites) and bumps
@@ -15,10 +19,18 @@ import type { GameJob } from "@/lib/api";
 // While the backend is generating (status==="running") we keep the prior
 // frame visible if we have one, and overlay a translucent "Composing" badge
 // so the user knows another iteration is in flight.
+//
+// The RevisionStrip below the header lets the user time-travel to an
+// earlier revision (read-only preview) and optionally restore from there.
 
 export function GameFrame({ job }: { job: GameJob }) {
   const [version, setVersion] = useState(0);
   const [hasLoaded, setHasLoaded] = useState(false);
+  const [view, setView] = useState<View>("preview");
+  // viewingRevision === undefined means "head" — show whatever job.play_url
+  // currently points at. A defined idx pins the iframe to a historical
+  // revision; user toggles back to head by clicking the head pill again.
+  const [viewingRevision, setViewingRevision] = useState<number | undefined>(undefined);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Track the previous finishedAt so we only bump the cache key on a real
   // re-render. Useful when the polling loop keeps re-fetching the same
@@ -32,10 +44,17 @@ export function GameFrame({ job }: { job: GameJob }) {
     lastFinishedRef.current = job.finished_at;
     setVersion((v) => v + 1);
     setHasLoaded(false);
+    // A new generation lands → snap back to head so the user sees the
+    // newly produced artifact rather than staying parked on an older one.
+    setViewingRevision(undefined);
   }, [job.status, job.finished_at]);
 
   const playable = job.status === "finished" && !!job.play_url;
-  const src = playable ? `${job.play_url}?v=${version}` : undefined;
+  const src = playable
+    ? viewingRevision !== undefined
+      ? `${gameRevisionPlayURL(job.job_id, viewingRevision)}?v=${version}`
+      : `${job.play_url}?v=${version}`
+    : undefined;
 
   const focusGame = () => {
     // Click into the iframe so keyboard events flow to the game. Without
@@ -51,48 +70,89 @@ export function GameFrame({ job }: { job: GameJob }) {
     setHasLoaded(false);
   };
 
+  const handleRestored = () => {
+    // After restore, the head moves to the restored idx. Snap back to
+    // head (clear local selection) and force the iframe to refetch.
+    setViewingRevision(undefined);
+    setVersion((v) => v + 1);
+    setHasLoaded(false);
+  };
+
   return (
     <div className="flex h-full flex-col">
       <FrameHeader
         job={job}
+        view={view}
+        setView={setView}
         onReload={reload}
         onFullscreen={() => {
           if (job.play_url) window.open(job.play_url, "_blank");
         }}
       />
-      <div className="relative flex-1 overflow-hidden border border-[color:var(--rule)] bg-[#0f1115]">
-        {src ? (
-          <iframe
-            ref={iframeRef}
-            key={src /* hard remount on version bump — cleanest reset */}
-            src={src}
-            title={job.title || "Game preview"}
-            onLoad={() => {
-              setHasLoaded(true);
-              focusGame();
-            }}
-            onClick={focusGame}
-            // sandbox=allow-scripts gives the iframe a unique null origin
-            // — requestAnimationFrame / keyboard / canvas all work, but
-            // the game cannot reach window.parent, read parent cookies,
-            // or top-navigate the tab. The artifact comes from an LLM so
-            // we treat it as untrusted content.
-            sandbox="allow-scripts"
-            className="h-full w-full bg-white"
-          />
-        ) : (
-          <PlaceholderCanvas status={job.status} error={job.error} />
-        )}
+      {job.status === "finished" ? (
+        <RevisionStrip
+          jobId={job.job_id}
+          refreshKey={job.finished_at}
+          selectedIdx={viewingRevision}
+          onSelect={(idx) => {
+            setViewingRevision(idx);
+            setVersion((v) => v + 1);
+            setHasLoaded(false);
+          }}
+          onRestored={handleRestored}
+          compact
+        />
+      ) : null}
+      {view === "source" && job.status === "finished" ? (
+        <GameSource
+          jobId={job.job_id}
+          revisionIdx={viewingRevision}
+          title={job.title || "game"}
+        />
+      ) : (
+        <div className="relative flex-1 overflow-hidden border border-[color:var(--rule)] bg-[#0f1115]">
+          {src ? (
+            <iframe
+              ref={iframeRef}
+              key={src /* hard remount on version bump — cleanest reset */}
+              src={src}
+              title={job.title || "Game preview"}
+              onLoad={() => {
+                setHasLoaded(true);
+                focusGame();
+              }}
+              onClick={focusGame}
+              // sandbox=allow-scripts gives the iframe a unique null origin
+              // — requestAnimationFrame / keyboard / canvas all work, but
+              // the game cannot reach window.parent, read parent cookies,
+              // or top-navigate the tab. The artifact comes from an LLM so
+              // we treat it as untrusted content.
+              sandbox="allow-scripts"
+              className="h-full w-full bg-white"
+            />
+          ) : (
+            <PlaceholderCanvas status={job.status} error={job.error} />
+          )}
 
-        {/* Running overlay — semi-transparent so the user still sees the
-            previous game and gets a sense of continuity. */}
-        {job.status === "running" && hasLoaded ? (
-          <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
-            <Loader2 size={11} strokeWidth={2} className="animate-spin" />
-            <span>Composing</span>
-          </div>
-        ) : null}
-      </div>
+          {/* Read-only banner — only shows when previewing a historical
+              revision. Click "Restore" in the strip to fork edits from it. */}
+          {viewingRevision !== undefined ? (
+            <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full bg-[color:var(--vermillion)]/90 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
+              <Eye size={11} strokeWidth={2} />
+              <span>Viewing v{viewingRevision} · read-only</span>
+            </div>
+          ) : null}
+
+          {/* Running overlay — semi-transparent so the user still sees the
+              previous game and gets a sense of continuity. */}
+          {job.status === "running" && hasLoaded ? (
+            <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
+              <Loader2 size={11} strokeWidth={2} className="animate-spin" />
+              <span>Composing</span>
+            </div>
+          ) : null}
+        </div>
+      )}
       <FrameFooter job={job} />
     </div>
   );
@@ -100,10 +160,14 @@ export function GameFrame({ job }: { job: GameJob }) {
 
 function FrameHeader({
   job,
+  view,
+  setView,
   onReload,
   onFullscreen,
 }: {
   job: GameJob;
+  view: View;
+  setView: (v: View) => void;
   onReload: () => void;
   onFullscreen: () => void;
 }) {
@@ -118,8 +182,31 @@ function FrameHeader({
           {job.title || "Untitled game"}
         </span>
       </div>
-      <div className="flex items-center gap-1">
-        <IconButton onClick={onReload} disabled={!ready} title="Restart game">
+      <div className="flex items-center gap-2">
+        {ready ? (
+          <div className="flex overflow-hidden border border-[color:var(--rule)]">
+            {(["preview", "source"] as View[]).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                className={clsx(
+                  "px-2.5 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] transition-colors",
+                  view === v
+                    ? "bg-[color:var(--ink)] text-[color:var(--paper)]"
+                    : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <IconButton
+          onClick={onReload}
+          disabled={!ready || view !== "preview"}
+          title="Restart game"
+        >
           <RefreshCw size={13} strokeWidth={1.8} />
         </IconButton>
         <IconButton onClick={onFullscreen} disabled={!ready} title="Open in new tab">
