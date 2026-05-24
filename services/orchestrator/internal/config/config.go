@@ -55,6 +55,12 @@ type Config struct {
 
 	TemplateDir string
 	OutDir      string
+
+	// OpendreamBaseURL points at the Opendream FastAPI service that
+	// powers /api/v1/video/*. Empty disables the bridge — every video
+	// route 503s with a setup hint until this is configured. See
+	// /Users/sheng/git/Opendream/server/README.md.
+	OpendreamBaseURL string
 }
 
 func Load() (*Config, error) {
@@ -91,6 +97,9 @@ func Load() (*Config, error) {
 		SandboxGRPCAddr: envOr("SANDBOX_GRPC_ADDR", "localhost:50051"),
 		TemplateDir:     envOr("SLIDE_TEMPLATE_DIR", "/app/templates"),
 		OutDir:          envOr("SLIDE_OUT_DIR", "/tmp/dreamwaver-out"),
+		// Convention matches Opendream's local-dev port. Override in
+		// staging/prod to point at the in-cluster service URL.
+		OpendreamBaseURL: envOr("OPENDREAM_BASE_URL", ""),
 	}
 	if err := c.validatePrimary(); err != nil {
 		return nil, err

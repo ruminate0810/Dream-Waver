@@ -23,6 +23,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -138,6 +139,20 @@ func main() {
 		Sessions: gameSessions,
 	}
 
+	// ─── Video — Opendream click-to-regen cinematic short pipeline ───
+	// The Go side is just a bridge: it forwards story_spec.json runs to
+	// the Opendream FastAPI, proxies the timeline SSE stream, and
+	// rewrites artifact URLs onto our own prefix. Disabled when
+	// OPENDREAM_BASE_URL is unset — /api/v1/video/* then 503s with a
+	// setup hint instead of crashing the boot.
+	var videoBridge *video.Bridge
+	if cfg.OpendreamBaseURL != "" {
+		videoBridge = video.NewBridge(cfg.OpendreamBaseURL, nil)
+		slog.Info("video bridge enabled (Opendream FastAPI)", "base_url", cfg.OpendreamBaseURL)
+	} else {
+		slog.Info("video bridge disabled — set OPENDREAM_BASE_URL to enable /api/v1/video/*")
+	}
+
 	// ─── HTTP server ──────────────────────────────────────────────────
 	srv := api.NewServer(api.Dependencies{
 		Hub:          hub,
@@ -155,6 +170,7 @@ func main() {
 			}
 			return ""
 		}(),
+		VideoBridge: videoBridge,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

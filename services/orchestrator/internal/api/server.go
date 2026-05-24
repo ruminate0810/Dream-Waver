@@ -17,6 +17,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -46,6 +47,12 @@ type Dependencies struct {
 	// iframe + chromedp render can both fetch them by HTTP URL. Leave
 	// empty to skip mounting the route (e.g. when image-gen is off).
 	AIImagesDir string
+
+	// VideoBridge proxies the click-to-regen cinematic short pipeline
+	// to the Opendream FastAPI service. Optional; when nil, every
+	// /api/v1/video/* route returns 503 with a hint to set
+	// OPENDREAM_BASE_URL. See services/orchestrator/internal/skill/video.
+	VideoBridge *video.Bridge
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -100,6 +107,17 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/games/{id}/messages", h.PostGameMessage)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
+
+		// Video — bridge to the Opendream FastAPI iteration backend.
+		// Every route 503s when VideoBridge is nil so the surface is
+		// always present and the failure mode is descriptive.
+		r.Route("/video", func(r chi.Router) {
+			r.Post("/runs", h.CreateVideoRun)
+			r.Get("/runs/{id}", h.GetVideoTimeline)
+			r.Post("/runs/{id}/regen", h.RegenVideoNodes)
+			r.Get("/runs/{id}/events", h.StreamVideoEvents)
+			r.Get("/runs/{id}/artifacts/*", h.GetVideoArtifact)
+		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into
 		// AIImagesDir; this route serves them so both the browser

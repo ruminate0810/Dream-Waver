@@ -64,7 +64,7 @@ const GROUPS: Group[] = [
     tiles: [
       { label: "AI 聊天", icon: MessageSquare, color: "text-indigo-500", href: "#", comingSoon: true },
       { label: "AI 图片", icon: ImageIcon,     color: "text-fuchsia-500", href: "#", comingSoon: true },
-      { label: "AI 视频", icon: Film,          color: "text-teal-600", href: "#", comingSoon: true },
+      { label: "AI 视频", icon: Film,          color: "text-teal-600", href: "/video/new" },
     ],
   },
   {
