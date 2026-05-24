@@ -40,6 +40,41 @@ type Template = {
   previews: string[];
 };
 
+// H8 image-led layouts — informational thumbnails so users see what
+// "photo-essay" / "split-image" / "image-grid" actually look like
+// before they type the topic. Not pickers (the planner picks layout
+// per-slide); just visual marketing for the AI-imagery capability.
+type LayoutExample = {
+  key: string;
+  label: string;
+  tagline: string;
+  thumb: string; // SVG path in /public — vector, scales crisp at any size
+  when: string;
+};
+const LAYOUT_EXAMPLES: LayoutExample[] = [
+  {
+    key: "photo-essay",
+    label: "Photo essay",
+    tagline: "全屏 AI 图 + 一行编辑式标题。摄影集 / 旅行日记 / 章节过场。",
+    thumb: "/layout-previews/photo-essay.svg",
+    when: "摄影 · 旅行 · 视觉",
+  },
+  {
+    key: "split-image",
+    label: "Split image",
+    tagline: "50:50 杂志大跨页。图一半 + 标题段落要点一半。产品 / 案例 / 人物。",
+    thumb: "/layout-previews/split-image.svg",
+    when: "产品 · 案例 · 美食",
+  },
+  {
+    key: "image-grid",
+    label: "Image grid",
+    tagline: "3-4 张 AI 图组合 moodboard，一行斜体说明。Look book / 范例集合。",
+    thumb: "/layout-previews/image-grid.svg",
+    when: "时尚 · 范例 · 概念集",
+  },
+];
+
 const TEMPLATES: Template[] = [
   { name: "minimalist", label: "Minimalist",  description: "Clean white canvas, single blue accent, lots of whitespace.",                 best_for: ["product updates", "internal memos"],     primary_color: "#0F172A", accent_color: "#2563EB", thumbnail: "/theme-previews/minimalist-1.png", previews: ["/theme-previews/minimalist-1.png","/theme-previews/minimalist-2.png","/theme-previews/minimalist-3.png"] },
   { name: "corporate",  label: "Corporate",   description: "Structured business deck with navy header bar and amber accent rule.",       best_for: ["consulting decks", "sales proposals"],   primary_color: "#1E3A8A", accent_color: "#F59E0B", thumbnail: "/theme-previews/corporate-1.png",  previews: ["/theme-previews/corporate-1.png","/theme-previews/corporate-2.png","/theme-previews/corporate-3.png"] },
@@ -232,6 +267,53 @@ function NewSlidesChat() {
                 selected={style === t.name}
                 onClick={() => setPreviewTemplate(t)}
               />
+            ))}
+          </div>
+        </section>
+
+        {/* ── H8 image-led layouts gallery ──────────────────────── */}
+        <section className="mb-24">
+          <div className="mb-6 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-4">
+            <h2 className="font-display text-[28px] tracking-tight text-[color:var(--ink)]">
+              图像化版式 <span className="font-mono-jb text-[12px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">· Image-led layouts</span>
+            </h2>
+            <p className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+              AI 自动配图 · {LAYOUT_EXAMPLES.length} 种构图
+            </p>
+          </div>
+
+          <p className="mb-6 max-w-3xl font-display text-[15px] italic leading-snug text-[color:var(--ink-soft)]">
+            当 topic 涉及摄影、旅行、时尚、美食、产品等视觉内容时，planner 会自动挑选下面这几种构图，
+            nano-banana 直接生成贴合主题的 16:9 配图。
+          </p>
+
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+            {LAYOUT_EXAMPLES.map((l) => (
+              <article
+                key={l.key}
+                className="group flex flex-col overflow-hidden border border-[color:var(--rule)] bg-white shadow-[0_1px_0_rgba(26,22,20,0.04)] transition-all duration-200 hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={l.thumb}
+                  alt={`${l.label} layout schematic`}
+                  loading="lazy"
+                  className="aspect-[16/9] w-full bg-[color:var(--paper)]"
+                />
+                <div className="flex flex-col gap-2 border-t border-[color:var(--rule)] px-4 py-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-display text-[17px] leading-tight text-[color:var(--ink)]">
+                      {l.label}
+                    </p>
+                    <p className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--vermillion)]">
+                      {l.when}
+                    </p>
+                  </div>
+                  <p className="font-display text-[13px] italic leading-snug text-[color:var(--ink-soft)]">
+                    {l.tagline}
+                  </p>
+                </div>
+              </article>
             ))}
           </div>
         </section>

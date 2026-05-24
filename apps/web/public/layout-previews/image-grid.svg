@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Image-grid layout — 2 by 2 moodboard of AI images with a single italic caption">
+  <defs>
+    <linearGradient id="tile1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5C6B73"/>
+      <stop offset="1" stop-color="#293439"/>
+    </linearGradient>
+    <linearGradient id="tile2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8B5A3C"/>
+      <stop offset="1" stop-color="#3E2A1C"/>
+    </linearGradient>
+    <linearGradient id="tile3" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6B7280"/>
+      <stop offset="1" stop-color="#1F2937"/>
+    </linearGradient>
+    <linearGradient id="tile4" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9CA3AF"/>
+      <stop offset="1" stop-color="#4B5563"/>
+    </linearGradient>
+  </defs>
+
+  <!-- editorial cream background -->
+  <rect x="0" y="0" width="640" height="360" fill="#F2EEE7"/>
+
+  <!-- title above grid -->
+  <text x="40" y="58" font-family="Georgia, 'Fraunces', serif" font-size="22" font-weight="600" letter-spacing="-0.3" fill="#1A1614">2026 春夏巴黎 · 4 个 look</text>
+
+  <!-- 2x2 grid of image tiles -->
+  <rect x="40" y="80" width="270" height="118" fill="url(#tile1)" rx="3"/>
+  <circle cx="175" cy="135" r="32" fill="#FFFFFF" fill-opacity="0.10"/>
+
+  <rect x="330" y="80" width="270" height="118" fill="url(#tile2)" rx="3"/>
+  <rect x="430" y="115" width="80" height="60" fill="#FFFFFF" fill-opacity="0.10" rx="2"/>
+
+  <rect x="40" y="210" width="270" height="118" fill="url(#tile3)" rx="3"/>
+  <polygon points="100,290 175,225 250,290" fill="#FFFFFF" fill-opacity="0.10"/>
+
+  <rect x="330" y="210" width="270" height="118" fill="url(#tile4)" rx="3"/>
+  <rect x="395" y="245" width="140" height="50" fill="#FFFFFF" fill-opacity="0.10" rx="2"/>
+
+  <!-- italic caption underneath -->
+  <text x="40" y="350" font-family="Georgia, 'Fraunces', serif" font-style="italic" font-size="13" fill="#1A1614" fill-opacity="0.62">从极简到工装：四个风格关键词</text>
+</svg>
