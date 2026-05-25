@@ -21,6 +21,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
@@ -155,6 +156,17 @@ func main() {
 		slog.Info("video bridge disabled — set OPENDREAM_BASE_URL to enable /api/v1/video/*")
 	}
 
+	// ─── Design — dreamapi-sidecar (DreamAPI image generation) ────────
+	// Same pattern as video. Powers the TLDraw canvas's "+ AI image"
+	// button via POST /api/v1/design/images/generate.
+	var designBridge *design.Bridge
+	if cfg.DreamapiSidecarURL != "" {
+		designBridge = design.NewBridge(cfg.DreamapiSidecarURL, nil)
+		slog.Info("design bridge enabled (dreamapi-sidecar)", "base_url", cfg.DreamapiSidecarURL)
+	} else {
+		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
+	}
+
 	// ─── HTTP server ──────────────────────────────────────────────────
 	srv := api.NewServer(api.Dependencies{
 		Hub:          hub,
@@ -172,7 +184,8 @@ func main() {
 			}
 			return ""
 		}(),
-		VideoBridge: videoBridge,
+		VideoBridge:  videoBridge,
+		DesignBridge: designBridge,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

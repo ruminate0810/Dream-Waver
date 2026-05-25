@@ -175,6 +175,12 @@ export type GameJob = {
   bytes?: number;
   /** Set when status==finished. Same-origin URL the iframe loads. */
   play_url?: string;
+  /**
+   * Workspace file manifest, sorted by path. Always contains "index.html"
+   * when the job is finished. Surfaced so the Source tab can render a
+   * file picker for multi-file games.
+   */
+  files?: string[];
   error?: string;
   started_at: string;
   finished_at?: string;
@@ -322,4 +328,46 @@ export async function regenVideoNodes(
 /** Same-origin SSE URL — no rewrite, no WS, no special headers. */
 export function videoEventsURL(runId: string): string {
   return `/api/v1/video/runs/${runId}/events`;
+}
+
+// ─── Design ────────────────────────────────────────────────────────────
+//
+// The TLDraw canvas at /design calls this surface to drop AI-generated
+// images onto the artboard. Single endpoint for now — image generation
+// via DreamAPI Flux. Background removal, enhancement, variants, etc.
+// will follow as separate endpoints; see services/dreamapi-sidecar.
+
+export type GenerateDesignImageRequest = {
+  prompt: string;
+  /** Width in px, multiple of 16, 256-1600. Default 1024. */
+  width?: number;
+  /** Height in px, multiple of 16, 256-1600. Default 1024. */
+  height?: number;
+  /** Optional seed for deterministic variants. */
+  seed?: number;
+};
+
+export type GenerateDesignImageResponse = {
+  url: string;
+  width: number;
+  height: number;
+  task_id: string;
+};
+
+/**
+ * Synchronous text-to-image. Resolves after 30-60 s with the asset URL.
+ * The canvas should optimistically place a "loading" placeholder while
+ * the promise is pending — once SSE-based progress lands on the
+ * sidecar this same helper can swap for a streamed variant without
+ * changing callers.
+ */
+export async function generateDesignImage(
+  body: GenerateDesignImageRequest,
+): Promise<GenerateDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<GenerateDesignImageResponse>(res);
 }

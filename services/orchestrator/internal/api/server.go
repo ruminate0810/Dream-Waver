@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
@@ -53,6 +54,11 @@ type Dependencies struct {
 	// /api/v1/video/* route returns 503 with a hint to set
 	// OPENDREAM_BASE_URL. See services/orchestrator/internal/skill/video.
 	VideoBridge *video.Bridge
+
+	// DesignBridge proxies image generation to the dreamapi-sidecar
+	// FastAPI service. Optional; when nil, /api/v1/design/* returns
+	// 503 with a hint to set DREAMAPI_SIDECAR_URL.
+	DesignBridge *design.Bridge
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -117,6 +123,14 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 			r.Post("/runs/{id}/regen", h.RegenVideoNodes)
 			r.Get("/runs/{id}/events", h.StreamVideoEvents)
 			r.Get("/runs/{id}/artifacts/*", h.GetVideoArtifact)
+		})
+
+		// Design — bridge to dreamapi-sidecar (image generation that
+		// the TLDraw canvas drops onto the workspace). Same shape as
+		// video above: route exists unconditionally, 503s with a
+		// setup hint when the bridge isn't wired.
+		r.Route("/design", func(r chi.Router) {
+			r.Post("/images/generate", h.GenerateDesignImage)
 		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into

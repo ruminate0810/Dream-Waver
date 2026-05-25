@@ -54,7 +54,7 @@ const GROUPS: Group[] = [
   {
     label: "设计与代码",
     tiles: [
-      { label: "设计", icon: Layout, color: "text-zinc-800", href: "#", comingSoon: true },
+      { label: "设计", icon: Layout, color: "text-zinc-800", href: "/design" },
       { label: "代码", icon: Code2,  color: "text-sky-500", href: "/code/new" },
     ],
   },

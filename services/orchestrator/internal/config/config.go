@@ -63,6 +63,11 @@ type Config struct {
 	// route 503s with a setup hint until this is configured. See
 	// /Users/sheng/git/Opendream/server/README.md.
 	OpendreamBaseURL string
+
+	// DreamapiSidecarURL points at services/dreamapi-sidecar (the
+	// FastAPI front for DreamAPI image generation) that powers
+	// /api/v1/design/*. Empty disables the bridge.
+	DreamapiSidecarURL string
 }
 
 func Load() (*Config, error) {
@@ -102,6 +107,9 @@ func Load() (*Config, error) {
 		// Convention matches Opendream's local-dev port. Override in
 		// staging/prod to point at the in-cluster service URL.
 		OpendreamBaseURL: envOr("OPENDREAM_BASE_URL", ""),
+		// dreamapi-sidecar default port. Set DREAMAPI_SIDECAR_URL to
+		// enable the design skill.
+		DreamapiSidecarURL: envOr("DREAMAPI_SIDECAR_URL", ""),
 	}
 	if err := c.validatePrimary(); err != nil {
 		return nil, err
