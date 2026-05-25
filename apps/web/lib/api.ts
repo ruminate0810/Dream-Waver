@@ -442,3 +442,81 @@ export async function enhanceDesignImage(
   });
   return unwrap<EditDesignImageResponse>(res);
 }
+
+// ─── Outpaint (extend image borders) ──────────────────────────────────
+
+export type OutpaintDesignImageRequest = {
+  image_url: string;
+  /** Pixels to extend each side. Sidecar rejects all-zero. */
+  left?: number;
+  right?: number;
+  top?: number;
+  bottom?: number;
+};
+
+/** Extend an image's borders — DreamAPI infills the new area from
+ *  surrounding context. Typical use: aspect-ratio change. */
+export async function outpaintDesignImage(
+  body: OutpaintDesignImageRequest,
+): Promise<EditDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/outpaint", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<EditDesignImageResponse>(res);
+}
+
+// ─── Image-to-image (transform an existing image via prompt) ──────────
+
+export type Image2ImageDesignRequest = {
+  image_url: string;
+  prompt: string;
+  width?: number;
+  height?: number;
+};
+
+/** Transform an existing image via a text prompt — source is reference
+ *  only, output is fresh pixels at the requested dimensions. */
+export async function image2imageDesignImage(
+  body: Image2ImageDesignRequest,
+): Promise<GenerateDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/image2image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<GenerateDesignImageResponse>(res);
+}
+
+// ─── SSE-based generate (in-canvas progress) ──────────────────────────
+//
+// Two-step flow vs. the synchronous generateDesignImage:
+//   1. submitDesignGenerate → returns {task_id}
+//   2. open an EventSource on designGenerateEventsURL(task_id) →
+//      receives `progress` ticks then a terminal `done` (carries
+//      {url, width, height, task_id}) or `error` (carries {message}).
+//
+// The canvas uses this to render a placeholder shape immediately on
+// submit and swap it for the real image on `done` — turns 30-60 s
+// of blank wait into "queued / 8 s / 24 s / done" feedback.
+
+export type SubmitDesignGenerateResponse = {
+  task_id: string;
+};
+
+export async function submitDesignGenerate(
+  body: GenerateDesignImageRequest,
+): Promise<SubmitDesignGenerateResponse> {
+  const res = await fetch("/api/v1/design/images/generate/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<SubmitDesignGenerateResponse>(res);
+}
+
+/** Same-origin SSE URL — no rewrite, no WS, no special headers. */
+export function designGenerateEventsURL(taskId: string): string {
+  return `/api/v1/design/images/jobs/${taskId}/events`;
+}

@@ -89,6 +89,14 @@ class DreamAPIClient:
             raise DreamAPIError(-1, "submit returned no taskId")
         return task_id
 
+    def query(self, task_id: str) -> dict[str, Any]:
+        """Single-shot status check. Returns the polled payload — the
+        SSE handler uses this to drive its own polling loop so the
+        loop's lifetime tracks the SSE connection (browser disconnect
+        immediately stops upstream polling). Caller inspects
+        `data["task"]["status"]` to decide whether to keep going."""
+        return self._post(POLL_ENDPOINT, {"taskId": task_id})
+
     def poll(
         self,
         task_id: str,
@@ -103,7 +111,7 @@ class DreamAPIClient:
             if time.time() - start > timeout:
                 raise TimeoutError(f"task {task_id} did not finish within {timeout}s")
             time.sleep(interval)
-            data = self._post(POLL_ENDPOINT, {"taskId": task_id})
+            data = self.query(task_id)
             status = data.get("task", {}).get("status")
             if status == STATUS_SUCCESS:
                 return data

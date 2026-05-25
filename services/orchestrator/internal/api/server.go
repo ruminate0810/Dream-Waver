@@ -131,9 +131,17 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		// setup hint when the bridge isn't wired.
 		r.Route("/design", func(r chi.Router) {
 			r.Post("/images/generate", h.GenerateDesignImage)
+			r.Post("/images/generate/submit", h.SubmitDesignGenerate)
+			// Note the trailing path segment ordering: `/{task_id}/events`
+			// would collide with `/generate/submit` if it lived under
+			// `/images/{task_id}`. Putting `events` under its own
+			// `/images/jobs/{task_id}` sub-route avoids the ambiguity.
+			r.Get("/images/jobs/{task_id}/events", h.StreamDesignGenerateEvents)
 			r.Post("/images/variants", h.GenerateDesignVariants)
 			r.Post("/images/remove_bg", h.RemoveDesignImageBG)
 			r.Post("/images/enhance", h.EnhanceDesignImage)
+			r.Post("/images/outpaint", h.OutpaintDesignImage)
+			r.Post("/images/image2image", h.Image2ImageDesignImage)
 		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into

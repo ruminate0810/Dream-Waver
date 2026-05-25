@@ -59,6 +59,34 @@ type EditImageRequest struct {
 	ImageURL string `json:"image_url"`
 }
 
+// OutpaintRequest extends an image's borders. left/right/top/bottom are
+// pixels; at least one must be > 0 (sidecar rejects all-zero). Typical
+// use is "extend 200 px left + 200 px right" to widen a 1:1 to ~16:9.
+type OutpaintRequest struct {
+	ImageURL string `json:"image_url"`
+	Left     int    `json:"left,omitempty"`
+	Right    int    `json:"right,omitempty"`
+	Top      int    `json:"top,omitempty"`
+	Bottom   int    `json:"bottom,omitempty"`
+}
+
+// Image2ImageRequest transforms an existing image via a text prompt.
+// Output dimensions can differ from input — the model generates fresh
+// pixels at the requested size guided by the source.
+type Image2ImageRequest struct {
+	ImageURL string `json:"image_url"`
+	Prompt   string `json:"prompt"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+}
+
+// SubmitGenerateResponse is what /generate/image/submit returns. The
+// canvas then opens an SSE stream at /events to receive progress
+// + the final URL.
+type SubmitGenerateResponse struct {
+	TaskID string `json:"task_id"`
+}
+
 // EditImageResponse — width/height are pointer-int so the JSON omits
 // them when DreamAPI doesn't echo dimensions (which it often doesn't
 // for edit endpoints). The canvas falls back to natural image size

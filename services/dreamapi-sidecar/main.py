@@ -1,20 +1,26 @@
 """DreamAPI sidecar FastAPI app.
 
 Wraps DreamAPI image generation + edit endpoints behind a uniform
-synchronous HTTP surface. The Go orchestrator's design skill calls
-this service; the browser never sees this surface directly.
+HTTP + SSE surface. The Go orchestrator's design skill calls this
+service; the browser never sees this surface directly.
 
-Surface (every endpoint is synchronous submit+poll; 30-60 s typical):
+Synchronous endpoints (block until DreamAPI completes; 30-60 s):
 
     POST /generate/image       Flux text2image
-    POST /generate/variants    Flux text2image with num>1 — same prompt,
-                               distinct seeds, returns N images
+    POST /generate/variants    Flux text2image with num>1
     POST /edit/remove_bg       remove background (alpha mask)
     POST /edit/enhance         super-resolution + sharpen
+    POST /edit/outpaint        extend image borders
+    POST /edit/image2image     transform existing image via prompt
 
-The synchronous shape keeps the bridge + browser code one straight
-line; SSE-based progress streaming is on the roadmap (track in TODO
-at the bottom of this file).
+SSE flow — for the canvas's in-place progress experience:
+
+    POST /generate/image/submit              returns {task_id}
+    GET  /generate/image/{task_id}/events    streams progress|done|error
+
+The SSE flow polls DreamAPI inside the stream handler so the polling
+lifetime tracks the SSE connection — browser disconnect immediately
+stops upstream polling, no zombie tasks.
 
 Run locally:
 
@@ -24,13 +30,25 @@ Run locally:
 """
 from __future__ import annotations
 
-from typing import Optional
+import asyncio
+import json
+import time
+import uuid
+from dataclasses import dataclass, field
+from typing import AsyncIterator, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, HttpUrl
 
-from dreamapi_client import DreamAPIClient, DreamAPIError
+from dreamapi_client import (
+    DEFAULT_POLL_INTERVAL_S,
+    STATUS_FAILED,
+    STATUS_SUCCESS,
+    DreamAPIClient,
+    DreamAPIError,
+)
 
 
 # ─── App + dependencies ────────────────────────────────────────────
@@ -344,16 +362,311 @@ def edit_enhance(
     return EditImageResponse(url=url, task_id=out.get("task_id", ""))
 
 
-# TODO(progress):
-#   Add POST /generate/image/submit (returns task_id) + GET
-#   /generate/image/{task_id}/events (SSE polling under the hood) so
-#   the canvas can show a placeholder shape with a live progress
-#   indicator rather than a 60-second loading spinner. Same shape as
-#   the Opendream SSE-tailing-state-file pattern; not blocking the
-#   MVP because the synchronous version puts pixels on screen.
-#
-# TODO(more-edits):
-#   inpainting / outpainting / colorize / swap_face all wrap the same
-#   submit+poll pattern. Add them when the canvas grows specific
-#   actions for them — outpainting in particular is a natural fit for
-#   "change aspect ratio of this image" once that becomes a UX.
+# ─── POST /edit/outpaint (extend image borders) ───────────────────
+
+
+class OutpaintRequest(BaseModel):
+    """Body for `POST /edit/outpaint`. left/right/top/bottom are pixels
+    to extend in each direction; 0 means "don't extend this side".
+    At least one must be > 0 or the call is a no-op."""
+
+    image_url: HttpUrl
+    left: int = Field(0, ge=0, le=2000)
+    right: int = Field(0, ge=0, le=2000)
+    top: int = Field(0, ge=0, le=2000)
+    bottom: int = Field(0, ge=0, le=2000)
+
+
+@app.post(
+    "/edit/outpaint",
+    response_model=EditImageResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def edit_outpaint(
+    body: OutpaintRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> EditImageResponse:
+    """Extend an image's borders. DreamAPI infills the new area using
+    surrounding context — the typical use is "change this image's
+    aspect ratio" (e.g. extend 200 px left + 200 px right to turn a
+    1:1 into a 16:9)."""
+    if body.left + body.right + body.top + body.bottom == 0:
+        raise HTTPException(
+            status_code=422,
+            detail="at least one of left/right/top/bottom must be > 0",
+        )
+    try:
+        data = client.run(
+            "/api/async/outpainting",
+            {
+                "url": str(body.image_url),
+                "outPaintSize": {
+                    "left": body.left,
+                    "right": body.right,
+                    "top": body.top,
+                    "bottom": body.bottom,
+                },
+            },
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    url = out.get("output_url")
+    if not url:
+        raise HTTPException(status_code=502, detail="outpaint returned no image")
+    return EditImageResponse(url=url, task_id=out.get("task_id", ""))
+
+
+# ─── POST /edit/image2image (transform an image via prompt) ───────
+
+
+class Image2ImageRequest(BaseModel):
+    """Body for `POST /edit/image2image` — Flux image-to-image. The
+    output dimensions can differ from input (the model generates fresh
+    pixels at the requested size guided by the source). Width/height
+    follow the same constraints as text2image."""
+
+    image_url: HttpUrl
+    prompt: str = Field(..., min_length=1)
+    width: int = Field(1024, ge=256, le=1600, multiple_of=16)
+    height: int = Field(1024, ge=256, le=1600, multiple_of=16)
+
+
+@app.post(
+    "/edit/image2image",
+    response_model=GenerateImageResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def edit_image2image(
+    body: Image2ImageRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> GenerateImageResponse:
+    """Transform an existing image guided by a text prompt. Returns one
+    image at the requested dimensions; for N variants, the canvas
+    would call this N times with distinct seeds (same as text2image,
+    we just don't expose a `num` parameter to keep the wire small)."""
+    try:
+        data = client.run(
+            "/api/async/flux_image2image",
+            {
+                "imageUrl": str(body.image_url),
+                "prompt": body.prompt,
+                "width": body.width,
+                "height": body.height,
+            },
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    url = out.get("output_url")
+    if not url:
+        raise HTTPException(status_code=502, detail="image2image returned no image")
+    return GenerateImageResponse(
+        url=url,
+        width=body.width,
+        height=body.height,
+        task_id=out.get("task_id", ""),
+    )
+
+
+# ─── SSE: submit + events for in-canvas progress ──────────────────
+
+
+@dataclass
+class _PendingTask:
+    """In-memory record of a submit'd task awaiting SSE consumer.
+
+    Process-local; restarting the sidecar drops in-flight tasks. That
+    matches DreamAPI's own semantics — task IDs are only meaningful
+    within a session anyway, and the canvas will time out and offer a
+    retry if it can't find the task.
+    """
+
+    sidecar_task_id: str
+    dreamapi_task_id: str
+    width: int
+    height: int
+    created_at: float = field(default_factory=time.time)
+
+
+# Module-level registry. Cap with a slow GC sweep on submit to avoid
+# unbounded growth from canvases that submit-then-never-stream.
+_PENDING: dict[str, _PendingTask] = {}
+_PENDING_TTL_S = 600.0  # 10 min — DreamAPI itself caps tasks well before this
+
+
+def _gc_pending() -> None:
+    cutoff = time.time() - _PENDING_TTL_S
+    stale = [k for k, v in _PENDING.items() if v.created_at < cutoff]
+    for k in stale:
+        _PENDING.pop(k, None)
+
+
+class SubmitGenerateResponse(BaseModel):
+    task_id: str
+
+
+@app.post(
+    "/generate/image/submit",
+    response_model=SubmitGenerateResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI rejected the submit"},
+    },
+)
+def submit_generate_image(
+    body: GenerateImageRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> SubmitGenerateResponse:
+    """Kick off a Flux text2image task and return a sidecar-local task
+    id. The caller then opens the SSE endpoint with that id to receive
+    progress + final URL.
+
+    We don't return the upstream DreamAPI task id directly — wrapping
+    keeps the wire surface stable when we later swap providers, and
+    means the canvas can't accidentally poll DreamAPI without going
+    through us (which would skip future billing hooks)."""
+    _gc_pending()
+    api_body = {
+        "prompt": body.prompt,
+        "width": body.width,
+        "height": body.height,
+    }
+    if body.seed is not None:
+        api_body["seed"] = body.seed
+    try:
+        dreamapi_task_id = client.submit("/api/async/flux_text2image", api_body)
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    sidecar_task_id = uuid.uuid4().hex[:12]
+    _PENDING[sidecar_task_id] = _PendingTask(
+        sidecar_task_id=sidecar_task_id,
+        dreamapi_task_id=dreamapi_task_id,
+        width=body.width,
+        height=body.height,
+    )
+    return SubmitGenerateResponse(task_id=sidecar_task_id)
+
+
+@app.get("/generate/image/{task_id}/events")
+async def stream_generate_image_events(
+    task_id: str,
+    request: Request,
+    client: DreamAPIClient = Depends(get_client),
+) -> StreamingResponse:
+    """SSE stream emitting `progress` events on each poll tick, then a
+    single terminal `done` or `error` event.
+
+    Polling lives inside the stream handler so a browser disconnect
+    immediately stops upstream polling (no zombie tasks). The interval
+    matches DreamAPI's recommended cadence to avoid rate-limit pressure.
+    """
+    task = _PENDING.get(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="unknown task_id")
+
+    async def event_source() -> AsyncIterator[str]:
+        start = time.time()
+        # First emit so the browser knows the connection is live and the
+        # task is queued. Useful UX cue while DreamAPI hasn't yet picked
+        # up the work.
+        yield _sse("progress", json.dumps({
+            "elapsed_s": 0,
+            "status": "queued",
+        }))
+        while True:
+            await asyncio.sleep(DEFAULT_POLL_INTERVAL_S)
+            if await request.is_disconnected():
+                # Drop the task — the next stream lookup will 404 which
+                # the canvas treats as "I should resubmit". Cleaner than
+                # holding state for a tab that's gone.
+                _PENDING.pop(task_id, None)
+                return
+            try:
+                data = client.query(task.dreamapi_task_id)
+            except DreamAPIError as exc:
+                yield _sse("error", json.dumps({"message": str(exc)}))
+                _PENDING.pop(task_id, None)
+                return
+            except Exception as exc:  # noqa: BLE001 — log+surface
+                yield _sse("error", json.dumps({"message": str(exc)}))
+                _PENDING.pop(task_id, None)
+                return
+
+            t = data.get("task", {})
+            upstream_status = t.get("status")
+            elapsed = int(time.time() - start)
+
+            if upstream_status == STATUS_SUCCESS:
+                out = client.extract_output(data)
+                url = out.get("output_url")
+                if not url:
+                    yield _sse("error", json.dumps({
+                        "message": "DreamAPI returned no image despite success status",
+                    }))
+                else:
+                    yield _sse("done", json.dumps({
+                        "url": url,
+                        "width": task.width,
+                        "height": task.height,
+                        "task_id": out.get("task_id", ""),
+                    }))
+                _PENDING.pop(task_id, None)
+                return
+
+            if upstream_status == STATUS_FAILED:
+                reason = t.get("reason", "task failed")
+                yield _sse("error", json.dumps({"message": reason}))
+                _PENDING.pop(task_id, None)
+                return
+
+            # Still queued/running — emit a heartbeat so the browser
+            # can render an "Xs elapsed" hint on the placeholder shape.
+            yield _sse("progress", json.dumps({
+                "elapsed_s": elapsed,
+                "status": _status_label(upstream_status),
+            }))
+
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _sse(event: str, data: str) -> str:
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+def _status_label(raw: object) -> str:
+    """DreamAPI returns integer status codes; map to short labels the
+    canvas can show without translating itself."""
+    if raw is None:
+        return "queued"
+    if raw == 0:
+        return "queued"
+    if raw == 1:
+        return "running"
+    if raw == 2:
+        return "finalising"
+    return f"status-{raw}"

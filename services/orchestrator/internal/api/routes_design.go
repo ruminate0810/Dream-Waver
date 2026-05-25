@@ -4,9 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+
+	"github.com/go-chi/chi/v5"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 )
@@ -158,6 +162,177 @@ func (h *handlers) editImageHandler(w http.ResponseWriter, r *http.Request, op s
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/outpaint --------------------------------
+
+type outpaintBody struct {
+	ImageURL string `json:"image_url"`
+	Left     int    `json:"left,omitempty"`
+	Right    int    `json:"right,omitempty"`
+	Top      int    `json:"top,omitempty"`
+	Bottom   int    `json:"bottom,omitempty"`
+}
+
+func (h *handlers) OutpaintDesignImage(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	// TODO(billing): outpaint pricing differs from enhance — same hook.
+
+	var body outpaintBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	resp, err := h.deps.DesignBridge.Outpaint(r.Context(), design.OutpaintRequest{
+		ImageURL: body.ImageURL,
+		Left:     body.Left,
+		Right:    body.Right,
+		Top:      body.Top,
+		Bottom:   body.Bottom,
+	})
+	if err != nil {
+		writeDesignBridgeError(w, "outpaint", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/image2image -----------------------------
+
+type image2imageBody struct {
+	ImageURL string `json:"image_url"`
+	Prompt   string `json:"prompt"`
+	Width    int    `json:"width,omitempty"`
+	Height   int    `json:"height,omitempty"`
+}
+
+func (h *handlers) Image2ImageDesignImage(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	// TODO(billing): same pricing tier as text2image.
+
+	var body image2imageBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	resp, err := h.deps.DesignBridge.Image2Image(r.Context(), design.Image2ImageRequest{
+		ImageURL: body.ImageURL,
+		Prompt:   body.Prompt,
+		Width:    body.Width,
+		Height:   body.Height,
+	})
+	if err != nil {
+		writeDesignBridgeError(w, "image2image", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/generate/submit -------------------------
+
+func (h *handlers) SubmitDesignGenerate(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	// TODO(billing): debit on submit so a stuck task doesn't leak free
+	// generations — refund on terminal error (separate from this hook).
+
+	var body generateImageBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Prompt) == "" {
+		errorJSON(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	resp, err := h.deps.DesignBridge.SubmitGenerate(r.Context(), design.GenerateImageRequest{
+		Prompt: body.Prompt,
+		Width:  body.Width,
+		Height: body.Height,
+		Seed:   body.Seed,
+	})
+	if err != nil {
+		writeDesignBridgeError(w, "submit_generate", err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, resp)
+}
+
+// --- GET /api/v1/design/images/{task_id}/events (SSE proxy) -------------
+
+func (h *handlers) StreamDesignGenerateEvents(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	taskID := chi.URLParam(r, "task_id")
+	if taskID == "" {
+		errorJSON(w, http.StatusBadRequest, "task_id is required")
+		return
+	}
+
+	// SSE headers must land before the first byte. We pass-through
+	// upstream bytes verbatim so the browser's EventSource sees the
+	// `event:` / `data:` framing the sidecar emits.
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		errorJSON(w, http.StatusInternalServerError, "streaming unsupported")
+		return
+	}
+	flusher.Flush()
+
+	// Bind to client disconnect so the upstream sidecar polling stops
+	// the moment the browser closes the EventSource.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	if err := h.deps.DesignBridge.StreamGenerateEvents(ctx, taskID, &designFlushingWriter{w: w, f: flusher}); err != nil {
+		slog.ErrorContext(ctx, "design sse upstream", "task", taskID, "err", err)
+		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", designJSONEscape(err.Error()))
+		flusher.Flush()
+	}
+}
+
+// designFlushingWriter mirrors flushingWriter in routes_video.go.
+// Kept per-package for now; refactor candidate once a third bridge
+// needs SSE.
+type designFlushingWriter struct {
+	w io.Writer
+	f http.Flusher
+}
+
+func (dfw *designFlushingWriter) Write(p []byte) (int, error) {
+	n, err := dfw.w.Write(p)
+	if n > 0 {
+		dfw.f.Flush()
+	}
+	return n, err
+}
+
+// designJSONEscape — single-string JSON quoting for the SSE error path.
+// Same as jsonEscape in routes_video.go; copied to avoid cross-file
+// dependence until we extract the SSE helpers into a shared package.
+func designJSONEscape(s string) string {
+	r := strings.NewReplacer(
+		"\\", `\\`,
+		"\"", `\"`,
+		"\n", `\n`,
+		"\r", `\r`,
+		"\t", `\t`,
+	)
+	return `"` + r.Replace(s) + `"`
 }
 
 // --- Helpers ------------------------------------------------------------

@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import {
   AssetRecordType,
+  createShapeId,
   getHashForString,
   Tldraw,
   type Editor,
   type TLImageShape,
+  type TLShapeId,
 } from "tldraw";
 import "tldraw/tldraw.css";
 
@@ -68,6 +70,29 @@ export type CanvasController = {
     width: number,
     height: number,
   ) => void;
+  /** Drop a dashed-outline placeholder shape at viewport centre and
+   *  return its shape id. The placeholder shows "Generating · 3s\n
+   *  <prompt>" — text is mutated via updatePlaceholderProgress as SSE
+   *  events stream. width/height set the placeholder's display size
+   *  so the eventual replaceWithImage call doesn't visibly resize. */
+  placePlaceholder: (prompt: string, width: number, height: number) => string;
+  /** Update a placeholder's caption to reflect SSE progress. Safe to
+   *  call repeatedly; no-op if the shape was deleted. */
+  updatePlaceholderProgress: (shapeId: string, elapsedS: number, statusLabel: string) => void;
+  /** Replace a placeholder with the real image at the same x/y/w/h. */
+  replacePlaceholderWithImage: (
+    shapeId: string,
+    url: string,
+    nativeWidth: number,
+    nativeHeight: number,
+  ) => void;
+  /** Mark a placeholder as failed — turn it red, show the error message
+   *  in the caption. User can click to delete + retry from the panel. */
+  failPlaceholder: (shapeId: string, message: string) => void;
+  /** Select a shape and pan/zoom the viewport so it's centred. Used by
+   *  the ChatCopilot history list to jump to a previously-generated
+   *  image. No-op if the shape no longer exists. */
+  focusShape: (shapeId: string) => void;
 };
 
 export type TldrawCanvasProps = {
@@ -94,6 +119,14 @@ export function TldrawCanvas({ onReady, onSelectionChange }: TldrawCanvasProps) 
         placeVariants: (variants) => placeVariantsOnCanvas(editor, variants),
         placeNextToSelection: (url, w, h) =>
           placeImageNextToSelection(editor, url, w, h),
+        placePlaceholder: (prompt, w, h) =>
+          placePlaceholderOnCanvas(editor, prompt, w, h),
+        updatePlaceholderProgress: (id, elapsed, label) =>
+          updatePlaceholderProgress(editor, id, elapsed, label),
+        replacePlaceholderWithImage: (id, url, w, h) =>
+          replacePlaceholderWithImage(editor, id, url, w, h),
+        failPlaceholder: (id, msg) => failPlaceholder(editor, id, msg),
+        focusShape: (id) => focusShape(editor, id),
       };
       onReady(controller);
 
@@ -250,6 +283,160 @@ function placeImageNextToSelection(
     y: src.y,
     props: { assetId, w: displayW, h: displayH },
   });
+}
+
+// ─── Placeholder shapes (for SSE progress feedback) ──────────────────
+
+/**
+ * Placeholders are TLDraw geo shapes (rectangle) with a dashed grey
+ * outline + a text caption like "Generating · 8s\n<prompt>". The
+ * dashed-grey style cues "this is in-progress" — distinct from any
+ * real user-drawn shape so the user reads it as "waiting" without us
+ * needing a custom shape type.
+ *
+ * Replacement strategy: when SSE done arrives, we capture the
+ * placeholder's x/y, delete it, and create an image shape at the same
+ * position. This means TLDraw's history records two ops (delete +
+ * create) rather than a single "transform" — acceptable for now; a
+ * custom TLDraw shape would unify them but adds ~200 LOC.
+ *
+ * We tag the placeholder via shape.meta.kind === "ai-placeholder" so
+ * we can distinguish from user-drawn rectangles when scanning the
+ * store (currently unused, but keeps the future "GC abandoned
+ * placeholders" sweep cheap).
+ */
+function placePlaceholderOnCanvas(
+  editor: Editor,
+  prompt: string,
+  width: number,
+  height: number,
+): string {
+  const id = createShapeId();
+  const bounds = editor.getViewportPageBounds();
+  const displayW = width / 2;
+  const displayH = height / 2;
+  editor.createShape({
+    id,
+    type: "geo",
+    x: bounds.midX - displayW / 2,
+    y: bounds.midY - displayH / 2,
+    meta: { kind: "ai-placeholder", prompt },
+    props: {
+      geo: "rectangle",
+      w: displayW,
+      h: displayH,
+      dash: "dashed",
+      color: "grey",
+      fill: "none",
+      text: placeholderCaption(0, "queued", prompt),
+      // align/verticalAlign keep the caption centred even if text
+      // wraps onto multiple lines.
+      align: "middle",
+      verticalAlign: "middle",
+      size: "s",
+    },
+  });
+  return id;
+}
+
+function updatePlaceholderProgress(
+  editor: Editor,
+  shapeId: string,
+  elapsedS: number,
+  statusLabel: string,
+) {
+  const id = shapeId as TLShapeId;
+  const shape = editor.getShape(id);
+  if (!shape || shape.type !== "geo") return;
+  const prompt = (shape.meta?.prompt as string | undefined) ?? "";
+  editor.updateShape({
+    id,
+    type: "geo",
+    props: { text: placeholderCaption(elapsedS, statusLabel, prompt) },
+  });
+}
+
+function replacePlaceholderWithImage(
+  editor: Editor,
+  shapeId: string,
+  url: string,
+  nativeWidth: number,
+  nativeHeight: number,
+) {
+  const id = shapeId as TLShapeId;
+  const placeholder = editor.getShape(id);
+  if (!placeholder) {
+    // Placeholder was deleted while task was in flight — drop the
+    // image at viewport centre so the result isn't lost.
+    placeImageOnCanvas(editor, url, nativeWidth, nativeHeight);
+    return;
+  }
+  // Keep the placeholder's on-canvas dimensions so the replacement
+  // doesn't visually pop in size. The asset record retains the
+  // native resolution for high-DPI display.
+  const x = placeholder.x;
+  const y = placeholder.y;
+  const w = (placeholder as { props: { w: number } }).props.w;
+  const h = (placeholder as { props: { h: number } }).props.h;
+
+  const assetId = ensureAsset(editor, url, nativeWidth, nativeHeight);
+  editor.deleteShape(id);
+  editor.createShape({
+    type: "image",
+    x,
+    y,
+    props: { assetId, w, h },
+  });
+}
+
+function failPlaceholder(editor: Editor, shapeId: string, message: string) {
+  const id = shapeId as TLShapeId;
+  const shape = editor.getShape(id);
+  if (!shape || shape.type !== "geo") return;
+  const prompt = (shape.meta?.prompt as string | undefined) ?? "";
+  editor.updateShape({
+    id,
+    type: "geo",
+    props: {
+      color: "red",
+      text: `Failed: ${truncate(message, 80)}\n${truncate(prompt, 60)}`,
+    },
+  });
+}
+
+/**
+ * focusShape selects a shape and zooms the viewport so it's centred
+ * with a small margin. Used by the ChatCopilot history list to jump
+ * to a previously-generated image. Safe no-op if the shape was
+ * deleted — the user might prune the canvas without our knowing.
+ */
+function focusShape(editor: Editor, shapeId: string) {
+  const id = shapeId as TLShapeId;
+  const shape = editor.getShape(id);
+  if (!shape) return;
+  editor.select(id);
+  const bounds = editor.getShapePageBounds(shape);
+  if (!bounds) return;
+  // Animate the zoom — easier to follow than an instant snap, esp.
+  // when the user clicks rapidly between history entries.
+  editor.zoomToBounds(bounds, { targetZoom: 1, animation: { duration: 220 } });
+}
+
+/** placeholderCaption — short status line + prompt preview. Two lines:
+ *  the status banner ("Generating · 12s · running") and a truncated
+ *  prompt so the user can tell which placeholder is which when they
+ *  fire several. */
+function placeholderCaption(elapsedS: number, status: string, prompt: string): string {
+  const banner =
+    elapsedS === 0
+      ? `Generating · ${status}`
+      : `Generating · ${elapsedS}s · ${status}`;
+  return `${banner}\n${truncate(prompt, 60)}`;
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "…";
 }
 
 // ─── Asset helpers ────────────────────────────────────────────────────
