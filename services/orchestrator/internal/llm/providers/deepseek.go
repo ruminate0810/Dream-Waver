@@ -3,7 +3,9 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
@@ -37,7 +39,10 @@ func NewDeepSeek(apiKey, baseURL, defaultModel string) *DeepSeek {
 
 func (d *DeepSeek) Name() string { return "deepseek" }
 
-func (d *DeepSeek) AskTool(ctx context.Context, req llm.AskToolRequest) (*llm.AskToolResponse, error) {
+// buildRequest converts an AskToolRequest into go-openai's
+// ChatCompletionRequest. Shared by AskTool and AskToolStream so both
+// paths see identical model / messages / tools / tool_choice settings.
+func (d *DeepSeek) buildRequest(req llm.AskToolRequest) openai.ChatCompletionRequest {
 	model := req.Model
 	if model == "" {
 		model = d.defaultModel
@@ -127,6 +132,11 @@ func (d *DeepSeek) AskTool(ctx context.Context, req llm.AskToolRequest) (*llm.As
 			"function": map[string]string{"name": req.ToolChoice},
 		}
 	}
+	return chatReq
+}
+
+func (d *DeepSeek) AskTool(ctx context.Context, req llm.AskToolRequest) (*llm.AskToolResponse, error) {
+	chatReq := d.buildRequest(req)
 
 	resp, err := d.client.CreateChatCompletion(ctx, chatReq)
 	if err != nil {
@@ -177,6 +187,121 @@ func (d *DeepSeek) AskTool(ctx context.Context, req llm.AskToolRequest) (*llm.As
 		})
 	}
 	return out, nil
+}
+
+// AskToolStream is the streaming counterpart of AskTool. We use go-openai's
+// CreateChatCompletionStream and forward every text delta to onChunk as it
+// arrives. Tool-call deltas are accumulated into complete ToolCalls in the
+// returned response — most LLMs stream tool-call JSON one fragment per chunk
+// and emitting half-JSON to the UI would be useless noise.
+//
+// Usage tokens are populated from the final chunk when DeepSeek includes
+// `stream_options: {include_usage: true}` semantics; we request it via the
+// IncludeUsage flag. When the field is absent we fall back to a recount
+// done by the caller — slides/games can still proceed without exact tokens.
+func (d *DeepSeek) AskToolStream(ctx context.Context, req llm.AskToolRequest, onChunk func(delta string)) (*llm.AskToolResponse, error) {
+	chatReq := d.buildRequest(req)
+	chatReq.Stream = true
+	// Ask DeepSeek/OpenAI to send a final chunk with usage stats.
+	chatReq.StreamOptions = &openai.StreamOptions{IncludeUsage: true}
+
+	stream, err := d.client.CreateChatCompletionStream(ctx, chatReq)
+	if err != nil {
+		return nil, fmt.Errorf("deepseek stream open: %w", err)
+	}
+	defer stream.Close()
+
+	var (
+		contentBuf strings.Builder
+		// toolCalls indexed by the call's array index — go-openai streams
+		// each tool call as a series of fragments indexed by Index.
+		toolByIdx = map[int]*partialToolCall{}
+		usage     llm.Usage
+		finish    string
+	)
+
+	for {
+		chunk, recvErr := stream.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return nil, fmt.Errorf("deepseek stream recv: %w", recvErr)
+		}
+
+		// The very last chunk may carry usage with empty choices.
+		if chunk.Usage != nil {
+			usage.InputTokens = chunk.Usage.PromptTokens
+			usage.OutputTokens = chunk.Usage.CompletionTokens
+			usage.CacheReadTokens = extractCacheHit(*chunk.Usage)
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+		ch := chunk.Choices[0]
+		if ch.FinishReason != "" {
+			finish = string(ch.FinishReason)
+		}
+
+		if delta := ch.Delta.Content; delta != "" {
+			contentBuf.WriteString(delta)
+			if onChunk != nil {
+				onChunk(delta)
+			}
+		}
+		for _, tc := range ch.Delta.ToolCalls {
+			// Index is a pointer in the SDK; deref defensively.
+			idx := 0
+			if tc.Index != nil {
+				idx = *tc.Index
+			}
+			p := toolByIdx[idx]
+			if p == nil {
+				p = &partialToolCall{}
+				toolByIdx[idx] = p
+			}
+			if tc.ID != "" {
+				p.id = tc.ID
+			}
+			if tc.Function.Name != "" {
+				p.name = tc.Function.Name
+			}
+			p.args.WriteString(tc.Function.Arguments)
+		}
+	}
+
+	content := contentBuf.String()
+	// Apply the same empty-content guard as AskTool — DeepSeek's transient
+	// 200-but-empty failure mode shows up identically in streaming.
+	if strings.TrimSpace(content) == "" && len(toolByIdx) == 0 {
+		return nil, fmt.Errorf(
+			"deepseek: empty stream (finish_reason=%q, prompt_tokens=%d, completion_tokens=%d) — usually transient",
+			finish, usage.InputTokens, usage.OutputTokens,
+		)
+	}
+
+	out := &llm.AskToolResponse{Content: content, Usage: usage}
+	for idx := 0; idx < len(toolByIdx); idx++ {
+		p, ok := toolByIdx[idx]
+		if !ok {
+			continue
+		}
+		out.ToolCalls = append(out.ToolCalls, schema.ToolCall{
+			ID:   p.id,
+			Name: p.name,
+			Args: json.RawMessage(p.args.String()),
+		})
+	}
+	return out, nil
+}
+
+// partialToolCall accumulates streamed tool-call fragments. We do not
+// expose this on the wire — the agent loop sees only completed
+// ToolCalls in the final response.
+type partialToolCall struct {
+	id   string
+	name string
+	args strings.Builder
 }
 
 // extractCacheHit reads the non-standard `prompt_cache_hit_tokens` field

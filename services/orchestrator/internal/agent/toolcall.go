@@ -57,16 +57,23 @@ func (a *ToolCallAgent) Think(ctx context.Context) (bool, error) {
 		a.Memory.Add(schema.NewUser(a.NextStepPrompt))
 	}
 
-	resp, err := a.LLM.AskTool(ctx, llm.AskToolRequest{
+	// Stream the Think response so the slides chat surface shows the
+	// model "typing" instead of staring at a Composing spinner. The
+	// onChunk callback re-uses the same llm.token event games already
+	// emits, so session.ts handles both surfaces identically.
+	onChunk := func(delta string) {
+		a.emit(ctx, event.NewLLMToken(delta))
+	}
+	resp, err := a.LLM.AskToolStream(ctx, llm.AskToolRequest{
 		Model:             a.Model,
 		SystemPrompt:      a.SystemPrompt,
 		Messages:          a.Memory.Snapshot(),
 		Tools:             a.Tools.Schemas(),
 		ToolChoice:        "auto",
 		EnablePromptCache: true,
-	})
+	}, onChunk)
 	if err != nil {
-		return false, fmt.Errorf("llm.AskTool: %w", err)
+		return false, fmt.Errorf("llm.AskToolStream: %w", err)
 	}
 
 	a.pendingCalls = resp.ToolCalls

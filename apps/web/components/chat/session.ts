@@ -221,6 +221,28 @@ function reduceWS(state: State, ev: AgentEvent): State {
       // J-3 (ToolStrip / timeline UI) will surface the per-step ms.
       return state;
 
+    case "llm.token": {
+      // Streaming text delta. Append to the latest thought in the
+      // current step. The subsequent llm.thought event overwrites with
+      // the cleaned summary — so the bubble shows the streaming raw
+      // text first, then settles to the final form.
+      if (lastIdx < 0) return state;
+      const delta = data.text ?? "";
+      if (!delta) return state;
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) =>
+          patchLastStep(t, (s) => {
+            const cur = s.thought;
+            const nextThought: Thought = cur
+              ? { ...cur, text: cur.text + delta }
+              : { step: s.index, text: delta };
+            return { ...s, thought: nextThought };
+          }),
+        ),
+      };
+    }
+
     case "llm.thought": {
       if (lastIdx < 0) return state;
       const text = (data.text ?? "").trim();

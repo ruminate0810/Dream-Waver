@@ -348,17 +348,25 @@ func truncateForEvent(s string, n int) string {
 	return s[:n] + "…"
 }
 
-// askWorker is the single LLM call site. Generous token cap because a
-// self-contained game with juice runs 8–12k tokens — truncated HTML is
-// unrecoverable for the user.
+// askWorker is the single LLM call site. Streams via AskToolStream so
+// the chat surface can render the model "typing" instead of staring at a
+// spinner for ~60s. onChunk emits an event for every text delta; the
+// accumulated final response is returned to the caller for the usual
+// parseResponse → revisions → smoke-test pipeline.
+//
+// Generous token cap because a self-contained game with juice runs
+// 8–12k tokens — truncated HTML is unrecoverable for the user.
 func (p *Pipeline) askWorker(ctx context.Context, worker llm.Client, model, sys string, history []schema.Message) (*llm.AskToolResponse, error) {
-	return worker.AskTool(ctx, llm.AskToolRequest{
+	onChunk := func(delta string) {
+		p.emit(ctx, event.NewLLMToken(delta))
+	}
+	return worker.AskToolStream(ctx, llm.AskToolRequest{
 		Model:        model,
 		SystemPrompt: sys,
 		Messages:     history,
 		MaxTokens:    12288,
 		Temperature:  0.4,
-	})
+	}, onChunk)
 }
 
 // weakReasons returns the list of validateGeneratedHTML reasons plus an

@@ -59,6 +59,20 @@ type Client interface {
 
 	// AskTool runs one non-streaming completion that may include tool calls.
 	AskTool(ctx context.Context, req AskToolRequest) (*AskToolResponse, error)
+
+	// AskToolStream runs the same request as AskTool but yields each
+	// content delta to onChunk as the provider streams it. The final
+	// response (with accumulated Content + Usage) is returned when the
+	// stream closes.
+	//
+	// onChunk receives only TEXT deltas — tool-call deltas are buffered
+	// internally and only surface in the final response.ToolCalls, since
+	// partial JSON for a tool-call argument is rarely useful to render.
+	//
+	// Providers that don't support streaming may fall back to calling
+	// AskTool and invoking onChunk once with the full content; that's
+	// still semantically correct, just no incremental UX gain.
+	AskToolStream(ctx context.Context, req AskToolRequest, onChunk func(delta string)) (*AskToolResponse, error)
 }
 
 // Router picks the right client for a task. See router.go.

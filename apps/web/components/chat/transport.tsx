@@ -35,6 +35,7 @@ export type EventKind =
   | "step.start"
   | "step.end"
   | "llm.thought"
+  | "llm.token"
   | "tool.start"
   | "tool.end"
   | "slides.outline"

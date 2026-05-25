@@ -53,6 +53,15 @@ func (r *MultiRouter) AskTool(ctx context.Context, req AskToolRequest) (*AskTool
 	return r.fallback.AskTool(ctx, req)
 }
 
+// AskToolStream delegates to the fallback client's streaming method.
+// Like AskTool, the typical call site is For(task).AskToolStream(...).
+func (r *MultiRouter) AskToolStream(ctx context.Context, req AskToolRequest, onChunk func(string)) (*AskToolResponse, error) {
+	if r.fallback == nil {
+		return nil, fmt.Errorf("router: no fallback client configured")
+	}
+	return r.fallback.AskToolStream(ctx, req, onChunk)
+}
+
 // ModelFor returns the configured default model for a task, or empty string.
 func (r *MultiRouter) ModelFor(task string) string {
 	r.mu.RLock()

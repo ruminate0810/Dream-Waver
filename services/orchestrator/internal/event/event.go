@@ -19,7 +19,8 @@ type Kind string
 const (
 	KindStepStart  Kind = "step.start"  // agent step begins
 	KindStepEnd    Kind = "step.end"    // agent step ends (carries duration_ms)
-	KindLLMThought Kind = "llm.thought" // assistant text from LLM
+	KindLLMThought Kind = "llm.thought" // assistant text from LLM (final, post-stream summary)
+	KindLLMToken   Kind = "llm.token"   // incremental text delta from a streaming LLM call
 	KindToolStart  Kind = "tool.start"  // tool invocation begins
 	KindToolEnd    Kind = "tool.end"    // tool invocation ends (carries duration_ms + output snippet)
 	KindOutline     Kind = "slides.outline"
@@ -126,6 +127,15 @@ func NewLLMThought(text string, toolCalls []string, t Tokens) Event {
 	return Event{Kind: KindLLMThought, Data: EventData{
 		Text: text, ToolCalls: toolCalls, Tokens: &t,
 	}}
+}
+
+// NewLLMToken fires once per streamed text delta. Frontends concatenate
+// delta strings into the trailing assistant bubble — that's what produces
+// the "typing" effect. The final llm.thought with the parsed/cleaned
+// description still fires at the end of the call so consumers can
+// replace the raw stream with the clean summary if they want to.
+func NewLLMToken(delta string) Event {
+	return Event{Kind: KindLLMToken, Data: EventData{Text: delta}}
 }
 
 // NewToolStart includes a truncated preview of the input args so the

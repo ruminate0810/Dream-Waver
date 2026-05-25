@@ -42,6 +42,10 @@ type Bubble =
       /** Tool calls the agent fired during this turn — populated by
        *  tool.start / tool.end events. */
       tools?: ToolCallEntry[];
+      /** True once an llm.token has landed for this bubble. We use it
+       *  to drop the placeholder text on the first chunk so the user
+       *  sees "做了" not "正在构思你的游戏…做了". */
+      streaming?: boolean;
     }
   | { kind: "error"; text: string; id: string };
 
@@ -72,7 +76,11 @@ export function GameChat({
   useEffect(() => {
     const handle = (ev: AgentEvent) => {
       const k: EventKind = ev.kind;
-      if (k === "llm.thought") {
+      if (k === "llm.token") {
+        const delta = ev.data.text ?? "";
+        if (!delta) return;
+        setBubbles((prev) => appendStreamingDelta(prev, delta));
+      } else if (k === "llm.thought") {
         const text = ev.data.text?.trim();
         if (!text) return;
         setBubbles((prev) => upsertLatestAssistantText(prev, text));
@@ -287,6 +295,29 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       </div>
     );
   }
+  // Streaming raw text gets a different treatment — monospace, smaller,
+  // tail-clipped so the bubble doesn't balloon to fit 12KB of HTML.
+  // Once llm.thought lands, streaming flips off and we render the clean
+  // summary in normal display font.
+  if (bubble.status === "thinking" && bubble.streaming) {
+    return (
+      <div className="flex gap-3">
+        <Avatar variant="assistant" />
+        <div className="flex-1 pt-1 min-w-0">
+          <pre className="m-0 max-h-24 overflow-hidden whitespace-pre-wrap break-all font-mono-jb text-[10px] leading-relaxed text-[color:var(--ink-faint)]">
+            {tailLines(bubble.text, 6)}
+            <span className="ml-1 inline-flex">
+              <Loader2 size={9} strokeWidth={2} className="animate-spin" />
+            </span>
+          </pre>
+          {bubble.tools && bubble.tools.length > 0 ? (
+            <ToolStrip calls={bubble.tools} />
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-3">
       <Avatar variant="assistant" />
@@ -312,6 +343,15 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       </div>
     </div>
   );
+}
+
+// tailLines returns at most n trailing lines of the input — keeps the
+// streaming view a constant height regardless of how much HTML the model
+// has produced so far. Without this the bubble grows for 60s straight.
+function tailLines(s: string, n: number): string {
+  const lines = s.split("\n");
+  if (lines.length <= n) return s;
+  return lines.slice(-n).join("\n");
 }
 
 function Avatar({ variant }: { variant: "user" | "assistant" }) {
@@ -417,19 +457,53 @@ function patchToolCall(
   return prev;
 }
 
+// appendStreamingDelta concatenates one llm.token delta onto the trailing
+// thinking bubble. The first delta drops the placeholder text ("正在构思
+// 你的游戏…") and sets streaming=true so subsequent deltas just append.
+// When no thinking bubble exists (race: llm.token before job flips to
+// running), we create one on the fly.
+function appendStreamingDelta(prev: Bubble[], delta: string): Bubble[] {
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const b = prev[i];
+    if (b.kind !== "assistant" || b.status !== "thinking") continue;
+    const next = prev.slice();
+    next[i] = {
+      ...b,
+      streaming: true,
+      text: b.streaming ? b.text + delta : delta,
+    };
+    return next;
+  }
+  return [
+    ...prev,
+    {
+      kind: "assistant",
+      text: delta,
+      status: "thinking",
+      streaming: true,
+      id: cryptoRandomId(),
+    },
+  ];
+}
+
 // upsertLatestAssistantText replaces the text of the trailing thinking
-// bubble (if any) instead of appending a new one — keeps the chat compact
-// when llm.thought fires after the placeholder is already on screen.
+// bubble (if any) instead of appending a new one. Now used by llm.thought
+// (final clean summary) — it overwrites the raw stream that llm.token
+// built up, so the bubble settles on the cleaned 30-char description
+// instead of showing the full HTML dump.
 function upsertLatestAssistantText(prev: Bubble[], text: string): Bubble[] {
   for (let i = prev.length - 1; i >= 0; i--) {
     const b = prev[i];
     if (b.kind === "assistant" && b.status === "thinking") {
       const next = prev.slice();
-      next[i] = { ...b, text };
+      next[i] = { ...b, text, streaming: false };
       return next;
     }
   }
-  return [...prev, { kind: "assistant", text, status: "thinking", id: cryptoRandomId() }];
+  return [
+    ...prev,
+    { kind: "assistant", text, status: "thinking", id: cryptoRandomId() },
+  ];
 }
 
 function finalizeLatestAssistant(prev: Bubble[]): Bubble[] {
