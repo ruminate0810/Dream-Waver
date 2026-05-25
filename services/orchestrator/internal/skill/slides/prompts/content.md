@@ -7,7 +7,7 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
     {
       "index": 1,
       "template": "matches the deck theme",
-      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid",
+      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster",
       "data": {
         "title": "...",
         "subtitle": "optional",
@@ -38,7 +38,17 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 
         "caption": "Optional small italic caption rendered under the title in layout=photo-essay, and as the single caption under the grid in layout=image-grid. ≤ 16 words; mood-setting line (not a body paragraph).",
         "image_position": "Optional for layout=split-image. 'left' (default) puts image on the left half; 'right' puts it on the right. Vary across consecutive split-image slides for rhythm.",
-        "image_queries": "REQUIRED for layout=image-grid. Array of 3 or 4 short ENGLISH queries (2-5 words each), one per tile. The pipeline resolves each to its own AI-generated image. Examples: ['urban skyline night','quiet forest path','industrial loft interior']."
+        "image_queries": "REQUIRED for layout=image-grid. Array of 3 or 4 short ENGLISH queries (2-5 words each), one per tile. The pipeline resolves each to its own AI-generated image. Examples: ['urban skyline night','quiet forest path','industrial loft interior'].",
+
+        "steps": "REQUIRED for layout=process-flow. 3-5 items, each {label, description}. Label ≤ 5 words; description ≤ 18 words. Order matters — step 1 → 2 → 3 …",
+        "bento_cards": "REQUIRED for layout=bento-grid. 4-5 items. Each {size: 'large'|'small', ...}. Exactly ONE 'large'; rest 'small'. Card shape is one of: {title, body} (text), {metric, title} (number), {image_query, title} (AI image). title on image cards becomes the caption pill.",
+        "citation": "Optional for layout=pull-quote. Source label like 'DeepSeek blog · 2026-03 · §4'. Rendered as a small mono-caps line under attribution.",
+        "before_image_query": "REQUIRED for layout=before-after. 2-5 English words describing the 'before' image (e.g. 'cluttered messy living room').",
+        "after_image_query": "REQUIRED for layout=before-after. 2-5 English words describing the 'after' image. Should clearly contrast with before.",
+        "before_label": "Optional for layout=before-after. Override the default 'Before' label (e.g. '原始' / 'Old' / 'Prototype').",
+        "after_label": "Optional for layout=before-after. Override the default 'After' label.",
+        "features": "REQUIRED for layout=icon-grid. 3, 4, or 6 items, each {icon, label, description}. icon is one emoji or symbol (🚀⚡🔒🎯📦💎🧠🌍⏱✨); label ≤ 4 words; description ≤ 25 words.",
+        "team_members": "REQUIRED for layout=team-roster. 3-6 items, each {name, role, avatar_query?, bio?}. avatar_query like 'professional portrait of young Asian female founder, neutral background'. bio ≤ 12 words."
       },
       "speaker_notes": "..."
     }
@@ -64,6 +74,12 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - For layout=`photo-essay`, REQUIRED: `title` (one impactful line, ≤ 8 words) + `image_query` (vivid English description). Optional: `subtitle` (rendered as a small caps kicker; ≤ 3 words; defaults to "Photo essay"), `caption` (italic mood line, ≤ 16 words). Omit `bullets`/`body`.
 - For layout=`split-image`, REQUIRED: `title` + `image_query`. Recommended: `body` (1 short paragraph, ≤ 40 words) AND/OR `bullets` (2-3 items, ≤ 12 words each). Optional: `subtitle` (kicker; ≤ 3 words), `image_position` ("left"|"right"). The image carries half the slide — keep the text side disciplined, not overloaded.
 - For layout=`image-grid`, REQUIRED: `image_queries` (array of 3 or 4). Optional: `title` (small headline above the grid; ≤ 8 words), `caption` (italic line under the grid; ≤ 16 words). Omit slide-level `image_query` (the array supersedes it). Omit `bullets`/`body`.
+- For layout=`process-flow`, REQUIRED: `steps` (3-5 items), each `{label: "≤ 5 words", description: "≤ 18 words"}`. Optional `title` (above the flow). Omit `bullets`/`body`.
+- For layout=`bento-grid`, REQUIRED: `bento_cards` (4-5 items), each `{size: "large"|"small", ...}`. Exactly ONE card MUST be `size: "large"`; the rest are `size: "small"`. Each card is one of three shapes: `{title, body}` for text, `{metric, title}` for headline number, or `{image_query, title}` for AI image (title becomes the image caption). Mix freely. Optional `title` above the grid.
+- For layout=`pull-quote`, REQUIRED: `quote` (the dominant line, ≤ 30 words) AND `attribution` (who said it). RECOMMENDED: `body` (1-2 sentences of context BEFORE the quote, ≤ 30 words). Optional: `citation` (source label like "DeepSeek blog · 2026-03"). Omit `bullets`. NOTE — `pull-quote` is for quotes WITH context; use `quote` for standalone lines.
+- For layout=`before-after`, REQUIRED: `before_image_query` AND `after_image_query` (both 2-5 English words). Optional: `before_label` / `after_label` (defaults "Before" / "After" — override for non-English decks like "未改造" / "改造后"), `title` (above), `caption` (italic line below). Omit `bullets`/`body`.
+- For layout=`icon-grid`, REQUIRED: `features` (3, 4, or 6 items), each `{icon: "🚀", label: "≤ 4 words", description: "1-2 sentences, ≤ 25 words"}`. Icon must be a single emoji or short symbol — pick one that visually evokes the feature (🚀 for speed, 🔒 security, ⚡ performance, 🎯 precision, 📦 packaging, 💎 quality, 🧠 intelligence, 🌍 global, ⏱ time, ✨ magic). Optional `title` above. Omit `bullets`/`body`.
+- For layout=`team-roster`, REQUIRED: `team_members` (3-6 items), each `{name, role, ...}`. Optional per-member: `avatar_query` (for AI portrait — short prompt like "professional portrait of male engineer, neutral background"), `bio` (≤ 12 words). Optional slide-level: `title`. Omit `bullets`/`body`. Names should match the deck's language (中文 for Chinese decks).
 
 # When to emit image_query
 

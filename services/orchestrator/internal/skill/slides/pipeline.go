@@ -178,31 +178,7 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 	if searcher == nil {
 		return
 	}
-	// gridIdx == -1 means "write result into slide's Image (singular)";
-	// gridIdx >= 0 means "write into Images[gridIdx]" — used for the
-	// image-grid layout where one slide carries 3-4 parallel queries.
-	type job struct {
-		idx     int
-		query   string
-		gridIdx int
-	}
-	jobs := []job{}
-	for i, s := range deck.Slides {
-		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
-			jobs = append(jobs, job{i, q, -1})
-		}
-		// image-grid: pre-allocate the Images slice in the same length
-		// as ImageQueries so goroutines can write into it by index
-		// without any locking — each goroutine owns one slot.
-		if len(s.Data.ImageQueries) > 0 {
-			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
-			for gi, q := range s.Data.ImageQueries {
-				if q = strings.TrimSpace(q); q != "" {
-					jobs = append(jobs, job{i, q, gi})
-				}
-			}
-		}
-	}
+	jobs := collectImageJobs(deck)
 	if len(jobs) == 0 {
 		return
 	}
@@ -226,7 +202,7 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			if r, ok := cache[j.query]; ok {
 				cacheMu.Unlock()
 				if r != nil {
-					writeImageResult(deck, j.idx, j.gridIdx, r)
+					writeImageResult(deck, j, r)
 					atomic.AddInt64(&succeeded, 1)
 				} else {
 					atomic.AddInt64(&failed, 1)
@@ -245,7 +221,7 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			cache[j.query] = r // record nil too so we don't retry empty hits
 			cacheMu.Unlock()
 			if r != nil {
-				writeImageResult(deck, j.idx, j.gridIdx, r)
+				writeImageResult(deck, j, r)
 				atomic.AddInt64(&succeeded, 1)
 			} else {
 				atomic.AddInt64(&failed, 1)
@@ -261,19 +237,96 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 	)
 }
 
-// writeImageResult routes one image.Result into the right field of
-// the right slide. Centralised so the single-image and grid paths
-// can't drift apart.
-func writeImageResult(deck *Deck, slideIdx, gridIdx int, r *image.Result) {
-	if gridIdx >= 0 {
-		deck.Slides[slideIdx].Data.Images[gridIdx] = r.URL
-		// Image-grid shows one shared credit (last writer wins —
-		// they're all AI-gen with the same attribution anyway).
-		deck.Slides[slideIdx].Data.ImageCredit = r.Credit
-		return
+// imageJobKind enumerates every place a slide can store an image URL.
+// Routing by typed kind beats the prior gridIdx-int sentinel approach
+// once we have ≥ 4 targets (Image / Images[i] / BeforeImage /
+// AfterImage / TeamMembers[i].Avatar / BentoCards[i].Image).
+type imageJobKind int
+
+const (
+	imgJobSingle      imageJobKind = iota // SlideData.Image
+	imgJobGrid                            // SlideData.Images[subIdx]
+	imgJobBeforeImage                     // SlideData.BeforeImage
+	imgJobAfterImage                      // SlideData.AfterImage
+	imgJobTeamAvatar                      // SlideData.TeamMembers[subIdx].Avatar
+	imgJobBentoCard                       // SlideData.BentoCards[subIdx].Image
+)
+
+type imageJob struct {
+	slideIdx int
+	query    string
+	kind     imageJobKind
+	subIdx   int // index into Images / TeamMembers / BentoCards (ignored for the others)
+}
+
+// collectImageJobs walks every slide and emits one imageJob per pending
+// image fetch across all layouts. Pre-allocates the destination slices
+// (Images, etc.) so the goroutines can write by index without locking.
+func collectImageJobs(deck *Deck) []imageJob {
+	var jobs []imageJob
+	for i, s := range deck.Slides {
+		// Single hero image (title / section / closing / photo-essay / split-image / pull-quote etc.)
+		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobSingle, 0})
+		}
+		// Image-grid: N parallel queries → indexed Images slice
+		if len(s.Data.ImageQueries) > 0 {
+			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
+			for gi, q := range s.Data.ImageQueries {
+				if q = strings.TrimSpace(q); q != "" {
+					jobs = append(jobs, imageJob{i, q, imgJobGrid, gi})
+				}
+			}
+		}
+		// Before-after: two distinct queries → BeforeImage / AfterImage
+		if q := strings.TrimSpace(s.Data.BeforeImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobBeforeImage, 0})
+		}
+		if q := strings.TrimSpace(s.Data.AfterImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobAfterImage, 0})
+		}
+		// Team-roster: one avatar per member with an AvatarQuery
+		for mi, m := range s.Data.TeamMembers {
+			if q := strings.TrimSpace(m.AvatarQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobTeamAvatar, mi})
+			}
+		}
+		// Bento-grid: one image per card with an ImageQuery
+		for ci, c := range s.Data.BentoCards {
+			if q := strings.TrimSpace(c.ImageQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobBentoCard, ci})
+			}
+		}
 	}
-	deck.Slides[slideIdx].Data.Image = r.URL
-	deck.Slides[slideIdx].Data.ImageCredit = r.Credit
+	return jobs
+}
+
+// writeImageResult routes one image.Result into the right field of the
+// right slide based on the job's typed kind. Centralised so every new
+// image-bearing layout extends ONE switch instead of growing if-chains
+// throughout the codebase.
+func writeImageResult(deck *Deck, j imageJob, r *image.Result) {
+	s := &deck.Slides[j.slideIdx]
+	switch j.kind {
+	case imgJobSingle:
+		s.Data.Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobGrid:
+		s.Data.Images[j.subIdx] = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobBeforeImage:
+		s.Data.BeforeImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobAfterImage:
+		s.Data.AfterImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobTeamAvatar:
+		s.Data.TeamMembers[j.subIdx].Avatar = r.URL
+		// Avatars don't show per-member credit — too noisy.
+	case imgJobBentoCard:
+		s.Data.BentoCards[j.subIdx].Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	}
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

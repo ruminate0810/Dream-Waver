@@ -15,7 +15,7 @@ Adapt vocabulary, depth, and tone to the audience. Choose a single overarching t
   "slides": [
     {
       "index": 1,
-      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid",
+      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster",
       "headline": "≤ 12 words",
       "key_points": ["3–5 bullets, ≤ 20 words each"],
       "speaker_notes": "2–3 sentences the presenter would say"
@@ -131,6 +131,54 @@ For each slide, pick the `type` that best matches its content shape:
                    ARRAY of 3 or 4 short English queries, one per
                    tile). Single caption underneath ties them together.
                    Use sparingly — at most one per deck.
+
+- `process-flow` — when content is a SEQUENCE of 3-5 logical steps
+                   (no dates — those go to `timeline`). Each step is
+                   a label + 1-sentence elaboration. Triggered by:
+                   流程 / 步骤 / 操作步骤 / 实施步骤 / how-to /
+                   workflow / 操作指南. Strictly stronger than
+                   `bullets` when the underlying content really IS a
+                   sequence (step 1 → step 2 → step 3 …) and not
+                   just a list.
+- `bento-grid`   — when content is a "feature overview" or "product
+                   全貌": 4-5 cards mixing text descriptions,
+                   metrics, and AI images in an asymmetric grid.
+                   Apple-keynote feel. Triggered by: 综合介绍 /
+                   核心卖点集合 / 产品全貌 / overview / 一图看懂 /
+                   feature roundup. Use ONCE per deck — it's the
+                   visual anchor.
+- `pull-quote`   — when one statement deserves to dominate a slide
+                   AND there's meaningful context that frames it.
+                   Three parts: short context paragraph (≤ 30
+                   words) + giant quote + attribution. STRICTLY
+                   STRONGER than `quote` when the quote needs
+                   setup; use `quote` when the line stands alone.
+                   Triggered by: 关键观点 / 重磅观点 / 核心论断 /
+                   定调 / pull quote.
+- `before-after` — when content compares the SAME thing in two
+                   states: a transformation, a makeover, a
+                   redesign. Two AI images side-by-side with
+                   "Before" / "After" labels (override-able for
+                   any pair like "Old" / "New", "Prototype" /
+                   "Production", "未改造" / "改造后"). Triggered
+                   by: 改造 / 前后对比 / before after / makeover /
+                   重构 / 翻新 / 蜕变. REQUIRES both before_image_query
+                   AND after_image_query.
+- `icon-grid`    — when content is a list of 3-4 (sometimes 6)
+                   features / capabilities / services / offerings,
+                   each with a concise label and 1-2 sentences.
+                   Icon per cell is a single emoji or symbol the
+                   LLM picks (🚀 / 🔒 / ⚡ / 🎯 / 📦 / 💎 etc.).
+                   Triggered by: 功能介绍 / 特性 / capabilities /
+                   features / 我们提供 / 服务范围 / what we do.
+- `team-roster`  — when content is 3-6 team members / speakers /
+                   founders. Each card: name + role (job title) +
+                   optional 1-line bio. AvatarQuery routes through
+                   nano-banana to generate a square portrait;
+                   missing avatars fall back to a monogram disc
+                   from the name's first letter. Triggered by:
+                   团队介绍 / our team / 团队 / founders /
+                   核心成员 / 演讲嘉宾 / meet the team.
 
 Prefer `bullets`/`content` when a slide doesn't strongly fit one of the
 specialised types. Specialised types make for stronger slides but only

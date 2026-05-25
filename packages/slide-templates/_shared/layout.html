@@ -291,6 +291,127 @@ __THEME_STYLE__
     {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}
   </div>
 
+{{else if eq .Layout "process-flow"}}
+  {{/* K1.1 — Horizontal numbered steps with arrows between them. CSS
+       handles the connector lines + arrow markers so HTML stays clean. */}}
+  <div class="process-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <ol class="process-flow" data-count="{{len .Data.Steps}}">
+      {{range $i, $s := .Data.Steps}}
+        <li class="process-step">
+          <span class="step-num">{{add1 $i}}</span>
+          <div class="step-body">
+            <div class="step-label">{{$s.Label}}</div>
+            {{with $s.Description}}<div class="step-desc">{{.}}</div>{{end}}
+          </div>
+        </li>
+      {{end}}
+    </ol>
+  </div>
+
+{{else if eq .Layout "bento-grid"}}
+  {{/* K1.2 — Apple-keynote-style asymmetric card mosaic. data-size on
+       each tile drives CSS grid-area; "large" cards span 2x2. */}}
+  <div class="bento-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <div class="bento-grid" data-count="{{len .Data.BentoCards}}">
+      {{range .Data.BentoCards}}
+        <div class="bento-card" data-size="{{if .Size}}{{.Size}}{{else}}small{{end}}">
+          {{if .Image}}
+            <div class="bento-image" data-no-extract style="background-image:url('{{.Image}}')"></div>
+            {{with .Title}}<div class="bento-image-caption">{{.}}</div>{{end}}
+          {{else if .Metric}}
+            <div class="bento-metric">{{.Metric}}</div>
+            {{with .Title}}<div class="bento-metric-label">{{.}}</div>{{end}}
+          {{else}}
+            {{with .Title}}<div class="bento-title">{{.}}</div>{{end}}
+            {{with .Body}}<div class="bento-body">{{.}}</div>{{end}}
+          {{end}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "pull-quote"}}
+  {{/* K1.3 — Three-row vertical stack: context paragraph (small) → giant
+       pull quote (dominant, with decorative quotation mark) →
+       attribution + citation. Body field is reused as context. */}}
+  <div class="pull-quote-wrap">
+    {{with .Data.Body}}<div class="pq-context">{{.}}</div>{{end}}
+    <blockquote class="pq-quote">
+      <span class="pq-mark" data-no-extract>&ldquo;</span>
+      <span class="pq-text">{{.Data.Quote}}</span>
+    </blockquote>
+    <footer class="pq-footer">
+      {{with .Data.Attribution}}<div class="pq-attribution">&mdash; {{.}}</div>{{end}}
+      {{with .Data.Citation}}<div class="pq-citation">{{.}}</div>{{end}}
+    </footer>
+  </div>
+
+{{else if eq .Layout "before-after"}}
+  {{/* K1.4 — 50:50 image-vs-image grid. Each side has a top label +
+       filled image (or striped fallback). Optional caption underneath. */}}
+  <div class="before-after-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <div class="before-after-grid">
+      <div class="ba-side ba-before">
+        <div class="ba-label">{{with .Data.BeforeLabel}}{{.}}{{else}}Before{{end}}</div>
+        {{if .Data.BeforeImage}}
+          <div class="ba-fill" data-no-extract style="background-image:url('{{.Data.BeforeImage}}')"></div>
+        {{else}}
+          <div class="ba-fallback"></div>
+        {{end}}
+      </div>
+      <div class="ba-side ba-after">
+        <div class="ba-label">{{with .Data.AfterLabel}}{{.}}{{else}}After{{end}}</div>
+        {{if .Data.AfterImage}}
+          <div class="ba-fill" data-no-extract style="background-image:url('{{.Data.AfterImage}}')"></div>
+        {{else}}
+          <div class="ba-fallback"></div>
+        {{end}}
+      </div>
+    </div>
+    {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "icon-grid"}}
+  {{/* K1.5 — N-column feature grid; data-count drives 3-col vs 4-col vs
+       2x3. Icon is a single emoji/symbol — no icon-font dependency. */}}
+  <div class="icon-grid-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <div class="icon-grid" data-count="{{len .Data.Features}}">
+      {{range .Data.Features}}
+        <div class="icon-cell">
+          <div class="icon-glyph">{{.Icon}}</div>
+          <div class="icon-label">{{.Label}}</div>
+          {{with .Description}}<div class="icon-desc">{{.}}</div>{{end}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+
+{{else if eq .Layout "team-roster"}}
+  {{/* K1.6 — Horizontal row of team-member cards. Avatar uses the
+       resolved URL when available, else falls back to a monogram disc
+       with the name's first letter on an accent-tinted background. */}}
+  <div class="team-wrap">
+    {{with .Data.Title}}<div class="title">{{.}}</div>{{end}}
+    <div class="team-roster" data-count="{{len .Data.TeamMembers}}">
+      {{range .Data.TeamMembers}}
+        <div class="team-card">
+          {{if .Avatar}}
+            <div class="team-avatar" data-no-extract style="background-image:url('{{.Avatar}}')"></div>
+          {{else}}
+            <div class="team-avatar team-avatar-fallback" data-no-extract>{{slice .Name 0 1}}</div>
+          {{end}}
+          <div class="team-name">{{.Name}}</div>
+          <div class="team-role">{{.Role}}</div>
+          {{with .Bio}}<div class="team-bio">{{.}}</div>{{end}}
+        </div>
+      {{end}}
+    </div>
+  </div>
+
 {{else}}
   <div class="pretitle" data-no-extract></div>
   <div class="title">{{.Data.Title}}</div>

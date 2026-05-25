@@ -28,6 +28,14 @@ const (
 	LayoutPhotoEssay SlideLayout = "photo-essay" // full-bleed image + 1-line editorial title bottom-left + optional caption — "image-as-statement"
 	LayoutSplitImage SlideLayout = "split-image" // 50:50 image-left / text-right (or swapped) — magazine feature feel
 	LayoutImageGrid  SlideLayout = "image-grid"  // 3-4 image moodboard grid with single caption — for "concepts / examples / visual references"
+	// Sprint K1 — information-architecture layouts covering common
+	// presentation patterns the existing 17 layouts can't compose:
+	LayoutProcessFlow SlideLayout = "process-flow" // horizontal 3-5 numbered steps with arrows — workflow / how-to (no dates, unlike timeline)
+	LayoutBentoGrid   SlideLayout = "bento-grid"   // Apple-style asymmetric card grid (1 large + 3-4 small) — modern "feature overview"
+	LayoutPullQuote   SlideLayout = "pull-quote"   // context paragraph + huge serif quote + attribution — quote-with-context
+	LayoutBeforeAfter SlideLayout = "before-after" // 50:50 image-vs-image with header labels — transformations / makeovers
+	LayoutIconGrid    SlideLayout = "icon-grid"    // 3-4 column grid of icon + label + description — feature / capability listings
+	LayoutTeamRoster  SlideLayout = "team-roster"  // horizontal row of avatar + name + role cards — team intros
 )
 
 // Theme picks a base template family. The renderer falls back to LayoutTitle
@@ -136,6 +144,49 @@ type SlideData struct {
 	// Images is the resolved URL slice for layout=image-grid, parallel
 	// to ImageQueries. Set by the pipeline, not the LLM.
 	Images []string `json:"images,omitempty"`
+
+	// ─── Sprint K1 fields ──────────────────────────────────────────
+
+	// Steps populates layout=process-flow. 3-5 sequential steps
+	// rendered as numbered circles with arrows between them; each
+	// step has a short label + 1-line description. NO dates (use
+	// timeline if there are dates).
+	Steps []ProcessStep `json:"steps,omitempty"`
+
+	// BentoCards populates layout=bento-grid. Apple-keynote-style
+	// asymmetric mosaic — 1 large card + 3-4 small cards. Each card
+	// is one of: title+body (text), metric (big number), or
+	// image_query (AI image). Mix freely.
+	BentoCards []BentoCard `json:"bento_cards,omitempty"`
+
+	// Citation populates layout=pull-quote (optional). Source line
+	// rendered as a small mono-caps footer after the attribution —
+	// e.g. "DeepSeek blog · 2026-03 · §4". Empty omits the row.
+	Citation string `json:"citation,omitempty"`
+
+	// BeforeImageQuery / AfterImageQuery populate layout=before-after.
+	// Two AI-image queries, resolved in parallel to BeforeImage /
+	// AfterImage URLs by the pipeline. Both REQUIRED for the layout
+	// to render meaningfully — fallback states use diagonal accent
+	// striping when fetch fails.
+	BeforeImageQuery string `json:"before_image_query,omitempty"`
+	AfterImageQuery  string `json:"after_image_query,omitempty"`
+	BeforeImage      string `json:"before_image,omitempty"` // resolved by pipeline
+	AfterImage       string `json:"after_image,omitempty"`  // resolved by pipeline
+	BeforeLabel      string `json:"before_label,omitempty"` // default "Before"
+	AfterLabel       string `json:"after_label,omitempty"`  // default "After"
+
+	// Features populates layout=icon-grid. 3 or 4 (or 6 for 2x3)
+	// icon + label + 1-2-sentence description cells. Icon is a
+	// single emoji or short symbol — no icon-font dependency.
+	Features []Feature `json:"features,omitempty"`
+
+	// TeamMembers populates layout=team-roster. 3-6 horizontal
+	// avatar+name+role cards. AvatarQuery routes through the same
+	// image fanout as ImageQueries (nano-banana generates a square
+	// portrait). When the fetch fails, the card renders a monogram
+	// disc from the name's first letter.
+	TeamMembers []TeamMember `json:"team_members,omitempty"`
 }
 
 // TableRow is one data row inside a comparison-table slide. Cells
@@ -179,6 +230,54 @@ type Metric struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
 	Delta string `json:"delta,omitempty"`
+}
+
+// ─── Sprint K1 types ────────────────────────────────────────────
+
+// ProcessStep is one node in a process-flow slide. Label is the
+// step name (≤ 5 words), Description is a single-sentence elaboration
+// (≤ 18 words). Numbering is automatic from slice order.
+type ProcessStep struct {
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// BentoCard is one tile in a bento-grid. Size is "large" (spans 2×2)
+// or "small" (1×1). The tile renders one of:
+//   - Title + Body   (text card; both required)
+//   - Metric         (huge number, no body)
+//   - ImageQuery     (AI image fills the tile; resolved to Image)
+//
+// Mix freely; the LLM picks per-card based on content.
+type BentoCard struct {
+	Size       string `json:"size"` // "large" | "small"
+	Title      string `json:"title,omitempty"`
+	Body       string `json:"body,omitempty"`
+	Metric     string `json:"metric,omitempty"`
+	ImageQuery string `json:"image_query,omitempty"`
+	Image      string `json:"image,omitempty"` // resolved by pipeline
+}
+
+// Feature is one cell in an icon-grid. Icon is a single emoji or
+// short symbol string (🚀, ⚡, ✦, etc.). Label is the feature name
+// (≤ 4 words). Description is 1-2 sentences (≤ 25 words total).
+type Feature struct {
+	Icon        string `json:"icon"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// TeamMember is one card in a team-roster. AvatarQuery routes through
+// the same image fanout as ImageQuery — typically a portrait prompt
+// like "professional portrait of female founder, neutral background".
+// When the fetch fails, the renderer falls back to a monogram disc
+// using Name's first letter.
+type TeamMember struct {
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	Bio         string `json:"bio,omitempty"`
+	AvatarQuery string `json:"avatar_query,omitempty"`
+	Avatar      string `json:"avatar,omitempty"` // resolved by pipeline
 }
 
 // Slide is one rendered page in a Deck.

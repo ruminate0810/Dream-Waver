@@ -22,28 +22,7 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 	if searcher == nil {
 		return
 	}
-	// gridIdx == -1 → write into slide.Data.Image (singular);
-	// gridIdx >= 0 → write into slide.Data.Images[gridIdx] for the
-	// image-grid layout's 3-4 parallel queries.
-	type job struct {
-		idx     int
-		query   string
-		gridIdx int
-	}
-	jobs := []job{}
-	for i, s := range deck.Slides {
-		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
-			jobs = append(jobs, job{i, q, -1})
-		}
-		if len(s.Data.ImageQueries) > 0 {
-			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
-			for gi, q := range s.Data.ImageQueries {
-				if q = strings.TrimSpace(q); q != "" {
-					jobs = append(jobs, job{i, q, gi})
-				}
-			}
-		}
-	}
+	jobs := collectImageJobs(deck)
 	if len(jobs) == 0 {
 		return
 	}
@@ -66,7 +45,7 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			if r, ok := cache[j.query]; ok {
 				cacheMu.Unlock()
 				if r != nil {
-					writeImageResult(deck, j.idx, j.gridIdx, r)
+					writeImageResult(deck, j, r)
 					atomic.AddInt64(&succeeded, 1)
 				} else {
 					atomic.AddInt64(&failed, 1)
@@ -85,7 +64,7 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			cache[j.query] = r
 			cacheMu.Unlock()
 			if r != nil {
-				writeImageResult(deck, j.idx, j.gridIdx, r)
+				writeImageResult(deck, j, r)
 				atomic.AddInt64(&succeeded, 1)
 			} else {
 				atomic.AddInt64(&failed, 1)
@@ -101,15 +80,81 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 	)
 }
 
-// writeImageResult is the tools-package twin of slides.writeImageResult;
-// keep them in sync. Centralised so the single-image and image-grid
-// paths can't drift apart.
-func writeImageResult(deck *schema.Deck, slideIdx, gridIdx int, r *image.Result) {
-	if gridIdx >= 0 {
-		deck.Slides[slideIdx].Data.Images[gridIdx] = r.URL
-		deck.Slides[slideIdx].Data.ImageCredit = r.Credit
-		return
+// imageJobKind / imageJob / collectImageJobs / writeImageResult are the
+// twins of slides/pipeline.go's same-named symbols. The two files exist
+// because slides → tools is the import direction; until a neutral third
+// package is extracted, keep them byte-for-byte in sync.
+type imageJobKind int
+
+const (
+	imgJobSingle imageJobKind = iota
+	imgJobGrid
+	imgJobBeforeImage
+	imgJobAfterImage
+	imgJobTeamAvatar
+	imgJobBentoCard
+)
+
+type imageJob struct {
+	slideIdx int
+	query    string
+	kind     imageJobKind
+	subIdx   int
+}
+
+func collectImageJobs(deck *schema.Deck) []imageJob {
+	var jobs []imageJob
+	for i, s := range deck.Slides {
+		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobSingle, 0})
+		}
+		if len(s.Data.ImageQueries) > 0 {
+			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
+			for gi, q := range s.Data.ImageQueries {
+				if q = strings.TrimSpace(q); q != "" {
+					jobs = append(jobs, imageJob{i, q, imgJobGrid, gi})
+				}
+			}
+		}
+		if q := strings.TrimSpace(s.Data.BeforeImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobBeforeImage, 0})
+		}
+		if q := strings.TrimSpace(s.Data.AfterImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobAfterImage, 0})
+		}
+		for mi, m := range s.Data.TeamMembers {
+			if q := strings.TrimSpace(m.AvatarQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobTeamAvatar, mi})
+			}
+		}
+		for ci, c := range s.Data.BentoCards {
+			if q := strings.TrimSpace(c.ImageQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobBentoCard, ci})
+			}
+		}
 	}
-	deck.Slides[slideIdx].Data.Image = r.URL
-	deck.Slides[slideIdx].Data.ImageCredit = r.Credit
+	return jobs
+}
+
+func writeImageResult(deck *schema.Deck, j imageJob, r *image.Result) {
+	s := &deck.Slides[j.slideIdx]
+	switch j.kind {
+	case imgJobSingle:
+		s.Data.Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobGrid:
+		s.Data.Images[j.subIdx] = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobBeforeImage:
+		s.Data.BeforeImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobAfterImage:
+		s.Data.AfterImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobTeamAvatar:
+		s.Data.TeamMembers[j.subIdx].Avatar = r.URL
+	case imgJobBentoCard:
+		s.Data.BentoCards[j.subIdx].Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	}
 }
