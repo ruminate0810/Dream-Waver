@@ -60,7 +60,16 @@ export type CreateSlidesResponse = {
 export type SlideJob = {
   job_id: string;
   session_id: string;
-  status: "running" | "finished" | "error";
+  // Sprint L1/N1 — status now also surfaces "awaiting_*" sentinels
+  // (awaiting_wizard / awaiting_outline_approval / awaiting_clarification)
+  // when an interactive gate is paused for user input.
+  status:
+    | "running"
+    | "finished"
+    | "error"
+    | "awaiting_wizard"
+    | "awaiting_outline_approval"
+    | "awaiting_clarification";
   mode?: "agent" | "pipeline";
   input?: {
     topic?: string;
@@ -77,6 +86,32 @@ export type SlideJob = {
   error?: string;
   started_at: string;
   finished_at?: string;
+  /**
+   * Sprint N1.h — populated when status is awaiting_*. Mirrors the
+   * Go-side slides.PendingUserAction. Lets the chat page hydrate its
+   * WizardCard / OutlineReviewCard on initial mount or refresh,
+   * because the WebSocket pause event won't replay for late
+   * subscribers.
+   */
+  pending?: SlidePendingAction;
+};
+
+/** Sprint N1.h — typed wire mirror of slides.PendingUserAction. */
+export type SlidePendingAction =
+  | { kind: "wizard"; wizard: SlideWizardStepView; wizard_scenario?: string; wizard_answers?: Record<string, string> }
+  | { kind: "outline_review"; outline_json: string }
+  | { kind: "clarification"; questions: string[] };
+
+/** Sprint N1.h — typed wire mirror of slides.WizardStepView. */
+export type SlideWizardStepView = {
+  step: number;
+  total: number;
+  kind: "scenario" | "free-text";
+  question: string;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string; icon: string }>;
+  optional: boolean;
+  suggested_value?: string;
 };
 
 type Envelope<T> =

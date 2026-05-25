@@ -183,6 +183,13 @@ type slideJobView struct {
 	Error       string       `json:"error,omitempty"`
 	StartedAt   string       `json:"started_at"`
 	FinishedAt  string       `json:"finished_at,omitempty"`
+
+	// Sprint N1.h — typed envelope of the currently-active HILT pause
+	// (wizard step / outline-review / legacy clarification). Populated
+	// only when status starts with "awaiting_". Lets the frontend
+	// hydrate its WizardCard / OutlineReviewCard on mount or refresh
+	// without waiting for the WS event (which won't replay).
+	Pending *slides.PendingUserAction `json:"pending,omitempty"`
 }
 
 func (h *handlers) GetSlides(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +214,15 @@ func (h *handlers) GetSlides(w http.ResponseWriter, r *http.Request) {
 	}
 	if !job.FinishedAt.IsZero() {
 		v.FinishedAt = job.FinishedAt.Format(time.RFC3339)
+	}
+	// Sprint N1.h — hydrate the active HILT pending so the frontend's
+	// WizardCard / OutlineReviewCard renders correctly on initial mount
+	// or after a refresh. Only fetch when the job is actually paused
+	// to keep the response small for finished/running decks.
+	if strings.HasPrefix(job.Status, "awaiting_") && h.deps.Sessions != nil {
+		if state, ok := h.deps.Sessions.Get(job.ID); ok {
+			v.Pending = state.GetPending()
+		}
 	}
 	if job.PptxPath != "" {
 		v.DownloadURL = "/api/v1/slides/" + job.ID + "/download"

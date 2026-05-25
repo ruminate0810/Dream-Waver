@@ -582,6 +582,55 @@ export function useAgentSession(job: SlideJob): AgentSession {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.slide_count, job.status, job.error]);
 
+  // Sprint N1.h — hydrate the active HILT pending from the SlideJob
+  // payload when status is awaiting_*. Without this, a user who
+  // refreshes the page (or navigates to /slides/{id} after the gate
+  // event already fired) sees no card — the WS event won't replay.
+  //
+  // The synthesized event mirrors what the live WS would have sent;
+  // the reducer's existing case handlers attach it to Turn 0 or
+  // create one as needed. We DON'T fire if the active turn already
+  // has matching pending (avoid clobbering the live state).
+  useEffect(() => {
+    if (!job.pending) return;
+    const t = state.turns[state.turns.length - 1];
+    if (t?.pending) return; // already hydrated (via WS or prior render)
+
+    const baseEv = {
+      session_id: job.session_id,
+      at: new Date().toISOString(),
+    };
+    if (job.pending.kind === "wizard") {
+      dispatch({
+        type: "ws",
+        event: {
+          ...baseEv,
+          kind: "wizard.step",
+          data: { wizard_step_json: JSON.stringify(job.pending.wizard) },
+        },
+      });
+    } else if (job.pending.kind === "outline_review") {
+      dispatch({
+        type: "ws",
+        event: {
+          ...baseEv,
+          kind: "outline.review_required",
+          data: { review_outline_json: job.pending.outline_json },
+        },
+      });
+    } else if (job.pending.kind === "clarification") {
+      dispatch({
+        type: "ws",
+        event: {
+          ...baseEv,
+          kind: "outline.clarification_required",
+          data: { clarification_questions: job.pending.questions },
+        },
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.pending?.kind, job.status]);
+
   const busy =
     state.turns.length > 0 &&
     state.turns[state.turns.length - 1].status === "running";
