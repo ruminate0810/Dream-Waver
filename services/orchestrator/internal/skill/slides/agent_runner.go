@@ -11,6 +11,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/tools"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -154,57 +155,181 @@ Communication style:
 
 const nextStepPrompt = `Based on the work so far, what is the single next tool call?`
 
-// Run is the initial-generation entry point. Creates a fresh SessionState,
-// drives the agent loop, persists everything for follow-up edits.
+// Run is the initial-generation entry point for agent mode. Sprint L1
+// reshapes this into an explicit-phase orchestrator (the LLM agent loop
+// only owns edit turns now via Continue):
+//
+//	Phase 0 (H2, conditional): clarification gate
+//	Phase 1 (always): outline planning
+//	Phase 2 (H1, always): outline review gate  ← Run typically pauses here
+//	(Phase 3 — content + render — runs from ResumeFromOutlineApproval)
+//
+// Each pause exits the goroutine cleanly with Output.Status set to an
+// "awaiting_*" sentinel; the API handler flips the job's public status
+// accordingly. Resume comes back through the matching ResumeFrom*
+// entry point.
 func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output, error) {
 	state := &SessionState{
 		JobID: jobID,
 		Input: in,
 	}
-	rendererAdapter := &sessionRenderer{Renderer: r.Renderer, State: state}
 
-	// Initial-generation registry.
-	registryTools := []tool.Tool{
-		&tools.PlanOutline{Router: r.Router, Emitter: r.Emitter, State: state},
-		&tools.WriteContent{Router: r.Router, State: state},
-		&tools.RenderDeck{Renderer: rendererAdapter, Images: r.Images, State: state},
-		tool.Terminate{},
-	}
-	if r.TavilyKey != "" {
-		registryTools = append([]tool.Tool{tool.NewTavilySearch(r.TavilyKey)}, registryTools...)
-	}
-	registry := tool.NewRegistry(registryTools...)
-
-	a := agent.NewToolCallAgent("slides", r.Router, registry, systemPromptInitial, nextStepPrompt, r.Emitter)
-	a.Model = r.Router.ModelFor("planner")
-	a.MaxSteps = 12
-
-	userPrompt := buildUserPrompt(in)
-	_, err := agent.Run(ctx, a, userPrompt)
-	if err != nil {
-		return nil, fmt.Errorf("agent run: %w", err)
-	}
-
-	// Persist agent memory for future Continue() turns.
-	state.SetMemory(a.Memory.Snapshot())
-
-	pptxPath, title, slideCount, ok := findRenderResult(a)
-	if !ok {
-		return nil, fmt.Errorf("agent finished but no render_deck result was recorded — check the tool ordering")
-	}
-
-	// SessionState was mutated by tools as the agent ran. We register it
-	// in the store now so /messages handlers can reach it.
+	// Register state immediately so the resume endpoints can find this
+	// session even before any phase completes. (Without this, a fast
+	// user could POST /messages before Run had time to call Put().)
 	if r.Sessions != nil && state.JobID != "" {
 		r.Sessions.Put(state)
 	}
 
+	// Phase 0 — clarification gate (H2). Only fires when the topic is
+	// thin enough that the planner would have to guess.
+	if vague, questions := needsClarification(in.Topic); vague {
+		state.SetPending(&PendingUserAction{
+			Kind:      PendingClarification,
+			Questions: questions,
+		})
+		r.emit(ctx, event.NewClarificationRequired(questions))
+		return &Output{Status: "awaiting_clarification"}, nil
+	}
+
+	return r.runFromOutline(ctx, state)
+}
+
+// runFromOutline is the entry point for Phase 1 → Phase 2. Called
+// from Run() when the topic is clear, or from ResumeFromClarification
+// after the user has answered the gate's questions.
+func (r *AgentRunner) runFromOutline(ctx context.Context, state *SessionState) (*Output, error) {
+	// Phase 1 — outline planning. Reuses the existing stages.Outline
+	// (so its prompt + retry + cache stay the single source of truth).
+	outline, _, err := stages.Outline(ctx, r.Router, stages.OutlineParams{
+		Topic:         state.Input.Topic,
+		Audience:      state.Input.Audience,
+		SlideCount:    state.Input.SlideCount,
+		Style:         state.Input.Style,
+		ReferenceText: state.Input.ReferenceText,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("outline: %w", err)
+	}
+	if state.Input.ForceTheme != "" {
+		outline.Theme = schema.Theme(state.Input.ForceTheme)
+	}
+	state.SetOutline(outline)
+	r.emit(ctx, event.NewOutline(outline.Title, len(outline.Slides)))
+
+	// Phase 2 — outline review gate (H1, always fires). Serialize the
+	// outline so the frontend's review card has the exact same shape
+	// the planner produced; round-trip on approval.
+	outlineJSON, _ := json.Marshal(outline)
+	state.SetPending(&PendingUserAction{
+		Kind:        PendingOutlineReview,
+		OutlineJSON: string(outlineJSON),
+	})
+	r.emit(ctx, event.NewOutlineReviewRequired(string(outlineJSON)))
+
+	return &Output{
+		Status:     "awaiting_outline_approval",
+		Title:      outline.Title,
+		SlideCount: len(outline.Slides),
+	}, nil
+}
+
+// ResumeFromClarification is the resume entry for the H2 gate. The
+// user's answers are folded into the input topic; then we fall through
+// to Phase 1 (which pauses again at Phase 2).
+func (r *AgentRunner) ResumeFromClarification(ctx context.Context, jobID string, answers []string) (*Output, error) {
+	state, ok := r.Sessions.Get(jobID)
+	if !ok {
+		return nil, fmt.Errorf("no session for job %s", jobID)
+	}
+	pending := state.GetPending()
+	if pending == nil || pending.Kind != PendingClarification {
+		return nil, fmt.Errorf("job %s is not awaiting clarification", jobID)
+	}
+
+	// Append the Q/A pairs to ReferenceText so the planner sees them
+	// as supplementary material. Keeps the outline prompt unchanged.
+	var b strings.Builder
+	b.WriteString(state.Input.ReferenceText)
+	if b.Len() > 0 {
+		b.WriteString("\n\n")
+	}
+	b.WriteString("Clarification:\n")
+	for i, q := range pending.Questions {
+		ans := ""
+		if i < len(answers) {
+			ans = answers[i]
+		}
+		fmt.Fprintf(&b, "Q: %s\nA: %s\n", q, ans)
+	}
+	state.Input.ReferenceText = b.String()
+	state.ClearPending()
+
+	return r.runFromOutline(ctx, state)
+}
+
+// ResumeFromOutlineApproval is the resume entry for the H1 gate. The
+// user's optional edits are merged into the stored Outline; then we
+// run Phase 3 (content + render) to completion.
+func (r *AgentRunner) ResumeFromOutlineApproval(ctx context.Context, jobID string, edits *OutlineEdits) (*Output, error) {
+	state, ok := r.Sessions.Get(jobID)
+	if !ok {
+		return nil, fmt.Errorf("no session for job %s", jobID)
+	}
+	pending := state.GetPending()
+	if pending == nil || pending.Kind != PendingOutlineReview {
+		return nil, fmt.Errorf("job %s is not awaiting outline approval", jobID)
+	}
+	if edits != nil {
+		state.MergeOutlineEdits(*edits)
+	}
+	state.ClearPending()
+
+	return r.runFromContent(ctx, state)
+}
+
+// runFromContent is Phase 3 — content writing + image fanout + render.
+// Runs to completion; the job goes finished (or error) when this
+// returns.
+func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (*Output, error) {
+	outline := state.Outline
+	if outline == nil {
+		return nil, fmt.Errorf("internal: runFromContent without an outline")
+	}
+
+	// Phase 3a — per-slide content via the worker LLM.
+	content, _, err := stages.Content(ctx, r.Router, outline)
+	if err != nil {
+		return nil, fmt.Errorf("content: %w", err)
+	}
+	state.SetContent(content)
+
+	// Phase 3b — assemble + resolve images + render. Reuses pipeline
+	// helpers so K1's image-fanout + I0.2 aggregate log apply.
+	deck := stages.Assemble(outline, content)
+	resolveImages(ctx, r.Images, &deck)
+
+	pptxPath, err := r.Renderer.RenderDeck(ctx, deck)
+	if err != nil {
+		return nil, fmt.Errorf("render: %w", err)
+	}
+	state.SetDeck(&deck)
+	state.SetPptxPath(pptxPath)
+
 	return &Output{
 		PptxPath:   pptxPath,
-		Title:      title,
-		SlideCount: slideCount,
+		Title:      outline.Title,
+		SlideCount: len(deck.Slides),
 		Cost:       Cost{},
 	}, nil
+}
+
+// emit is a small helper that mirrors the pipeline emit pattern —
+// safe to call when Emitter is nil (tests / CLI).
+func (r *AgentRunner) emit(ctx context.Context, ev event.Event) {
+	if r.Emitter != nil {
+		r.Emitter.Emit(ctx, ev)
+	}
 }
 
 // Continue resumes an existing session with a follow-up user message. The

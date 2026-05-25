@@ -31,6 +31,8 @@ import clsx from "clsx";
 
 import type { SlideJob } from "@/lib/api";
 import { useAgentSession, type Step, type ToolCallEntry, type Turn } from "./session";
+import { ClarificationCard } from "./ClarificationCard";
+import { OutlineReviewCard } from "./OutlineReviewCard";
 
 // ChatThread is the production chat surface: vertical stack of role-
 // labelled messages, tool calls collapse to Claude-Code-style inline
@@ -95,6 +97,36 @@ export function ChatThread({
           {session.pendingMessage ? (
             <PendingRow text={session.pendingMessage} onCancel={session.cancelPending} />
           ) : null}
+
+          {/* Sprint L1 — HILT pause gates. Render the active turn's
+              `pending` payload as the matching interactive card. The
+              optimistic dispatch in session.ts flips the turn back to
+              "running" the moment the user clicks submit, so these
+              cards auto-vanish without round-trip wait. */}
+          {(() => {
+            const lastTurn = session.turns[session.turns.length - 1];
+            const pending = lastTurn?.pending;
+            if (!pending) return null;
+            if (pending.kind === "clarification") {
+              return (
+                <ClarificationCard
+                  questions={pending.questions}
+                  busy={session.busy}
+                  onSubmit={session.dispatchClarification}
+                />
+              );
+            }
+            if (pending.kind === "outline_review") {
+              return (
+                <OutlineReviewCard
+                  outline={pending.outline}
+                  busy={session.busy}
+                  onApprove={session.dispatchOutlineApproval}
+                />
+              );
+            }
+            return null;
+          })()}
 
           {job.download_url ? <DownloadRow href={job.download_url} /> : null}
         </div>

@@ -130,6 +130,41 @@ export async function postSlideMessage(jobId: string, content: string): Promise<
   await unwrap<{ job_id: string; session_id: string }>(res);
 }
 
+// Sprint L1 — HILT resume wrappers. Both hit the same /messages
+// endpoint but carry an `action` field that routes to a different
+// AgentRunner.ResumeFrom* method on the backend. See routes_slides.go
+// PostSlideMessage switch.
+
+export async function postSlideClarification(
+  jobId: string,
+  answers: string[],
+): Promise<void> {
+  const res = await fetch(`/api/v1/slides/${jobId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "clarify", answers }),
+  });
+  await unwrap<{ job_id: string; session_id: string }>(res);
+}
+
+export type SlideOutlineEdits = {
+  theme?: string;
+  renames?: Array<{ index: number; title: string }>;
+  delete_indices?: number[];
+};
+
+export async function postSlideOutlineApproval(
+  jobId: string,
+  edits?: SlideOutlineEdits,
+): Promise<void> {
+  const res = await fetch(`/api/v1/slides/${jobId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "approve_outline", edits }),
+  });
+  await unwrap<{ job_id: string; session_id: string }>(res);
+}
+
 export async function getSlideJob(id: string): Promise<SlideJob> {
   const res = await fetch(`/api/v1/slides/${id}`);
   return unwrap<SlideJob>(res);

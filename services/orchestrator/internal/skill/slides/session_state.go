@@ -1,6 +1,7 @@
 package slides
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -49,8 +50,41 @@ type SessionState struct {
 	// whole deck.
 	Assets []tool.SlideAsset
 
+	// Sprint L1 — Pending carries a paused gate's payload while the
+	// initial-generation goroutine has exited and the user is being
+	// asked to do something (answer a clarification question, approve
+	// the outline). nil = no pause active. The API resume handlers
+	// read this to figure out which phase to drive next.
+	Pending *PendingUserAction
+
 	mu sync.Mutex
 }
+
+// PendingUserAction is a typed envelope for whatever the initial-gen
+// phase is paused on. The Kind tells the resume handler which phase
+// to drive next; the body fields are populated only for the matching
+// kind (the rest stay zero).
+type PendingUserAction struct {
+	Kind PendingKind `json:"kind"`
+
+	// For Kind == PendingClarification: the 1-2 questions the user
+	// needs to answer before outline planning can run.
+	Questions []string `json:"questions,omitempty"`
+
+	// For Kind == PendingOutlineReview: the outline JSON the user is
+	// being asked to approve. Stored as raw so the frontend's edit UX
+	// can round-trip the exact same shape back when submitting.
+	OutlineJSON string `json:"outline_json,omitempty"`
+}
+
+// PendingKind enumerates the L1 pause points. Closed set; adding a
+// new kind also requires a Resume entry point in agent_runner.go.
+type PendingKind string
+
+const (
+	PendingClarification  PendingKind = "clarification"
+	PendingOutlineReview  PendingKind = "outline_review"
+)
 
 // Lock / Unlock expose the embedded mutex so edit tools can hold the
 // state during a multi-step mutation. All public methods below already
@@ -251,7 +285,7 @@ func (s *SessionState) DuplicateSlide(index int) error {
 			Index:        insertAt,
 			Type:         srcO.Type,
 			Headline:     srcO.Headline,
-			KeyPoints:    append([]string(nil), srcO.KeyPoints...),
+			KeyPoints:    append(json.RawMessage(nil), srcO.KeyPoints...),
 			SpeakerNotes: srcO.SpeakerNotes,
 		}
 		s.Outline.Slides = append(s.Outline.Slides[:insertAt], append([]stages.OutlineSlide{dupO}, s.Outline.Slides[insertAt:]...)...)
@@ -378,6 +412,93 @@ func (s *SessionState) SetMemory(msgs []schema.Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.Memory = msgs
+}
+
+// ─── Sprint L1: HILT pending-pause accessors ──────────────────────
+
+// SetPending stores a paused gate's payload. Callers should also flip
+// the corresponding job.Status to "awaiting_*" so the API can route
+// later resume calls correctly. nil clears.
+func (s *SessionState) SetPending(p *PendingUserAction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Pending = p
+}
+
+// GetPending returns the current pause envelope (nil if no pause active).
+func (s *SessionState) GetPending() *PendingUserAction {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Pending
+}
+
+// ClearPending is convenience for `SetPending(nil)` called after a
+// resume handler kicks off the next phase.
+func (s *SessionState) ClearPending() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.Pending = nil
+}
+
+// MergeOutlineEdits applies a user's outline-review edits onto the
+// stored Outline in place. Three operations supported (matches the
+// MVP scope locked at planning):
+//   - rename a slide (by index) → updates outline.Slides[i].Headline
+//   - delete a slide (by index) → splices it out
+//   - change deck-wide theme → updates outline.Theme
+//
+// Edits is a small typed shape (defined in api/routes_slides.go) to
+// keep the wire contract close to the HTTP boundary. The state side
+// only sees the already-validated values.
+func (s *SessionState) MergeOutlineEdits(edits OutlineEdits) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Outline == nil {
+		return
+	}
+	// Theme change is a deck-level field — apply first.
+	if edits.Theme != "" {
+		s.Outline.Theme = schema.Theme(edits.Theme)
+	}
+	// Apply rename / delete to slides. Deletes have to walk in reverse
+	// order so we don't shift indices the user referenced.
+	for _, r := range edits.Renames {
+		if r.Index >= 0 && r.Index < len(s.Outline.Slides) {
+			s.Outline.Slides[r.Index].Headline = r.Title
+		}
+	}
+	if len(edits.DeleteIndices) > 0 {
+		// Sort descending so each splice keeps lower indices valid.
+		sorted := append([]int(nil), edits.DeleteIndices...)
+		for i := 0; i < len(sorted); i++ {
+			for j := i + 1; j < len(sorted); j++ {
+				if sorted[j] > sorted[i] {
+					sorted[i], sorted[j] = sorted[j], sorted[i]
+				}
+			}
+		}
+		for _, idx := range sorted {
+			if idx >= 0 && idx < len(s.Outline.Slides) {
+				s.Outline.Slides = append(s.Outline.Slides[:idx], s.Outline.Slides[idx+1:]...)
+			}
+		}
+	}
+}
+
+// OutlineEdits is the wire shape user submits when approving an
+// outline review. Lives here (not in api/) because session_state.go
+// owns the mutation logic; the api package just decodes the JSON and
+// calls MergeOutlineEdits.
+type OutlineEdits struct {
+	Theme         string         `json:"theme,omitempty"`
+	Renames       []SlideRename  `json:"renames,omitempty"`
+	DeleteIndices []int          `json:"delete_indices,omitempty"`
+}
+
+// SlideRename targets one outline slide for a title rewrite.
+type SlideRename struct {
+	Index int    `json:"index"`
+	Title string `json:"title"`
 }
 
 // SessionStore is the in-memory registry keyed by job ID. Concurrent reads

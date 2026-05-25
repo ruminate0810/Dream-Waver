@@ -136,13 +136,30 @@ func (h *handlers) runSlideJob(job *slideJob, in slides.Input) {
 
 	jobsMu.Lock()
 	defer jobsMu.Unlock()
-	job.FinishedAt = time.Now().UTC()
 	if err != nil {
+		job.FinishedAt = time.Now().UTC()
 		slog.ErrorContext(ctx, "slide job failed", "job", job.ID, "mode", job.Mode, "err", err)
 		job.Status = "error"
 		job.Error = err.Error()
 		return
 	}
+	// Sprint L1 — if the agent-mode runner paused at a HILT gate,
+	// Output.Status carries the awaiting_* sentinel. Don't set
+	// FinishedAt; the job isn't done yet — it's waiting on the user.
+	if out.Status != "" && out.Status != "finished" {
+		slog.InfoContext(ctx, "slide job paused for user input",
+			"job", job.ID, "mode", job.Mode, "status", out.Status,
+		)
+		job.Status = out.Status
+		if out.Title != "" {
+			job.Title = out.Title
+		}
+		if out.SlideCount > 0 {
+			job.SlideCount = out.SlideCount
+		}
+		return
+	}
+	job.FinishedAt = time.Now().UTC()
 	slog.InfoContext(ctx, "slide job finished",
 		"job", job.ID, "mode", job.Mode, "title", out.Title,
 		"slides", out.SlideCount, "pptx", out.PptxPath,
@@ -229,14 +246,22 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	// the initial deck; the edit conversation that follows always runs
 	// through the agent loop.
 
+	// Sprint L1 — request shape now carries an optional Action that
+	// routes to one of three flows:
+	//   - "clarify"          → ResumeFromClarification (H2 gate resume)
+	//   - "approve_outline"  → ResumeFromOutlineApproval (H1 gate resume)
+	//   - "" (default)       → Continue (free-text edit turn, unchanged)
 	var req struct {
-		Content string `json:"content"`
+		Content string              `json:"content"`
+		Action  string              `json:"action,omitempty"`
+		Answers []string            `json:"answers,omitempty"`
+		Edits   *slides.OutlineEdits `json:"edits,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
-	if strings.TrimSpace(req.Content) == "" {
+	if req.Action == "" && strings.TrimSpace(req.Content) == "" {
 		errorJSON(w, http.StatusBadRequest, "content is required")
 		return
 	}
@@ -248,7 +273,14 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	job.Error = ""
 	jobsMu.Unlock()
 
-	go h.continueSlideJob(job, req.Content)
+	switch req.Action {
+	case "clarify":
+		go h.resumeClarification(job, req.Answers)
+	case "approve_outline":
+		go h.resumeOutlineApproval(job, req.Edits)
+	default:
+		go h.continueSlideJob(job, req.Content)
+	}
 
 	writeJSON(w, http.StatusAccepted, map[string]string{
 		"job_id":     job.ID,
@@ -262,17 +294,58 @@ func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
 	out, err := h.deps.AgentRunner.Continue(ctx, job.ID, userMessage)
+	h.finishOrPause(job, ctx, out, err, "slide edit")
+}
 
+// resumeClarification drives Phase 1+ after the H2 gate. Result will
+// itself be a pause (H1 gate) or — rarely — a hard error.
+func (h *handlers) resumeClarification(job *slideJob, answers []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	ctx = event.WithSessionID(ctx, job.SessionID)
+
+	out, err := h.deps.AgentRunner.ResumeFromClarification(ctx, job.ID, answers)
+	h.finishOrPause(job, ctx, out, err, "clarification resume")
+}
+
+// resumeOutlineApproval drives Phase 3 — content writing + render —
+// after the H1 gate. Edits is optional; nil means "approve as-is".
+func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdits) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	ctx = event.WithSessionID(ctx, job.SessionID)
+
+	out, err := h.deps.AgentRunner.ResumeFromOutlineApproval(ctx, job.ID, edits)
+	h.finishOrPause(job, ctx, out, err, "outline approval resume")
+}
+
+// finishOrPause centralises the post-run bookkeeping so the three
+// resume paths above don't drift. Same flow as runSlideJob's tail.
+func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides.Output, err error, opLabel string) {
 	jobsMu.Lock()
 	defer jobsMu.Unlock()
-	job.FinishedAt = time.Now().UTC()
 	if err != nil {
-		slog.ErrorContext(ctx, "slide edit failed", "job", job.ID, "err", err)
+		job.FinishedAt = time.Now().UTC()
+		slog.ErrorContext(ctx, opLabel+" failed", "job", job.ID, "err", err)
 		job.Status = "error"
 		job.Error = err.Error()
 		return
 	}
-	slog.InfoContext(ctx, "slide edit applied",
+	if out.Status != "" && out.Status != "finished" {
+		slog.InfoContext(ctx, opLabel+" paused for user input",
+			"job", job.ID, "status", out.Status,
+		)
+		job.Status = out.Status
+		if out.Title != "" {
+			job.Title = out.Title
+		}
+		if out.SlideCount > 0 {
+			job.SlideCount = out.SlideCount
+		}
+		return
+	}
+	job.FinishedAt = time.Now().UTC()
+	slog.InfoContext(ctx, opLabel+" applied",
 		"job", job.ID, "title", out.Title, "slides", out.SlideCount, "pptx", out.PptxPath,
 	)
 	job.Status = "finished"
