@@ -49,6 +49,47 @@ func (b *Bridge) GenerateImage(ctx context.Context, req GenerateImageRequest) (*
 	return &out, nil
 }
 
+// GenerateVariants calls POST /generate/variants upstream. Returns N
+// images (sidecar caps Count at 6). One call ≈ same latency as a
+// single image — DreamAPI parallelises internally.
+func (b *Bridge) GenerateVariants(ctx context.Context, req GenerateVariantsRequest) (*GenerateVariantsResponse, error) {
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "prompt is required"}
+	}
+	var out GenerateVariantsResponse
+	if err := b.do(ctx, http.MethodPost, "/generate/variants", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RemoveBG calls POST /edit/remove_bg upstream. Source image must be
+// reachable from the sidecar — DreamAPI fetches it directly, the
+// sidecar doesn't proxy.
+func (b *Bridge) RemoveBG(ctx context.Context, req EditImageRequest) (*EditImageResponse, error) {
+	if strings.TrimSpace(req.ImageURL) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "image_url is required"}
+	}
+	var out EditImageResponse
+	if err := b.do(ctx, http.MethodPost, "/edit/remove_bg", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// Enhance calls POST /edit/enhance upstream. Same fetch-by-URL model
+// as RemoveBG.
+func (b *Bridge) Enhance(ctx context.Context, req EditImageRequest) (*EditImageResponse, error) {
+	if strings.TrimSpace(req.ImageURL) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "image_url is required"}
+	}
+	var out EditImageResponse
+	if err := b.do(ctx, http.MethodPost, "/edit/enhance", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // do is the shared marshal helper. body may be nil for GET requests.
 func (b *Bridge) do(ctx context.Context, method, path string, body, out any) error {
 	var reqBody io.Reader

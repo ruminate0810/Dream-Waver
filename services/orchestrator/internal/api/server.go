@@ -131,6 +131,9 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		// setup hint when the bridge isn't wired.
 		r.Route("/design", func(r chi.Router) {
 			r.Post("/images/generate", h.GenerateDesignImage)
+			r.Post("/images/variants", h.GenerateDesignVariants)
+			r.Post("/images/remove_bg", h.RemoveDesignImageBG)
+			r.Post("/images/enhance", h.EnhanceDesignImage)
 		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into

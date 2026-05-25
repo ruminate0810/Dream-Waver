@@ -1,16 +1,20 @@
 """DreamAPI sidecar FastAPI app.
 
-Single-purpose: turn natural-language prompts into image URLs via
-DreamAPI's Flux text2image endpoint. The Go orchestrator's design
-skill calls this service; the browser never sees this surface
-directly.
+Wraps DreamAPI image generation + edit endpoints behind a uniform
+synchronous HTTP surface. The Go orchestrator's design skill calls
+this service; the browser never sees this surface directly.
 
-Synchronous on purpose for MVP — Flux completes in ~30-60s and a
-single blocking HTTP request is the smallest possible API surface
-the canvas needs to put an image on screen. SSE-based progress
-streaming is on the roadmap once the canvas grows beyond "drop
-image" into "show generation progress in place" (track in TODO at
-the bottom of this file).
+Surface (every endpoint is synchronous submit+poll; 30-60 s typical):
+
+    POST /generate/image       Flux text2image
+    POST /generate/variants    Flux text2image with num>1 — same prompt,
+                               distinct seeds, returns N images
+    POST /edit/remove_bg       remove background (alpha mask)
+    POST /edit/enhance         super-resolution + sharpen
+
+The synchronous shape keeps the bridge + browser code one straight
+line; SSE-based progress streaming is on the roadmap (track in TODO
+at the bottom of this file).
 
 Run locally:
 
@@ -20,12 +24,11 @@ Run locally:
 """
 from __future__ import annotations
 
-import os
 from typing import Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 from dreamapi_client import DreamAPIClient, DreamAPIError
 
@@ -167,6 +170,180 @@ def generate_image(
     )
 
 
+# ─── POST /generate/variants (Flux text2image, N variants) ────────
+
+
+class GenerateVariantsRequest(BaseModel):
+    """Body for `POST /generate/variants`.
+
+    DreamAPI's Flux text2image accepts `num` (1-10) and returns that
+    many images in one poll. We cap at 6 for the canvas — beyond that
+    the 2x3 grid stops being scannable and per-image cost is the same
+    as N single calls anyway.
+    """
+
+    prompt: str = Field(..., min_length=1)
+    count: int = Field(4, ge=2, le=6, description="Number of variants")
+    width: int = Field(1024, ge=256, le=1600, multiple_of=16)
+    height: int = Field(1024, ge=256, le=1600, multiple_of=16)
+
+
+class Variant(BaseModel):
+    url: str
+    width: int
+    height: int
+
+
+class GenerateVariantsResponse(BaseModel):
+    variants: list[Variant]
+    task_id: str
+
+
+@app.post(
+    "/generate/variants",
+    response_model=GenerateVariantsResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def generate_variants(
+    body: GenerateVariantsRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> GenerateVariantsResponse:
+    """Generate N variants of one prompt in a single task.
+
+    DreamAPI guarantees distinct seeds across `num` results, so the
+    canvas can drop them in a 2xN grid and the user reads variation at
+    a glance without manually re-rolling. Latency is similar to a
+    single image — the provider parallelises internally.
+    """
+    api_body = {
+        "prompt": body.prompt,
+        "width": body.width,
+        "height": body.height,
+        "num": body.count,
+    }
+    try:
+        data = client.run("/api/async/flux_text2image", api_body)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    urls = out.get("images") or []
+    if not urls:
+        raise HTTPException(
+            status_code=502,
+            detail="DreamAPI returned no images despite success status",
+        )
+    return GenerateVariantsResponse(
+        variants=[
+            Variant(url=u, width=body.width, height=body.height) for u in urls
+        ],
+        task_id=out.get("task_id", ""),
+    )
+
+
+# ─── POST /edit/remove_bg (remove_background) ─────────────────────
+
+
+class EditImageRequest(BaseModel):
+    """Body shared by every endpoint that operates on an existing image
+    URL — remove_bg, enhance, colorize, etc. Keeps the wire surface
+    uniform so the bridge can serialise without per-endpoint shaping."""
+
+    image_url: HttpUrl = Field(..., description="URL of the source image")
+
+
+class EditImageResponse(BaseModel):
+    url: str
+    # width/height are nullable because DreamAPI's edit endpoints don't
+    # always echo dimensions in the response. The canvas falls back to
+    # natural image size after load when these are missing.
+    width: Optional[int] = None
+    height: Optional[int] = None
+    task_id: str
+
+
+@app.post(
+    "/edit/remove_bg",
+    response_model=EditImageResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def edit_remove_bg(
+    body: EditImageRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> EditImageResponse:
+    """Cut the background out of an image. Output is a PNG with alpha.
+
+    Note the DreamAPI quirk: this endpoint takes `url`, not `imageUrl`
+    — different from /edit/enhance below. The bridge's uniform wire
+    surface hides the inconsistency from callers.
+    """
+    try:
+        data = client.run(
+            "/api/async/remove_background",
+            {"url": str(body.image_url)},
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    url = out.get("output_url")
+    if not url:
+        raise HTTPException(status_code=502, detail="remove_bg returned no image")
+    return EditImageResponse(url=url, task_id=out.get("task_id", ""))
+
+
+# ─── POST /edit/enhance (super-resolution) ────────────────────────
+
+
+@app.post(
+    "/edit/enhance",
+    response_model=EditImageResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def edit_enhance(
+    body: EditImageRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> EditImageResponse:
+    """Upscale + sharpen an image. Typical output is 2-4× input
+    resolution; DreamAPI picks the scale factor internally.
+
+    DreamAPI quirk: this endpoint takes `imageUrl` (camelCase), not
+    `url` like remove_bg. Documented at the call site to flag future
+    contract drift.
+    """
+    try:
+        data = client.run(
+            "/api/async/enhance",
+            {"imageUrl": str(body.image_url)},
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    url = out.get("output_url")
+    if not url:
+        raise HTTPException(status_code=502, detail="enhance returned no image")
+    return EditImageResponse(url=url, task_id=out.get("task_id", ""))
+
+
 # TODO(progress):
 #   Add POST /generate/image/submit (returns task_id) + GET
 #   /generate/image/{task_id}/events (SSE polling under the hood) so
@@ -174,3 +351,9 @@ def generate_image(
 #   indicator rather than a 60-second loading spinner. Same shape as
 #   the Opendream SSE-tailing-state-file pattern; not blocking the
 #   MVP because the synchronous version puts pixels on screen.
+#
+# TODO(more-edits):
+#   inpainting / outpainting / colorize / swap_face all wrap the same
+#   submit+poll pattern. Add them when the canvas grows specific
+#   actions for them — outpainting in particular is a natural fit for
+#   "change aspect ratio of this image" once that becomes a UX.

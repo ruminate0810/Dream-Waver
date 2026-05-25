@@ -371,3 +371,74 @@ export async function generateDesignImage(
   });
   return unwrap<GenerateDesignImageResponse>(res);
 }
+
+// ─── Variants (N images, one prompt) ──────────────────────────────────
+
+export type GenerateDesignVariantsRequest = {
+  prompt: string;
+  /** Sidecar caps at [2, 6]. Default 4. */
+  count?: number;
+  width?: number;
+  height?: number;
+};
+
+export type DesignImageVariant = {
+  url: string;
+  width: number;
+  height: number;
+};
+
+export type GenerateDesignVariantsResponse = {
+  variants: DesignImageVariant[];
+  task_id: string;
+};
+
+export async function generateDesignVariants(
+  body: GenerateDesignVariantsRequest,
+): Promise<GenerateDesignVariantsResponse> {
+  const res = await fetch("/api/v1/design/images/variants", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<GenerateDesignVariantsResponse>(res);
+}
+
+// ─── Edit ops (operate on an existing image URL) ──────────────────────
+
+export type EditDesignImageRequest = {
+  image_url: string;
+};
+
+export type EditDesignImageResponse = {
+  url: string;
+  /** Output dimensions when DreamAPI echoes them. Often missing for
+   *  edit ops; the canvas falls back to natural image size on load. */
+  width?: number;
+  height?: number;
+  task_id: string;
+};
+
+/** Cut the background out of an existing image. Output is PNG with alpha. */
+export async function removeDesignImageBg(
+  body: EditDesignImageRequest,
+): Promise<EditDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/remove_bg", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<EditDesignImageResponse>(res);
+}
+
+/** Super-resolution + sharpen. Output is 2-4× input resolution. */
+export async function enhanceDesignImage(
+  body: EditDesignImageRequest,
+): Promise<EditDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/enhance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<EditDesignImageResponse>(res);
+}

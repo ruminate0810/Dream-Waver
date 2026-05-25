@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -55,6 +56,105 @@ func (h *handlers) GenerateDesignImage(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeDesignBridgeError(w, "generate_image", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/variants --------------------------------
+
+type generateVariantsBody struct {
+	Prompt string `json:"prompt"`
+	Count  int    `json:"count,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
+func (h *handlers) GenerateDesignVariants(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	// TODO(billing): debit N units; variants are a single sidecar
+	// task but produce N images, so the price multiplier is non-trivial.
+
+	var body generateVariantsBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Prompt) == "" {
+		errorJSON(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+
+	resp, err := h.deps.DesignBridge.GenerateVariants(r.Context(), design.GenerateVariantsRequest{
+		Prompt: body.Prompt,
+		Count:  body.Count,
+		Width:  body.Width,
+		Height: body.Height,
+	})
+	if err != nil {
+		writeDesignBridgeError(w, "generate_variants", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/remove_bg + /enhance --------------------
+//
+// Both endpoints take the same shape ({image_url}) and dispatch on the
+// route name. Pulling them into one handler with an op-discriminator
+// would save ~20 lines but obscure the routing intent — the explicit
+// per-endpoint methods make grep-for-route trivial. Same call into the
+// shared editImageHandler helper keeps the bodies identical.
+
+type editImageBody struct {
+	ImageURL string `json:"image_url"`
+}
+
+func (h *handlers) RemoveDesignImageBG(w http.ResponseWriter, r *http.Request) {
+	h.editImageHandler(w, r, "remove_bg", h.deps.designBridgeRemoveBG)
+}
+
+func (h *handlers) EnhanceDesignImage(w http.ResponseWriter, r *http.Request) {
+	h.editImageHandler(w, r, "enhance", h.deps.designBridgeEnhance)
+}
+
+// editImageFn matches the signature of Bridge.RemoveBG / Bridge.Enhance.
+type editImageFn func(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error)
+
+// designBridge<Op> accessors — pulled to methods on Dependencies so
+// the editImageHandler's signature stays clean even when DesignBridge
+// is nil (we check nil at the routes' top and bail before dispatch).
+func (d Dependencies) designBridgeRemoveBG(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error) {
+	return d.DesignBridge.RemoveBG(ctx, req)
+}
+func (d Dependencies) designBridgeEnhance(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error) {
+	return d.DesignBridge.Enhance(ctx, req)
+}
+
+func (h *handlers) editImageHandler(w http.ResponseWriter, r *http.Request, op string, call editImageFn) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	// TODO(billing): edit ops have a different price tier than
+	// generation — same metering hook applies, separate price column.
+
+	var body editImageBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.ImageURL) == "" {
+		errorJSON(w, http.StatusBadRequest, "image_url is required")
+		return
+	}
+
+	resp, err := call(r.Context(), design.EditImageRequest{ImageURL: body.ImageURL})
+	if err != nil {
+		writeDesignBridgeError(w, op, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)

@@ -30,6 +30,46 @@ type GenerateImageResponse struct {
 	TaskID string `json:"task_id"`
 }
 
+// GenerateVariantsRequest mirrors sidecar's variant generation. Count
+// is bounded server-side to [2,6]; the bridge does not re-validate.
+type GenerateVariantsRequest struct {
+	Prompt string `json:"prompt"`
+	Count  int    `json:"count,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
+}
+
+type Variant struct {
+	URL    string `json:"url"`
+	Width  int    `json:"width"`
+	Height int    `json:"height"`
+}
+
+type GenerateVariantsResponse struct {
+	Variants []Variant `json:"variants"`
+	TaskID   string    `json:"task_id"`
+}
+
+// EditImageRequest is the body shape for endpoints that operate on
+// an existing image URL (remove_bg, enhance, …). Keeping it uniform
+// across edit operations means the bridge can serialise without per-
+// endpoint shaping; the sidecar handles the DreamAPI-side quirks
+// (e.g. `url` vs `imageUrl`).
+type EditImageRequest struct {
+	ImageURL string `json:"image_url"`
+}
+
+// EditImageResponse — width/height are pointer-int so the JSON omits
+// them when DreamAPI doesn't echo dimensions (which it often doesn't
+// for edit endpoints). The canvas falls back to natural image size
+// after load when they're missing.
+type EditImageResponse struct {
+	URL    string `json:"url"`
+	Width  *int   `json:"width,omitempty"`
+	Height *int   `json:"height,omitempty"`
+	TaskID string `json:"task_id"`
+}
+
 // BridgeError carries the sidecar's HTTP status + body so the API
 // layer can mirror 4xx codes back to the browser instead of collapsing
 // every failure into 500. Identical shape to video.BridgeError on
