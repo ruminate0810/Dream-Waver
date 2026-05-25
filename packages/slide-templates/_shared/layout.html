@@ -47,6 +47,10 @@ __THEME_STYLE__
     </div>
     {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
   {{else}}
+    {{/* M1.1 — no-image fallback decoration. Without this, the slide
+         is 80% empty since title sits flex-end. .noimg-deco is a CSS
+         hook that themes paint with a typographic motif. */}}
+    <div class="noimg-deco noimg-deco-title" data-no-extract></div>
     <div class="title-block">
       {{with .Data.Subtitle}}<div class="kicker">{{.}}</div>{{end}}
       <div class="display title">{{.Data.Title}}</div>
@@ -64,6 +68,9 @@ __THEME_STYLE__
     </div>
     {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
   {{else}}
+    {{/* M1.1 — same decoration hook as title; CSS paints an oversized
+         section glyph + accent rule into the upper half. */}}
+    <div class="noimg-deco noimg-deco-section" data-no-extract></div>
     <div class="section-block">
       <div class="kicker">Section</div>
       <div class="display title">{{.Data.Title}}</div>
@@ -220,6 +227,9 @@ __THEME_STYLE__
     </div>
     {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
   {{else}}
+    {{/* M1.2 — closing no-image decoration: oversized "Fin" motif +
+         accent rule. CSS-only. */}}
+    <div class="noimg-deco noimg-deco-closing" data-no-extract></div>
     <div class="closing-block">
       <div class="kicker">Thank you</div>
       <div class="display title">{{.Data.Title}}</div>
@@ -242,6 +252,10 @@ __THEME_STYLE__
     {{with .Data.ImageCredit}}<div class="hero-credit" data-no-extract>{{.}}</div>{{end}}
   {{else}}
     <div class="photo-essay-fallback">
+      {{/* M1.3 — fill the upper half (the missing-image zone) with an
+           oversized typographic motif so the card doesn't read as
+           dead space. CSS-painted, content-free. */}}
+      <div class="noimg-deco noimg-deco-photo" data-no-extract></div>
       <div class="kicker mono-caps">{{with .Data.Subtitle}}{{.}}{{else}}Photo essay{{end}}</div>
       <div class="display title">{{.Data.Title}}</div>
       {{with .Data.Caption}}<div class="caption">{{.}}</div>{{end}}

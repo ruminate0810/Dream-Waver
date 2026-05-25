@@ -786,7 +786,12 @@ body.layout-quote    .slide { justify-content: center; }
   border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
   border-radius: 16px;
   padding: 32px;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 16px;
+  /* M1.4 — was justify-content: space-between which pushed sparse
+     text content (1 title + 1 paragraph) to the top + bottom edges,
+     leaving 50% empty in the middle of a 2x2 large card. flex-start
+     keeps content flowing naturally from the top; the card still
+     fills its grid cell, just without ugly mid-card dead space. */
+  display: flex; flex-direction: column; justify-content: flex-start; gap: 16px;
   overflow: hidden;
   position: relative;
 }
@@ -981,4 +986,146 @@ body.layout-quote    .slide { justify-content: center; }
   color: var(--fg-muted);
   max-width: 24ch;
   margin-top: 4px;
+}
+
+/* ─── Sprint M1: no-image fallback decorations ────────────────────
+   When a slide's hero image fails to fetch (network / safety block /
+   no provider configured), the title/section/closing/photo-essay
+   layouts default to text-only blocks pinned at the bottom — leaving
+   60-80% of the slide as dead whitespace. These rules paint the
+   upper canvas with typographic + accent-rule motifs so the slide
+   reads as "designed" rather than "broken".
+
+   All three painted via .noimg-deco* divs the template injects; each
+   uses ::before / ::after pseudo-elements for the actual marks so a
+   single empty div can carry rich composition.
+*/
+
+/* Shared base — anchored absolutely so it floats above the slide
+   layout without disturbing the title-block's natural flex-end
+   placement at the bottom. */
+.noimg-deco {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 0; /* below the title-block (which renders without z-index
+                 = effectively layer 0 too — so we'd be siblings.
+                 The title-block uses relative z-index in some
+                 themes; using inset:0 with no z-index keeps the
+                 deco in the background) */
+}
+
+/* M1.1 — title layout no-image. Display the deck-class label "VOL I"
+   at huge size in upper-third, dropped 20% from the top, paired with
+   a horizontal accent rule across the upper canvas. */
+.noimg-deco-title {
+  background:
+    /* horizontal accent rule at 28% from top */
+    linear-gradient(to bottom,
+      transparent 0,
+      transparent calc(28% - 1px),
+      color-mix(in srgb, var(--accent) 65%, transparent) calc(28% - 1px),
+      color-mix(in srgb, var(--accent) 65%, transparent) calc(28% + 1px),
+      transparent calc(28% + 1px));
+}
+.noimg-deco-title::before {
+  content: "VOL · I";
+  position: absolute;
+  top: 14%; left: var(--pad-x, 140px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 16px; letter-spacing: 0.40em; text-transform: uppercase;
+  color: var(--accent);
+}
+.noimg-deco-title::after {
+  /* Oversized faded glyph anchoring the upper-middle */
+  content: "✦";
+  position: absolute;
+  top: 38%; right: 12%;
+  font-size: 220px; line-height: 1;
+  color: var(--accent); opacity: 0.10;
+  font-family: var(--font-display, serif);
+}
+
+/* M1.2 — section layout no-image. Top kicker rail + oversized
+   section glyph (decorative "§") in the upper-third right. */
+.noimg-deco-section {
+  background:
+    linear-gradient(to bottom,
+      transparent 0,
+      transparent calc(22% - 1px),
+      color-mix(in srgb, var(--accent) 60%, transparent) calc(22% - 1px),
+      color-mix(in srgb, var(--accent) 60%, transparent) calc(22% + 1px),
+      transparent calc(22% + 1px));
+}
+.noimg-deco-section::before {
+  content: "Chapter";
+  position: absolute;
+  top: 11%; left: var(--pad-x, 140px);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 14px; letter-spacing: 0.34em; text-transform: uppercase;
+  color: var(--accent);
+}
+.noimg-deco-section::after {
+  content: "§";
+  position: absolute;
+  top: 25%; right: 14%;
+  font-size: 280px; line-height: 1;
+  color: var(--accent); opacity: 0.12;
+  font-family: var(--font-display, Georgia, serif);
+}
+
+/* M1.3 — closing layout no-image. Top rail + oversized "FIN" or "完"
+   centered in the upper canvas. */
+.noimg-deco-closing {
+  background:
+    linear-gradient(to bottom,
+      transparent 0,
+      transparent calc(22% - 1px),
+      color-mix(in srgb, var(--accent) 60%, transparent) calc(22% - 1px),
+      color-mix(in srgb, var(--accent) 60%, transparent) calc(22% + 1px),
+      transparent calc(22% + 1px));
+}
+.noimg-deco-closing::before {
+  content: "— FIN —";
+  position: absolute;
+  top: 11%; left: 0; right: 0;
+  text-align: center;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 14px; letter-spacing: 0.40em; text-transform: uppercase;
+  color: var(--accent);
+}
+.noimg-deco-closing::after {
+  content: "完";
+  position: absolute;
+  top: 24%; left: 0; right: 0;
+  text-align: center;
+  font-size: 260px; line-height: 1;
+  color: var(--accent); opacity: 0.12;
+  font-family: var(--font-display, "Noto Serif SC", Georgia, serif);
+  font-weight: 700;
+}
+
+/* M1.3 — photo-essay fallback (inside the .photo-essay-fallback
+   card). Uses the same noimg-deco pattern but scoped inside the
+   inset card. */
+.photo-essay-fallback { position: relative; }
+.photo-essay-fallback .noimg-deco-photo {
+  position: absolute; inset: 64px 64px 50% 64px;
+  pointer-events: none;
+}
+.photo-essay-fallback .noimg-deco-photo::before {
+  content: "\201C";  /* large opening curly quote */
+  position: absolute;
+  top: -40px; left: 0;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: 280px; line-height: 1;
+  color: var(--accent); opacity: 0.22;
+  font-weight: 700;
+}
+.photo-essay-fallback .noimg-deco-photo::after {
+  content: "PHOTO MISSING";
+  position: absolute;
+  bottom: 0; right: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px; letter-spacing: 0.36em;
+  color: var(--accent); opacity: 0.55;
 }
