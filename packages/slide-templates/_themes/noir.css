@@ -1,21 +1,21 @@
-/* noir.css — high-contrast cinematic. Designed expressly to pair with
- * nano-banana B&W AI photography on the H8 image-led layouts.
+/* noir.css — high-contrast cinematic, refreshed for Phase B.
  *
- * The reference point is film-noir editorial: deep black canvas,
- * paper-white type, a single acid neon accent (cadmium yellow) used
- * sparingly as punctuation. Display type uses Bodoni Moda — a high-
- * contrast serif whose extreme weight modulation reads "couture
- * fashion magazine" instantly.
+ * Phase B (the cinema pass): adds the visual signatures the original
+ * spec aimed at but ran out of pseudo-elements for —
+ *   - viewfinder corner brackets at all 4 corners (camera frame)
+ *   - sprocket-hole rail down the left edge (35mm contact-sheet
+ *     authenticity)
+ *   - stronger quote-layout drama with an oversized opening 「"
+ *   - distinctive M1 no-image deco (the previous all-themes default
+ *     reads "newsletter", not "noir")
  *
- * Distinctive markers (vs every other theme):
- *   - 100% black bg with subtle film-grain noise overlay
- *   - Bodoni Moda display, thin weight, all-caps tracked at 0.04em
- *   - Single neon-yellow accent (no second colour) — used for
- *     accent rule, bullets, kickers, metric numbers
- *   - Hairline 1px rules everywhere; nothing thicker
- *   - Photo-essay / split-image titles get a tiny film-cell sprocket
- *     mark left of the kicker
- *   - Footer is a thin mono "FRAME ###" code, like a contact sheet
+ * The corner brackets and sprocket holes are painted as composite
+ * background layers on .slide — no extra HTML, no overrun of the
+ * ::before/::after slots already taken by the contact-sheet header
+ * and FRAME footer.
+ *
+ * Designed expressly to pair with nano-banana B&W AI photography on
+ * the H8 image-led layouts.
  */
 
 .theme-noir {
@@ -31,27 +31,88 @@
   --font-display: 'Bodoni Moda', 'Noto Serif SC', 'Didot', Georgia, serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
 
-  --pad-x: 160px;
+  --pad-x: 180px;         /* widened slightly to clear the sprocket rail */
   --pad-y: 120px;
   --bullet-size: 0;       /* we draw our own bullet markers */
 }
 
-/* Film-grain noise. SVG fractal noise baked into a CSS data URL so no
- * extra HTTP request — the pattern repeats across the slide and the
- * blend mode soft-lights it into the black canvas. */
+/* ─── Composite slide background ──────────────────────────────── */
+/*
+ * Layer stack (top → bottom):
+ *   1-8. Four cinema-frame L-brackets (one per corner, each = two
+ *        gradients: a horizontal arm + a vertical arm)
+ *   9.   Left-edge sprocket-hole rail — repeating-radial-gradient
+ *        gives the dotted column
+ *   10.  SVG fractal-noise film grain (carried over from V1)
+ *   11.  Base near-black colour
+ *
+ * Each layer specifies its own background-position / background-size
+ * via the shorthand so no layer's geometry leaks into another.
+ */
 .theme-noir .slide {
   background-color: var(--bg);
   background-image:
+    /* ─── Cinema-frame L-brackets (corners) ─── */
+    /* TOP-LEFT — horizontal arm */
+    linear-gradient(to right, var(--fg-muted) 0 40px, transparent 40px),
+    /* TOP-LEFT — vertical arm */
+    linear-gradient(to bottom, var(--fg-muted) 0 40px, transparent 40px),
+    /* TOP-RIGHT — horizontal arm */
+    linear-gradient(to left, var(--fg-muted) 0 40px, transparent 40px),
+    /* TOP-RIGHT — vertical arm */
+    linear-gradient(to bottom, var(--fg-muted) 0 40px, transparent 40px),
+    /* BOTTOM-LEFT — horizontal arm */
+    linear-gradient(to right, var(--fg-muted) 0 40px, transparent 40px),
+    /* BOTTOM-LEFT — vertical arm */
+    linear-gradient(to top, var(--fg-muted) 0 40px, transparent 40px),
+    /* BOTTOM-RIGHT — horizontal arm */
+    linear-gradient(to left, var(--fg-muted) 0 40px, transparent 40px),
+    /* BOTTOM-RIGHT — vertical arm */
+    linear-gradient(to top, var(--fg-muted) 0 40px, transparent 40px),
+    /* ─── Sprocket-hole rail (left edge) ─── */
+    radial-gradient(circle 4px at 28px 50%,
+      var(--fg-faint) 0 4px,
+      transparent 5px),
+    /* ─── Film grain (V1) ─── */
     url("data:image/svg+xml;utf8,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 200px 200px;
+
+  background-position:
+    /* corners — first 8 layers paired up as horizontal/vertical arms */
+    32px 32px,     32px 32px,
+    calc(100% - 32px) 32px, calc(100% - 32px) 32px,
+    32px calc(100% - 32px), 32px calc(100% - 32px),
+    calc(100% - 32px) calc(100% - 32px), calc(100% - 32px) calc(100% - 32px),
+    /* sprocket rail */
+    0 0,
+    /* grain */
+    0 0;
+
+  background-size:
+    /* corners: arm thickness 1px, length 40px */
+    40px 1px, 1px 40px,
+    40px 1px, 1px 40px,
+    40px 1px, 1px 40px,
+    40px 1px, 1px 40px,
+    /* sprocket rail: full-height column with 60px spacing */
+    56px 60px,
+    /* grain tile */
+    200px 200px;
+
+  background-repeat:
+    no-repeat, no-repeat,
+    no-repeat, no-repeat,
+    no-repeat, no-repeat,
+    no-repeat, no-repeat,
+    repeat-y,
+    repeat;
 }
 
-/* ─── Top-bar contact-sheet header ─────────────────────────────── */
+/* ─── Top-bar contact-sheet header (V1) ────────────────────────── */
 
 .theme-noir .slide::before {
   content: "NOIR · NEGATIVE 35MM · DREAM·WAVER";
   position: absolute;
-  top: 56px; left: 160px; right: 160px;
+  top: 56px; left: 180px; right: 180px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(244,241,232,0.16);
   font-family: var(--font-mono);
@@ -59,18 +120,20 @@
   letter-spacing: 0.36em;
   text-transform: uppercase;
   color: var(--fg-muted);
+  z-index: 2;
 }
 
-/* Bottom contact-sheet "FRAME" code — mimics a film strip's annotation */
+/* Bottom "FRAME" code (V1) */
 .theme-noir .slide::after {
   content: "— FRAME";
   position: absolute;
-  bottom: 56px; right: 160px;
+  bottom: 56px; right: 180px;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.36em;
   text-transform: uppercase;
   color: var(--fg-faint);
+  z-index: 2;
 }
 
 /* ─── Typography ───────────────────────────────────────────────── */
@@ -81,6 +144,8 @@
 .theme-noir .display {
   font-weight: 300;
   letter-spacing: 0.02em;
+  position: relative;
+  z-index: 1;
 }
 
 .theme-noir .title-block .title {
@@ -93,6 +158,16 @@
 .theme-noir .closing-block .title {
   font-size: 124px;
   font-weight: 300;
+}
+
+/* Body title (bullets / content / two-column) — same weight family but
+ * keep it readable at smaller sizes. */
+.theme-noir.layout-bullets .title,
+.theme-noir.layout-content .title,
+.theme-noir.layout-two-column .title {
+  font-size: 64px;
+  font-weight: 400;
+  letter-spacing: 0.005em;
 }
 
 .theme-noir .subtitle {
@@ -113,6 +188,7 @@
   /* film-cell sprocket dot before kicker text */
   padding-left: 20px;
   position: relative;
+  z-index: 1;
 }
 .theme-noir .kicker::before {
   content: "";
@@ -125,7 +201,7 @@
 
 /* ─── Bullets ──────────────────────────────────────────────────── */
 
-.theme-noir .bullets { gap: 26px; }
+.theme-noir .bullets { gap: 26px; position: relative; z-index: 1; }
 .theme-noir .bullet {
   font-size: 30px;
   color: var(--fg);
@@ -143,15 +219,37 @@
   left: 0; top: 0.65em;
 }
 
-/* ─── Quote ────────────────────────────────────────────────────── */
-
+/* ─── Quote — Phase B drama pass ───────────────────────────────── */
+/*
+ * The previous version was a thin Bodoni italic with a small left
+ * rule — felt timid against the noir bg. Phase B drops the left rule
+ * (the corner brackets already provide the framing), enlarges the
+ * type, and adds an oversized typographic " mark behind the quote to
+ * anchor the negative space.
+ */
 .theme-noir .quote {
   font-family: var(--font-display);
   font-weight: 200;
-  font-size: 80px;
+  font-size: 88px;
   font-style: italic;
   line-height: 1.18;
   letter-spacing: 0.01em;
+  position: relative;
+  z-index: 1;
+  padding-top: 60px;
+}
+.theme-noir .quote::before {
+  content: "\201C";
+  position: absolute;
+  top: -120px; left: -40px;
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 200;
+  font-size: 360px;
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0.22;
+  z-index: -1;
 }
 .theme-noir .attribution {
   font-family: var(--font-mono);
@@ -159,6 +257,8 @@
   letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--accent);
+  position: relative;
+  z-index: 1;
 }
 
 /* ─── Metric ────────────────────────────────────────────────────── */
@@ -166,9 +266,11 @@
 .theme-noir .metric {
   font-family: var(--font-display);
   font-weight: 200;
-  font-size: 220px;
+  font-size: 240px;          /* slightly larger for Phase B */
   color: var(--accent);
   letter-spacing: -0.01em;
+  position: relative;
+  z-index: 1;
 }
 .theme-noir .metric-context {
   font-family: var(--font-body);
@@ -231,4 +333,60 @@
 .theme-noir .image-grid .grid-tile {
   background-color: rgba(244,241,232,0.04);
   box-shadow: 0 0 0 1px rgba(244,241,232,0.06);
+}
+
+/* ─── M1 no-image deco — themed for noir ─────────────────────── */
+/*
+ * Override the base motifs to match noir's cinematic vocabulary —
+ * roman numerals + film terminology + acid yellow on near-black.
+ */
+.theme-noir .noimg-deco-title::before {
+  content: "REEL · I";
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: 0.40em;
+}
+.theme-noir .noimg-deco-title::after {
+  content: "I";
+  color: var(--accent);
+  opacity: 0.12;
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-style: italic;
+}
+.theme-noir .noimg-deco-section::before {
+  content: "ACT · II";
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: 0.40em;
+}
+.theme-noir .noimg-deco-section::after {
+  content: "II";
+  color: var(--accent);
+  opacity: 0.12;
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-style: italic;
+}
+.theme-noir .noimg-deco-closing::before {
+  content: "— END REEL —";
+  color: var(--accent);
+  font-family: var(--font-mono);
+  letter-spacing: 0.40em;
+}
+.theme-noir .noimg-deco-closing::after {
+  content: "FIN";
+  color: var(--accent);
+  opacity: 0.10;
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-style: italic;
+  font-size: 280px;
+}
+.theme-noir .noimg-deco-photo::before {
+  color: var(--accent);
+}
+.theme-noir .noimg-deco-photo::after {
+  color: var(--accent);
+  letter-spacing: 0.30em;
 }

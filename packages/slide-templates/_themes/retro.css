@@ -1,9 +1,18 @@
-/* retro.css — 80s synthwave. Purple-magenta canvas with neon
- * pink/cyan accents, CRT scanline overlay, glowing text-shadow on
- * the titles. VT323 for headings (the original game-system font),
- * Press Start 2P for kickers, JetBrains Mono body.
+/* retro.css — 80s synthwave, refreshed for Phase B.
  *
- * Use case: game devs, retro 主题课件, 游戏发布, fun creator content.
+ * The previous pass gave us: gradient sky, CRT scanlines, neon
+ * text-shadow, VT323 display, [SYS] / [ENTER] corner labels.
+ * Phase B adds the missing "outrun" signature pieces — perspective
+ * grid horizon, neon-sun radial glow, arcade-frame inset border,
+ * and bracketed display kickers — without disturbing the legibility
+ * of content/bullets slides.
+ *
+ * The hero layouts (title / section / closing) get the full synthwave
+ * treatment; content/bullets/data/two-column slides keep the gradient
+ * sky + scanlines only, so they stay readable.
+ *
+ * Use case: game devs, retro 主题课件, 游戏发布, arcade nostalgia,
+ * fun creator content.
  */
 
 .theme-retro {
@@ -14,6 +23,7 @@
 
   --accent: var(--brand-primary, #FF2D95);   /* hot pink */
   --accent-2: var(--brand-accent, #00F0FF);  /* cyan */
+  --accent-3: #FBBF24;                       /* amber sun-core */
 
   --font-body: var(--brand-font, 'JetBrains Mono', 'Noto Sans SC', 'PingFang SC', ui-monospace, monospace);
   --font-display: 'VT323', 'JetBrains Mono', 'Noto Sans SC', system-ui, sans-serif;
@@ -24,24 +34,89 @@
   --bullet-size: 0;
 }
 
-/* ─── Magenta→purple gradient canvas + scanlines ─────────────── */
+/* ─── Base canvas (content slides) — sky + scanlines only ─────── */
 
 .theme-retro .slide {
   background:
-    /* CRT scanlines — 2px stripe */
+    /* CRT scanlines */
     repeating-linear-gradient(
       to bottom,
-      transparent 0,
-      transparent 3px,
-      rgba(0, 0, 0, 0.18) 3px,
-      rgba(0, 0, 0, 0.18) 4px
+      transparent 0 3px,
+      rgba(0, 0, 0, 0.20) 3px 4px
     ),
-    /* hot pink → deep purple → indigo */
-    linear-gradient(135deg, #FF2D95 0%, #6B21A8 50%, #1E1B4B 100%),
-    #0F0524;
+    /* magenta → purple → indigo synthwave sky */
+    linear-gradient(180deg,
+      #1A0633 0%,
+      #4C1D95 30%,
+      #6B21A8 60%,
+      #1E1B4B 100%);
 }
 
-/* ─── Top + bottom corner labels (terminal-style) ─────────────── */
+/* Arcade-cabinet inset neon frame — drawn with box-shadow so it
+ * never displaces layout. The double pink + cyan inset reads like
+ * the chamfered edge of an OutRun cabinet bezel. */
+.theme-retro .slide {
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 45, 149, 0.55),
+    inset 0 0 0 4px rgba(15, 5, 36, 1),
+    inset 0 0 0 5px rgba(0, 240, 255, 0.35),
+    inset 0 0 80px rgba(255, 45, 149, 0.20);
+}
+
+/* ─── HERO LAYOUTS — full synthwave: grid floor + neon sun ───── */
+/*
+ * Each layer is annotated. Order matters: top is rendered first
+ * (foreground); bottom is the base. The neon sun sits BEHIND the
+ * horizon grid so the grid lines slice across it like the silhouette
+ * of distant landmass.
+ */
+.theme-retro.layout-title .slide,
+.theme-retro.layout-section .slide,
+.theme-retro.layout-closing .slide,
+.theme-retro.layout-quote .slide {
+  background:
+    /* 1. Scanlines (always on top) */
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      rgba(0, 0, 0, 0.22) 3px 4px
+    ),
+    /* 2. Fake-perspective horizon grid — lines get tighter + brighter
+     *    toward the bottom of the slide. */
+    linear-gradient(to bottom,
+      transparent 60%,
+      rgba(0, 240, 255, 0.10) 60% 60.4%, transparent 60.4% 64%,
+      rgba(0, 240, 255, 0.13) 64% 64.4%, transparent 64.4% 68%,
+      rgba(0, 240, 255, 0.18) 68% 68.5%, transparent 68.5% 72%,
+      rgba(0, 240, 255, 0.24) 72% 72.6%, transparent 72.6% 77%,
+      rgba(0, 240, 255, 0.32) 77% 77.8%, transparent 77.8% 83%,
+      rgba(0, 240, 255, 0.42) 83% 84%, transparent 84% 90%,
+      rgba(0, 240, 255, 0.55) 90% 91.5%, transparent 91.5%),
+    /* 3. Vertical sun rays — implemented as repeating-linear-gradient
+     *    converging visually because the rays narrow toward the
+     *    centre via opacity bias. */
+    repeating-linear-gradient(to right,
+      transparent 0 78px,
+      rgba(0, 240, 255, 0.06) 78px 80px),
+    /* 4. The neon sun itself — pink → amber → magenta radial. */
+    radial-gradient(circle 360px at 50% 60%,
+      var(--accent-3) 0%,
+      var(--accent) 22%,
+      var(--accent) 38%,
+      rgba(255, 45, 149, 0.55) 52%,
+      rgba(255, 45, 149, 0.0) 75%,
+      transparent 100%),
+    /* 5. Base synthwave sky */
+    linear-gradient(180deg,
+      #0F0224 0%,
+      #2E0E5C 22%,
+      #6B21A8 45%,
+      #B14289 58%,
+      #4C1D95 78%,
+      #0F0524 100%);
+}
+
+/* ─── Corner labels — terminal-style, untouched from previous ── */
 
 .theme-retro .slide::before {
   content: "[SYS] DREAM-WAVER v1.0 — INSERT COIN";
@@ -52,6 +127,7 @@
   letter-spacing: 0.15em;
   color: var(--accent-2);
   text-shadow: 0 0 10px var(--accent-2);
+  z-index: 2;
 }
 .theme-retro .slide::after {
   content: "[ENTER] CONTINUE >";
@@ -62,9 +138,10 @@
   letter-spacing: 0.15em;
   color: var(--accent);
   text-shadow: 0 0 10px var(--accent);
+  z-index: 2;
 }
 
-/* ─── Type — VT323 display with cyan/pink neon glow ──────────── */
+/* ─── Type — VT323 display with multi-layer neon glow ────────── */
 
 .theme-retro .title, .theme-retro .display {
   font-family: var(--font-display);
@@ -74,8 +151,24 @@
   text-shadow:
     0 0 12px var(--accent),
     0 0 28px var(--accent),
-    0 0 48px rgba(255,45,149,0.5);
+    0 0 48px rgba(255, 45, 149, 0.5);
+  position: relative;
+  z-index: 1;
 }
+
+/* Hero title gets an EXTRA cyan rim — pink core, cyan halo —
+ * the classic dual-tone neon-sign effect. */
+.theme-retro.layout-title .display,
+.theme-retro.layout-closing .display,
+.theme-retro.layout-section .display {
+  text-shadow:
+    0 0 8px #fff,
+    0 0 18px var(--accent),
+    0 0 36px var(--accent),
+    0 0 56px rgba(255, 45, 149, 0.7),
+    0 0 80px rgba(0, 240, 255, 0.45);
+}
+
 .theme-retro .title-block .title    { font-size: 220px; line-height: 0.95; }
 .theme-retro .section-block .title  { font-size: 160px; }
 .theme-retro .closing-block .title  { font-size: 200px; }
@@ -83,17 +176,32 @@
 .theme-retro.layout-content .title,
 .theme-retro.layout-two-column .title { font-size: 84px; }
 
-/* ─── Kicker — Press Start 2P-style tiny mono caps ───────────── */
-
+/* ─── Kicker — bracketed arcade display ──────────────────────── */
+/*
+ * Visually upgraded from a small mono-caps line to a bracketed
+ * display reminiscent of arcade "SELECT YOUR FIGHTER" prompts —
+ * cyan border on top + bottom, slight inset glow, the existing
+ * ▶ arrow kept inside the brackets.
+ */
 .theme-retro .kicker {
+  display: inline-block;
   font-family: var(--font-mono);
   font-size: 14px;
   letter-spacing: 0.4em;
   color: var(--accent-2);
   text-shadow: 0 0 12px var(--accent-2);
   margin-bottom: 40px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--accent-2);
+  border-bottom: 1px solid var(--accent-2);
+  box-shadow:
+    inset 0 0 16px rgba(0, 240, 255, 0.18),
+    0 0 20px rgba(0, 240, 255, 0.20);
+  position: relative;
+  z-index: 1;
 }
 .theme-retro .kicker::before { content: "▶ "; }
+.theme-retro .kicker::after  { content: " ◀"; opacity: 0.6; }
 
 /* ─── Pretitle — section divider with arrow ──────────────────── */
 
@@ -105,6 +213,8 @@
   color: var(--accent-2);
   text-shadow: 0 0 8px var(--accent-2);
   margin-bottom: 24px;
+  position: relative;
+  z-index: 1;
 }
 .theme-retro.layout-bullets .pretitle::before    { content: "▶ STAGE LIST"; }
 .theme-retro.layout-two-column .pretitle::before { content: "▶ DUAL PORT"; }
@@ -123,6 +233,8 @@
   line-height: 1.55;
   color: #fff;
   gap: 16px;
+  position: relative;
+  z-index: 1;
 }
 .theme-retro .bullet::before {
   content: ">";
@@ -138,18 +250,27 @@
   min-width: 32px;
 }
 
-/* ─── Metric — rainbow gradient text ─────────────────────────── */
+/* ─── Metric — rainbow gradient text with deeper amber-anchor ─ */
 
 .theme-retro .metric {
   font-family: var(--font-display);
   font-size: 320px;
   font-weight: 400;
   letter-spacing: 0;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 50%, #FBBF24 100%);
+  background: linear-gradient(
+    180deg,
+    #FBBF24 0%,
+    var(--accent) 35%,
+    var(--accent) 60%,
+    var(--accent-2) 100%
+  );
   -webkit-background-clip: text;
           background-clip: text;
   color: transparent;
-  text-shadow: 0 0 40px rgba(255, 45, 149, 0.4);
+  text-shadow: 0 0 56px rgba(255, 45, 149, 0.55);
+  filter: drop-shadow(0 0 12px rgba(0, 240, 255, 0.35));
+  position: relative;
+  z-index: 1;
 }
 
 /* ─── Quote ──────────────────────────────────────────────────── */
@@ -162,6 +283,8 @@
   text-shadow: 0 0 16px var(--accent), 0 0 32px var(--accent);
   padding-left: 64px;
   border-left: 4px solid var(--accent-2);
+  position: relative;
+  z-index: 1;
 }
 .theme-retro .attribution {
   font-family: var(--font-mono);
@@ -169,6 +292,8 @@
   letter-spacing: 0.25em;
   color: var(--accent-2);
   text-shadow: 0 0 8px var(--accent-2);
+  position: relative;
+  z-index: 1;
 }
 
 /* ─── Subtitle ───────────────────────────────────────────────── */
@@ -178,10 +303,27 @@
   color: var(--fg-muted);
   font-size: 28px;
   letter-spacing: 0.04em;
+  position: relative;
+  z-index: 1;
 }
 
 /* Body text dimmer for the dark bg. */
-.theme-retro .body-text { color: var(--fg-muted); font-family: var(--font-mono); font-size: 26px; }
+.theme-retro .body-text {
+  color: var(--fg-muted);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  position: relative;
+  z-index: 1;
+}
 
 /* Footer suppressed — corner labels carry it. */
 .theme-retro .footer { display: none; }
+
+/* ─── M1 no-image deco — themed for retro ────────────────────── */
+/* Override the base deco motifs to match the arcade aesthetic. */
+.theme-retro .noimg-deco-title::before    { content: "▶ PLAYER 1"; color: var(--accent-2); text-shadow: 0 0 12px var(--accent-2); }
+.theme-retro .noimg-deco-title::after     { content: "★"; color: var(--accent); opacity: 0.18; text-shadow: 0 0 40px var(--accent); }
+.theme-retro .noimg-deco-section::before  { content: "▶ STAGE"; color: var(--accent-2); text-shadow: 0 0 12px var(--accent-2); }
+.theme-retro .noimg-deco-section::after   { content: "§"; color: var(--accent); opacity: 0.18; text-shadow: 0 0 40px var(--accent); }
+.theme-retro .noimg-deco-closing::before  { content: "▶ GAME OVER ◀"; color: var(--accent); text-shadow: 0 0 12px var(--accent); }
+.theme-retro .noimg-deco-closing::after   { content: "終"; color: var(--accent-2); opacity: 0.15; text-shadow: 0 0 50px var(--accent-2); }
