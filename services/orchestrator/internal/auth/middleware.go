@@ -33,6 +33,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
 // ─── Context keys ───────────────────────────────────────────────────
@@ -197,6 +198,12 @@ func Middleware(cfg Config, deps Deps) func(http.Handler) http.Handler {
 
 			ctx = WithUser(ctx, user)
 			ctx = WithWorkspace(ctx, activeWS)
+			// Propagate workspace_id onto the tool ctx key so the
+			// idempotency decorator (and any other tool-side reader)
+			// gets workspace-scoped caching automatically. Without
+			// this every tool call would BYPASS the cache because
+			// the tool package can't import auth.
+			ctx = tool.WithWorkspaceID(ctx, activeWS.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

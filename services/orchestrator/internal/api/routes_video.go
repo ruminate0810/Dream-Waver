@@ -11,8 +11,10 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 )
 
 // Video routes form a thin authenticated bridge to the Opendream
@@ -81,6 +83,13 @@ func (h *handlers) CreateVideoRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Persist the run → store.VideoRuns mapping so the workspace can
+	// list its history and so a later GET /api/v1/video/runs/{id}
+	// can refresh status without re-resolving the opendream_run_id.
+	// Anonymous requests (no workspace on ctx) skip — see design's
+	// same posture. Fire-and-forget; audit is best-effort.
+	h.recordVideoRun(r.Context(), resp.RunID, body.Title, body.Spec)
+
 	// Rewrite the upstream URLs onto our own prefix. The frontend never
 	// learns where Opendream actually lives, so a deploy-time move of
 	// the Python service doesn't ripple into the browser cache.
@@ -91,6 +100,38 @@ func (h *handlers) CreateVideoRun(w http.ResponseWriter, r *http.Request) {
 		"timeline_url":  prefix,
 		"artifacts_url": prefix + "/artifacts",
 	})
+}
+
+// recordVideoRun writes one store.VideoRuns row when workspace ctx is
+// present. Errors are logged but never fail the request — same audit-
+// best-effort posture as recordDesignAsset in routes_design.go.
+//
+// Note: store.VideoRun.ID is our own uuid (different from the
+// opendream_run_id, which is a string slug). Both are stored — the
+// orchestrator UUID for our APIs, the opendream slug for the bridge
+// hand-off.
+func (h *handlers) recordVideoRun(ctx context.Context, opendreamRunID, title string, spec map[string]any) {
+	wsID := workspaceIDFromCtx(ctx)
+	if wsID == uuid.Nil {
+		return
+	}
+	if h.deps.Store == nil || h.deps.Store.VideoRuns == nil {
+		return
+	}
+	specJSON, _ := json.Marshal(spec)
+	run := &store.VideoRun{
+		ID:             uuid.New(),
+		WorkspaceID:    wsID,
+		CreatedBy:      userIDFromCtx(ctx),
+		OpendreamRunID: opendreamRunID,
+		Title:          title,
+		Status:         "running",
+		Spec:           specJSON,
+	}
+	if err := h.deps.Store.VideoRuns.Put(ctx, run); err != nil {
+		slog.WarnContext(ctx, "video_run record failed (audit only — bridge call succeeded)",
+			"workspace_id", wsID, "opendream_run_id", opendreamRunID, "err", err)
+	}
 }
 
 // --- GET /api/v1/video/runs/{id} ----------------------------------------
