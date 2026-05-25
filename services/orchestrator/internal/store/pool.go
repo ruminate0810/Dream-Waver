@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	pgxuuid "github.com/vgarvardt/pgx-google-uuid/v5"
 )
 
 // New is the entry point main.go calls. When databaseURL is non-empty
@@ -40,6 +42,17 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 	}
 	cfg.MaxConnLifetime = 30 * time.Minute
 	cfg.MaxConnIdleTime = 5 * time.Minute
+
+	// Register google/uuid codec on every new connection so the store
+	// implementations can Scan into *uuid.UUID directly. pgx v5 doesn't
+	// auto-recognise google/uuid — without this every SELECT on a uuid
+	// column blows up with "cannot decode … into *uuid.UUID". The
+	// vgarvardt/pgx-google-uuid package is the canonical 50-LOC helper
+	// for this; no upstream support is on the roadmap.
+	cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		pgxuuid.Register(conn.TypeMap())
+		return nil
+	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
