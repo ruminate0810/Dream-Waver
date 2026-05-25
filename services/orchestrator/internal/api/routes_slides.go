@@ -277,6 +277,10 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 		WizardStep   int    `json:"wizard_step,omitempty"`
 		WizardAnswer string `json:"wizard_answer,omitempty"`
 		WizardSkip   bool   `json:"wizard_skip,omitempty"`
+		// N1.i — when true, treat WizardStep as the step to GO BACK
+		// to (re-emits that step's view with prior answers as
+		// defaults). Mutually exclusive with WizardSkip.
+		WizardBack bool `json:"wizard_back,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -299,7 +303,7 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Action {
 	case "wizard_step":
-		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip)
+		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip, req.WizardBack)
 	case "clarify":
 		go h.resumeClarification(job, req.Answers)
 	case "approve_outline":
@@ -323,16 +327,17 @@ func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
 	h.finishOrPause(job, ctx, out, err, "slide edit")
 }
 
-// resumeWizardStep drives the N1 wizard one step forward. On non-
-// final steps the call returns with status=awaiting_wizard again (the
-// next step's view was just emitted); on the final step it falls
+// resumeWizardStep drives the N1 wizard one step forward (or back
+// when `back` is true, per Sprint N1.i). On non-final forward steps
+// the call returns with status=awaiting_wizard again (the next
+// step's view was just emitted); on the final forward step it falls
 // through to outline planning (which itself pauses at the H1 gate).
-func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip bool) {
+func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip, back bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
-	out, err := h.deps.AgentRunner.ResumeFromWizardStep(ctx, job.ID, step, answer, skip)
+	out, err := h.deps.AgentRunner.ResumeFromWizardStep(ctx, job.ID, step, answer, skip, back)
 	h.finishOrPause(job, ctx, out, err, "wizard step resume")
 }
 

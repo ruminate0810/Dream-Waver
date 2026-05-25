@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import clsx from "clsx";
@@ -23,14 +24,20 @@ import type { WizardStepView } from "./transport";
 // vague-topic gating); 3 steps total in the MVP:
 //
 //   step 1 — scenario picker (radio-card list of 6 categories;
-//            REQUIRED). User taps one card, optionally taps 下一步.
+//            REQUIRED). May arrive with view.suggested_value set
+//            (N1.g topic-keyword heuristic) → that card shows an
+//            「AI 建议」badge and is pre-selected.
 //   step 2 — audience free-text (scenario-aware question + placeholder).
 //            SKIPPABLE.
 //   step 3 — extra-info free-text. SKIPPABLE.
 //
-// Visual reference: a Manus pre-deck questionnaire — radio-card list
-// with leading icon, hairline outline, progress indicator in the
-// header, [跳过] [下一步] footer.
+// N1.i polish pass:
+//   - step indicator dots (●○○ → ○●○ → ○○●) under the header
+//   - breadcrumb of prior answers above the question (「场景: 商业计划」)
+//   - 「AI 建议」 sparkle badge on the suggested scenario card
+//   - back button (←) now functional: dispatches with back=true,
+//     backend re-emits the previous step with prior choice preserved
+//   - subtle vermillion left-edge bar on selected radio card
 //
 // All state is owned locally per step view; the parent passes a fresh
 // view + onSubmit handler each time, so this component never has to
@@ -54,25 +61,41 @@ export function WizardCard({
   busy,
 }: {
   view: WizardStepView;
-  onSubmit: (step: number, answer: string, skip: boolean) => void | Promise<void>;
+  onSubmit: (
+    step: number,
+    answer: string,
+    skip: boolean,
+    back?: boolean,
+  ) => void | Promise<void>;
   busy?: boolean;
 }) {
   const isScenario = view.kind === "scenario";
 
   // Local state per step view. Resets whenever a new step arrives
-  // (view identity changes) — guarded by useEffect on view.step.
-  //
-  // Sprint N1.g — if the backend sent a suggested_value (topic-based
-  // pre-pick for the scenario step), we seed scenarioPick with it so
-  // the user can confirm with a single 下一步 tap. They can still tap
-  // a different card to override.
+  // (view identity changes) — guarded by useEffect on view.step +
+  // suggested_value. The latter ensures back-step pre-fills with
+  // the user's prior pick (which backend echoes via suggested_value).
   const [scenarioPick, setScenarioPick] = useState<string>(view.suggested_value ?? "");
-  const [freeText, setFreeText] = useState<string>("");
+  const [freeText, setFreeText] = useState<string>(() => {
+    // N1.i — when going back to a free-text step, pre-fill with the
+    // prior answer if it's still in the breadcrumb (backend keeps
+    // them keyed by step).
+    if (view.kind !== "free-text") return "";
+    const keyByStep: Record<number, string> = { 2: "audience", 3: "extra" };
+    const k = keyByStep[view.step];
+    return (k && view.previous_answers?.[k]) ?? "";
+  });
 
   useEffect(() => {
     setScenarioPick(view.suggested_value ?? "");
-    setFreeText("");
-  }, [view.step, view.suggested_value]);
+    if (view.kind === "free-text") {
+      const keyByStep: Record<number, string> = { 2: "audience", 3: "extra" };
+      const k = keyByStep[view.step];
+      setFreeText((k && view.previous_answers?.[k]) ?? "");
+    } else {
+      setFreeText("");
+    }
+  }, [view.step, view.suggested_value, view.kind, view.previous_answers]);
 
   const progressPct = Math.round(((view.step - 1) / view.total) * 100);
 
@@ -96,6 +119,13 @@ export function WizardCard({
     onSubmit(view.step, "", true);
   };
 
+  const submitBack = () => {
+    if (busy || !view.can_go_back) return;
+    // Go back to step N-1; backend re-emits that step's view with
+    // prior answer pre-filled (via suggested_value / previous_answers).
+    onSubmit(view.step - 1, "", false, true);
+  };
+
   return (
     <div className="mx-auto my-4 w-full max-w-2xl">
       {/* Top vermillion press-strip — matches existing L1 cards. */}
@@ -109,7 +139,7 @@ export function WizardCard({
             "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32)",
         }}
       >
-        {/* ─── Header: kicker + progress ─────────────────────────── */}
+        {/* ─── Header: kicker + numeric progress ─────────────────── */}
         <div className="mb-4 flex items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
             <span className="text-[color:var(--vermillion)]">§</span>
@@ -119,19 +149,46 @@ export function WizardCard({
               Step {view.step} of {view.total}
             </span>
           </div>
-          {/* Numeric progress, mono caps, e.g. "33%" */}
           <span className="font-mono-jb text-[10px] uppercase tracking-[0.18em] text-[color:var(--ink-faint)]">
             {progressPct}%
           </span>
         </div>
 
-        {/* Hairline progress rule — fills from 0→100% as user advances */}
-        <div className="mb-5 h-[1px] w-full bg-[color:var(--ink)]/10">
-          <div
-            className="h-[1px] bg-[color:var(--vermillion)] transition-all duration-300"
-            style={{ width: `${progressPct}%` }}
-          />
+        {/* ─── Step indicator dots — clear 3-step affordance ────── */}
+        <div className="mb-4 flex items-center gap-1.5">
+          {Array.from({ length: view.total }).map((_, i) => {
+            const n = i + 1;
+            const done = n < view.step;
+            const active = n === view.step;
+            return (
+              <span
+                key={n}
+                aria-label={`Step ${n}${active ? " (current)" : done ? " (done)" : ""}`}
+                className={clsx(
+                  "h-[6px] rounded-full transition-all duration-300",
+                  active
+                    ? "w-7 bg-[color:var(--vermillion)]"
+                    : done
+                      ? "w-[6px] bg-[color:var(--ink)]/60"
+                      : "w-[6px] bg-[color:var(--ink)]/15",
+                )}
+              />
+            );
+          })}
         </div>
+
+        {/* ─── Breadcrumb of prior answers (N1.i) ─────────────────
+            Shown on steps 2+ — gives the user orientation + lets them
+            verify the path so far. Uses small mono caps tags.        */}
+        {view.previous_scenario && view.step > 1 && (
+          <div className="mb-4 flex flex-wrap items-center gap-2 font-mono-jb text-[10px] uppercase tracking-[0.18em] text-[color:var(--ink-soft)]">
+            <span className="text-[color:var(--ink-faint)]">已答</span>
+            <BreadcrumbTag label="场景" value={view.previous_scenario} />
+            {view.previous_answers?.audience && view.step > 2 && (
+              <BreadcrumbTag label="受众" value={view.previous_answers.audience} />
+            )}
+          </div>
+        )}
 
         {/* ─── Question (matches existing display-serif body copy) ── */}
         <h3 className="mb-5 font-display text-[26px] leading-tight text-[color:var(--ink)]">
@@ -143,6 +200,7 @@ export function WizardCard({
           <ScenarioPicker
             options={view.options ?? []}
             value={scenarioPick}
+            suggested={view.suggested_value}
             onChange={setScenarioPick}
             disabled={busy}
           />
@@ -155,20 +213,23 @@ export function WizardCard({
           />
         )}
 
-        {/* ─── Footer: 跳过 + 下一步 ──────────────────────────────── */}
+        {/* ─── Footer: ← + 跳过 (left)   |   下一步 / 完成 (right) */}
         <div className="mt-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* The back-arrow + 跳过 cluster matches the Manus reference */}
-            {view.step > 1 && (
-              <button
-                type="button"
-                disabled
-                className="inline-flex h-7 w-7 cursor-not-allowed items-center justify-center border border-[color:var(--ink)]/20 text-[color:var(--ink-faint)]"
-                title="返回（暂不支持）"
-              >
-                <ChevronLeft size={14} strokeWidth={1.8} />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={submitBack}
+              disabled={busy || !view.can_go_back}
+              title={view.can_go_back ? "返回上一步" : "已经是第一步"}
+              className={clsx(
+                "inline-flex h-7 w-7 items-center justify-center border transition-colors",
+                view.can_go_back && !busy
+                  ? "border-[color:var(--ink)]/25 text-[color:var(--ink-soft)] hover:border-[color:var(--vermillion)] hover:text-[color:var(--vermillion)]"
+                  : "cursor-not-allowed border-[color:var(--ink)]/15 text-[color:var(--ink-faint)]/50",
+              )}
+            >
+              <ChevronLeft size={14} strokeWidth={1.8} />
+            </button>
             {view.optional && (
               <button
                 type="button"
@@ -212,11 +273,13 @@ export function WizardCard({
 function ScenarioPicker({
   options,
   value,
+  suggested,
   onChange,
   disabled,
 }: {
   options: { value: string; label: string; icon: string }[];
   value: string;
+  suggested?: string;
   onChange: (next: string) => void;
   disabled?: boolean;
 }) {
@@ -225,6 +288,7 @@ function ScenarioPicker({
       {options.map((opt) => {
         const Icon = ICON_BY_NAME[opt.icon] ?? FileText;
         const checked = value === opt.value;
+        const isSuggested = suggested === opt.value;
         return (
           <button
             key={opt.value}
@@ -232,13 +296,22 @@ function ScenarioPicker({
             onClick={() => onChange(opt.value)}
             disabled={disabled}
             className={clsx(
-              "group flex items-center gap-3 border px-4 py-3.5 text-left transition-all duration-150",
+              // N1.i — slight bump on left padding to leave room for
+              // the vermillion left-edge bar that appears when checked.
+              "group relative flex items-center gap-3 border px-4 py-3.5 pl-5 text-left transition-all duration-150",
               "disabled:cursor-not-allowed disabled:opacity-50",
               checked
                 ? "border-[color:var(--ink)] bg-[#F5EFE0]/60"
                 : "border-[color:var(--ink)]/15 bg-transparent hover:border-[color:var(--ink)]/40 hover:bg-[#F5EFE0]/30",
             )}
           >
+            {/* N1.i — vermillion left-edge bar on selected card. */}
+            {checked && (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 left-0 w-[3px] bg-[color:var(--vermillion)]"
+              />
+            )}
             <Icon
               size={18}
               strokeWidth={1.6}
@@ -252,6 +325,20 @@ function ScenarioPicker({
             <span className="flex-1 font-display text-[16px] text-[color:var(--ink)]">
               {opt.label}
             </span>
+            {/* N1.i — 「AI 建议」 sparkle badge on the heuristic
+                pre-pick. Shown regardless of whether the user has
+                kept or overridden the suggestion, so the suggestion
+                stays visible. */}
+            {isSuggested && (
+              <span
+                aria-label="AI suggested"
+                title="根据主题文字推测的默认选项 · 可以改"
+                className="inline-flex items-center gap-1 border border-[color:var(--vermillion)]/30 bg-[color:var(--vermillion)]/8 px-1.5 py-[1px] font-mono-jb text-[9px] uppercase tracking-[0.18em] text-[color:var(--vermillion)]"
+              >
+                <Sparkles size={9} strokeWidth={2} />
+                AI 建议
+              </span>
+            )}
             {/* Radio indicator — a small ring that fills when checked */}
             <span
               className={clsx(
@@ -291,8 +378,24 @@ function FreeTextField({
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         placeholder={placeholder}
+        autoFocus
         className="w-full bg-transparent font-display text-[17px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
       />
     </div>
+  );
+}
+
+// ─── Breadcrumb subcomponent ──────────────────────────────────────────
+
+function BreadcrumbTag({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1.5 border border-[color:var(--ink)]/12 bg-white/40 px-2 py-[2px] normal-case">
+      <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+        {label}
+      </span>
+      <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+        {value}
+      </span>
+    </span>
   );
 }

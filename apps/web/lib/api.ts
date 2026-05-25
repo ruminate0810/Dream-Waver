@@ -112,6 +112,10 @@ export type SlideWizardStepView = {
   options?: Array<{ value: string; label: string; icon: string }>;
   optional: boolean;
   suggested_value?: string;
+  /** Sprint N1.i breadcrumb + back-step context. */
+  previous_answers?: Record<string, string>;
+  previous_scenario?: string;
+  can_go_back?: boolean;
 };
 
 type Envelope<T> =
@@ -235,14 +239,20 @@ export async function postSlideOutlineApproval(
 }
 
 // Sprint N1 — multi-step wizard resume. Each step the user clicks
-// 下一步 or 跳过 we POST here; backend either emits the next step's
-// view (still awaiting_wizard) OR completes the wizard and proceeds
-// to outline planning.
+// 下一步 / 跳过 / ← we POST here; backend either emits the next (or
+// previous) step's view (still awaiting_wizard) OR completes the
+// wizard and proceeds to outline planning.
+//
+// N1.i — `back` true tells the backend to re-emit step N's view
+// (with prior answers preserved as defaults) instead of advancing.
+// `step` then is the step to go BACK to. `back` is mutually
+// exclusive with `skip`.
 export async function postSlideWizardStep(
   jobId: string,
   step: number,
   answer: string,
   skip: boolean,
+  back = false,
 ): Promise<void> {
   const res = await fetch(`/api/v1/slides/${jobId}/messages`, {
     method: "POST",
@@ -252,6 +262,7 @@ export async function postSlideWizardStep(
       wizard_step: step,
       wizard_answer: answer,
       wizard_skip: skip,
+      wizard_back: back,
     }),
   });
   await unwrap<{ job_id: string; session_id: string }>(res);

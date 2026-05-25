@@ -113,6 +113,12 @@ export type WizardStepView = {
   optional: boolean;
   /** Sprint N1.g — heuristic pre-pick from topic keywords (step 1 only). */
   suggested_value?: string;
+  /** Sprint N1.i — accumulated answers so far, for breadcrumb. */
+  previous_answers?: Record<string, string>;
+  /** Sprint N1.i — Chinese label of the scenario chosen in step 1. */
+  previous_scenario?: string;
+  /** Sprint N1.i — whether the ← back button should be enabled. */
+  can_go_back?: boolean;
 };
 
 export type AgentEvent = {

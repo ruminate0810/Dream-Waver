@@ -128,8 +128,9 @@ export type AgentSession = {
   dispatchOutlineApproval: (edits?: OutlineEditsPayload) => Promise<void>;
   // Sprint N1 — wizard step dispatcher. `skip` true bypasses the
   // step (only allowed on optional steps; backend rejects skip on
-  // step 1).
-  dispatchWizardStep: (step: number, answer: string, skip: boolean) => Promise<void>;
+  // step 1). N1.i — `back` true (default false) treats `step` as
+  // the step to GO BACK to; mutually exclusive with `skip`.
+  dispatchWizardStep: (step: number, answer: string, skip: boolean, back?: boolean) => Promise<void>;
 };
 
 // OutlineEditsPayload mirrors the Go-side slides.OutlineEdits struct
@@ -743,23 +744,28 @@ export function useAgentSession(job: SlideJob): AgentSession {
   // the WizardCard disappears immediately; the next event re-attaches
   // the pending or transitions to running.
   const dispatchWizardStep = useCallback(
-    async (step: number, answer: string, skip: boolean) => {
+    async (step: number, answer: string, skip: boolean, back = false) => {
       const lastIdx = state.turns.length - 1;
       const lastTurn = lastIdx >= 0 ? state.turns[lastIdx] : null;
       if (!lastTurn || lastTurn.pending?.kind !== "wizard") return;
 
-      // Optimistically clear so the spinner shows.
-      dispatch({
-        type: "ws",
-        event: {
-          session_id: job.session_id,
-          kind: "step.start",
-          at: new Date().toISOString(),
-          data: { agent: "slides", step: lastTurn.steps.length + 1 },
-        },
-      });
+      // Optimistically clear so the spinner shows. We DON'T fire a
+      // synthetic step.start for back nav — that would close the
+      // wizard's Turn 0 state and feel jarring; back is just a quick
+      // re-render of the previous step's view.
+      if (!back) {
+        dispatch({
+          type: "ws",
+          event: {
+            session_id: job.session_id,
+            kind: "step.start",
+            at: new Date().toISOString(),
+            data: { agent: "slides", step: lastTurn.steps.length + 1 },
+          },
+        });
+      }
       try {
-        await postSlideWizardStep(job.job_id, step, answer, skip);
+        await postSlideWizardStep(job.job_id, step, answer, skip, back);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });

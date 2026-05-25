@@ -85,6 +85,16 @@ func isValidScenario(v string) bool {
 // vocabulary — when the guess is confident, the user can just hit 下一步
 // without tapping anything. Empty string means "no guess; user must
 // pick from scratch".
+//
+// Sprint N1.i adds breadcrumb context for steps 2+:
+//   - PreviousAnswers carries the answers the user already gave (e.g.
+//     {"audience": "投资人"}) so the WizardCard can render small grey
+//     tags above the active question
+//   - PreviousScenario is the chosen step-1 value (label form, in
+//     Chinese) — surfaced separately because it's the one the breadcrumb
+//     always shows
+//   - CanGoBack flags whether the back arrow should be active (false on
+//     step 1; true elsewhere)
 type WizardStepView struct {
 	Step           int              `json:"step"`         // 1-based
 	Total          int              `json:"total"`        // total step count
@@ -94,6 +104,12 @@ type WizardStepView struct {
 	Options        []ScenarioOption `json:"options,omitempty"` // populated only for kind=scenario
 	Optional       bool             `json:"optional"`
 	SuggestedValue string           `json:"suggested_value,omitempty"`
+
+	// N1.i breadcrumb + back-step context. All optional — older
+	// frontends ignore unknown fields and degrade to the V1 wizard.
+	PreviousAnswers  map[string]string `json:"previous_answers,omitempty"`
+	PreviousScenario string            `json:"previous_scenario,omitempty"`
+	CanGoBack        bool              `json:"can_go_back,omitempty"`
 }
 
 // WizardTotalSteps is the fixed step count for the MVP wizard. Bumping
@@ -171,19 +187,48 @@ func wizardStepThree(_ SlideScenario) WizardStepView {
 // it seeds the SuggestedValue via suggestScenarioFromTopic. Callers
 // that don't have a topic handy (mid-wizard resumes for steps 2/3)
 // can pass "".
-func wizardStepView(step int, scenario SlideScenario, topic string) WizardStepView {
+//
+// `priorAnswers` is the accumulated answer map so far; populated into
+// the view's PreviousAnswers + PreviousScenario for the breadcrumb.
+// Pass nil when nothing has been answered yet (step 1 entry).
+func wizardStepView(step int, scenario SlideScenario, topic string, priorAnswers map[string]string) WizardStepView {
+	var v WizardStepView
 	switch step {
 	case 1:
-		v := wizardStepOne()
+		v = wizardStepOne()
 		v.SuggestedValue = string(suggestScenarioFromTopic(topic))
-		return v
+		// On a BACK to step 1, the user's prior pick should pre-fill
+		// the radio. Override the heuristic guess with what they
+		// actually chose.
+		if scenario != "" {
+			v.SuggestedValue = string(scenario)
+		}
 	case 2:
-		return wizardStepTwo(scenario)
+		v = wizardStepTwo(scenario)
 	case 3:
-		return wizardStepThree(scenario)
+		v = wizardStepThree(scenario)
 	default:
 		return WizardStepView{}
 	}
+	v.CanGoBack = step > 1
+	if scenario != "" {
+		// Translate enum value to its Chinese label for display.
+		for _, opt := range ScenarioOptions {
+			if opt.Value == scenario {
+				v.PreviousScenario = opt.Label
+				break
+			}
+		}
+	}
+	if len(priorAnswers) > 0 {
+		// Copy the map so the caller can't mutate the view later.
+		clone := make(map[string]string, len(priorAnswers))
+		for k, val := range priorAnswers {
+			clone[k] = val
+		}
+		v.PreviousAnswers = clone
+	}
+	return v
 }
 
 // suggestScenarioFromTopic is a tiny keyword heuristic that maps an

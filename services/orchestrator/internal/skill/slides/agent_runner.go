@@ -204,7 +204,7 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 	// answers (or skips) via ResumeFromWizardStep, which either emits
 	// the next step's view OR — when the wizard is done — falls through
 	// to runFromOutline with the answers merged into Input.
-	view := wizardStepView(1, "", in.Topic)
+	view := wizardStepView(1, "", in.Topic, nil)
 	state.SetPending(&PendingUserAction{
 		Kind:          PendingWizard,
 		Wizard:        &view,
@@ -297,12 +297,19 @@ func (r *AgentRunner) ResumeFromClarification(ctx context.Context, jobID string,
 // `skip` true means the user pressed 跳过 — we don't store an answer
 // for this step and just advance. The required step-1 (scenario) does
 // NOT accept skip; the API validates that before calling here.
+//
+// `back` true (Sprint N1.i) means the user pressed ← — instead of
+// advancing, we re-emit the PREVIOUS step's view (with the user's
+// prior pick pre-filled as SuggestedValue). `step` in this case is
+// the step they're going BACK to (typically Wizard.Step - 1). The
+// answer parameter is ignored when back is true.
 func (r *AgentRunner) ResumeFromWizardStep(
 	ctx context.Context,
 	jobID string,
 	step int,
 	answer string,
 	skip bool,
+	back bool,
 ) (*Output, error) {
 	state, ok := r.Sessions.Get(jobID)
 	if !ok {
@@ -312,6 +319,53 @@ func (r *AgentRunner) ResumeFromWizardStep(
 	if pending == nil || pending.Kind != PendingWizard {
 		return nil, fmt.Errorf("job %s is not awaiting wizard step", jobID)
 	}
+
+	// Sprint N1.i back-step branch — re-emit the requested step's
+	// view with prior answers preserved as defaults. We don't
+	// validate that step is the current minus 1: the frontend may
+	// want to jump back several steps in a future revision, and
+	// step bounds are enforced by wizardStepView (returns zero
+	// for out-of-range).
+	if back {
+		if step < 1 || step >= pending.Wizard.Step {
+			return nil, fmt.Errorf("invalid back target step=%d (currently on step %d)", step, pending.Wizard.Step)
+		}
+		// Clear the answer(s) for any step >= the target so the
+		// user gets a clean slate ahead. Keeps state consistent if
+		// they then forward through different choices.
+		answers := pending.WizardAnswers
+		if answers == nil {
+			answers = map[string]string{}
+		}
+		// Step keys, in order: 1=scenario, 2=audience, 3=extra.
+		for s := step; s <= WizardTotalSteps; s++ {
+			switch s {
+			case 1:
+				// Keep scenario in answers as the SUGGESTED default,
+				// but the user is free to override; don't reset.
+			case 2:
+				delete(answers, "audience")
+			case 3:
+				delete(answers, "extra")
+			}
+		}
+		scenario := pending.WizardScenario
+		if step == 1 {
+			// Going back to step 1 — keep the prior scenario so it
+			// pre-fills the radio. wizardStepView reads it via the
+			// scenario arg → SuggestedValue override.
+		}
+		view := wizardStepView(step, scenario, state.Input.Topic, answers)
+		state.SetPending(&PendingUserAction{
+			Kind:           PendingWizard,
+			Wizard:         &view,
+			WizardScenario: scenario,
+			WizardAnswers:  answers,
+		})
+		r.emit(ctx, event.NewWizardStep(view))
+		return &Output{Status: "awaiting_wizard"}, nil
+	}
+
 	if pending.Wizard == nil || pending.Wizard.Step != step {
 		// Stale submission (probably a race with a fast-clicking user).
 		// Re-emit the current step so the frontend can resync.
@@ -351,7 +405,7 @@ func (r *AgentRunner) ResumeFromWizardStep(
 	// Input and fall through to Phase 1 (outline planning).
 	nextStep := step + 1
 	if nextStep <= WizardTotalSteps {
-		nextView := wizardStepView(nextStep, scenario, state.Input.Topic)
+		nextView := wizardStepView(nextStep, scenario, state.Input.Topic, answers)
 		state.SetPending(&PendingUserAction{
 			Kind:           PendingWizard,
 			Wizard:         &nextView,
