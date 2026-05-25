@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Icon-grid layout — 4 feature cells with emoji icon plus label plus description">
+  <rect width="640" height="360" fill="#F2EEE7"/>
+
+  <!-- title -->
+  <text x="40" y="58" font-family="Georgia, 'Fraunces', serif" font-size="22" font-weight="600" letter-spacing="-0.3" fill="#1A1614">核心能力 · 4 大模块</text>
+
+  <!-- 4 cells in a row, each with top accent rule + icon + label + 2-line desc -->
+  <g font-family="Georgia, 'Fraunces', serif" fill="#1A1614">
+    <!-- Cell 1 -->
+    <line x1="40" y1="110" x2="180" y2="110" stroke="#B5371E" stroke-width="2"/>
+    <text x="40" y="158" font-size="38">🚀</text>
+    <text x="40" y="200" font-size="18" font-weight="600">高速生成</text>
+    <text x="40" y="226" font-size="11" fill="#57534E">10 页 PPT 平均</text>
+    <text x="40" y="242" font-size="11" fill="#57534E">8 分钟出稿。</text>
+
+    <!-- Cell 2 -->
+    <line x1="190" y1="110" x2="330" y2="110" stroke="#B5371E" stroke-width="2"/>
+    <text x="190" y="158" font-size="38">🎨</text>
+    <text x="190" y="200" font-size="18" font-weight="600">11 主题</text>
+    <text x="190" y="226" font-size="11" fill="#57534E">从极简到 noir，</text>
+    <text x="190" y="242" font-size="11" fill="#57534E">覆盖商务/创作。</text>
+
+    <!-- Cell 3 -->
+    <line x1="340" y1="110" x2="480" y2="110" stroke="#B5371E" stroke-width="2"/>
+    <text x="340" y="158" font-size="38">🤖</text>
+    <text x="340" y="200" font-size="18" font-weight="600">AI 配图</text>
+    <text x="340" y="226" font-size="11" fill="#57534E">nano-banana 直接</text>
+    <text x="340" y="242" font-size="11" fill="#57534E">生成 16:9 图。</text>
+
+    <!-- Cell 4 -->
+    <line x1="490" y1="110" x2="600" y2="110" stroke="#B5371E" stroke-width="2"/>
+    <text x="490" y="158" font-size="38">✏️</text>
+    <text x="490" y="200" font-size="18" font-weight="600">实时编辑</text>
+    <text x="490" y="226" font-size="11" fill="#57534E">点任意文字直接</text>
+    <text x="490" y="242" font-size="11" fill="#57534E">改写或让 AI 重写。</text>
+  </g>
+</svg>

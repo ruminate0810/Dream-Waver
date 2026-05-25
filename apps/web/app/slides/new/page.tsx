@@ -53,6 +53,7 @@ type LayoutExample = {
   when: string;
 };
 const LAYOUT_EXAMPLES: LayoutExample[] = [
+  // ── H8: image-led ──
   {
     key: "photo-essay",
     label: "Photo essay",
@@ -73,6 +74,49 @@ const LAYOUT_EXAMPLES: LayoutExample[] = [
     tagline: "3-4 张 AI 图组合 moodboard，一行斜体说明。Look book / 范例集合。",
     thumb: "/layout-previews/image-grid.svg",
     when: "时尚 · 范例 · 概念集",
+  },
+  // ── K1: information architectures ──
+  {
+    key: "process-flow",
+    label: "Process flow",
+    tagline: "3-5 步骤水平排列，编号+箭头。流程图 / 步骤指南 / how-to。",
+    thumb: "/layout-previews/process-flow.svg",
+    when: "流程 · 步骤 · 实施",
+  },
+  {
+    key: "bento-grid",
+    label: "Bento grid",
+    tagline: "苹果风混排：1 大卡 + 3-4 小卡，文字/数字/图自由混。产品全貌。",
+    thumb: "/layout-previews/bento-grid.svg",
+    when: "综合介绍 · overview",
+  },
+  {
+    key: "pull-quote",
+    label: "Pull quote",
+    tagline: "上下文 + 巨大引语 + 出处。重磅观点的「段落高潮」。",
+    thumb: "/layout-previews/pull-quote.svg",
+    when: "关键观点 · 重磅论断",
+  },
+  {
+    key: "before-after",
+    label: "Before / after",
+    tagline: "左右两张 AI 图对比 + 「Before」「After」标签。改造 / 蜕变。",
+    thumb: "/layout-previews/before-after.svg",
+    when: "改造 · 蜕变 · makeover",
+  },
+  {
+    key: "icon-grid",
+    label: "Icon grid",
+    tagline: "3-4 列 emoji icon + 标题 + 短描述。功能介绍 / capabilities。",
+    thumb: "/layout-previews/icon-grid.svg",
+    when: "功能 · 特性 · 能力",
+  },
+  {
+    key: "team-roster",
+    label: "Team roster",
+    tagline: "横向头像 + 名字 + 头衔卡片。团队 / 创始人 / 演讲嘉宾。",
+    thumb: "/layout-previews/team-roster.svg",
+    when: "团队 · founders · 嘉宾",
   },
 ];
 

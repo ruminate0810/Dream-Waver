@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Team-roster layout — 5 circular avatars with names and roles">
+  <defs>
+    <linearGradient id="avatar1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#9c8470"/><stop offset="1" stop-color="#3b3127"/></linearGradient>
+    <linearGradient id="avatar2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7a8baa"/><stop offset="1" stop-color="#2c3e5a"/></linearGradient>
+    <linearGradient id="avatar3" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b58575"/><stop offset="1" stop-color="#5d3a2e"/></linearGradient>
+    <linearGradient id="avatar4" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8aa890"/><stop offset="1" stop-color="#34503c"/></linearGradient>
+    <linearGradient id="avatar5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b8a4c4"/><stop offset="1" stop-color="#523f64"/></linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="#F2EEE7"/>
+
+  <!-- title -->
+  <text x="40" y="58" font-family="Georgia, 'Fraunces', serif" font-size="22" font-weight="600" letter-spacing="-0.3" fill="#1A1614">核心团队 · 5 位创始人</text>
+
+  <!-- 5 avatar+name+role cards in a row -->
+  <g font-family="Georgia, 'Fraunces', serif" fill="#1A1614">
+    <!-- Card 1 -->
+    <circle cx="100" cy="170" r="48" fill="url(#avatar1)"/>
+    <text x="100" y="245" font-size="15" font-weight="600" text-anchor="middle">梁文锋</text>
+    <text x="100" y="262" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="2.5" fill="#B5371E" text-anchor="middle">CEO</text>
+
+    <!-- Card 2 -->
+    <circle cx="220" cy="170" r="48" fill="url(#avatar2)"/>
+    <text x="220" y="245" font-size="15" font-weight="600" text-anchor="middle">Andrej K.</text>
+    <text x="220" y="262" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="2.5" fill="#B5371E" text-anchor="middle">CTO</text>
+
+    <!-- Card 3 -->
+    <circle cx="340" cy="170" r="48" fill="url(#avatar3)"/>
+    <text x="340" y="245" font-size="15" font-weight="600" text-anchor="middle">Sara Chen</text>
+    <text x="340" y="262" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="2.5" fill="#B5371E" text-anchor="middle">DESIGN</text>
+
+    <!-- Card 4 -->
+    <circle cx="460" cy="170" r="48" fill="url(#avatar4)"/>
+    <text x="460" y="245" font-size="15" font-weight="600" text-anchor="middle">Marco R.</text>
+    <text x="460" y="262" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="2.5" fill="#B5371E" text-anchor="middle">ENG</text>
+
+    <!-- Card 5 -->
+    <circle cx="540" cy="170" r="48" fill="url(#avatar5)"/>
+    <text x="540" y="245" font-size="15" font-weight="600" text-anchor="middle">Priya N.</text>
+    <text x="540" y="262" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="2.5" fill="#B5371E" text-anchor="middle">GROWTH</text>
+  </g>
+</svg>

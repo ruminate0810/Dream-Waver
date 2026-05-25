@@ -141,10 +141,14 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 	client := router.For("planner")
 	var out OutlineResult
 	resp, err := askWithRetry(ctx, client, "outline", llm.AskToolRequest{
-		Model:             router.ModelFor("planner"),
-		SystemPrompt:      prompts.Outline,
-		Messages:          []schema.Message{schema.NewUser(user)},
-		MaxTokens:         3000,
+		Model:        router.ModelFor("planner"),
+		SystemPrompt: prompts.Outline,
+		Messages:     []schema.Message{schema.NewUser(user)},
+		// Sprint K1-followup: 3000 truncated for ambitious 8+ slide topics
+		// where the outline runs long (multi-line speaker_notes, full
+		// key_points). 6000 leaves headroom; pricing impact is < ¥0.02
+		// per generation on deepseek-v4-pro.
+		MaxTokens:         6000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		// Reset the struct on each retry so a partial unmarshal from a
