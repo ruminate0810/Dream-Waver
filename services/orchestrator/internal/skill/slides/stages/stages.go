@@ -85,12 +85,19 @@ type OutlineParams struct {
 }
 
 // OutlineSlide is one row in the deck's table of contents.
+//
+// KeyPoints is json.RawMessage instead of []string because the LLM
+// occasionally produces array-of-object shapes like
+// [{"text":"..."}, ...] instead of bare strings; downstream consumers
+// don't actually read this field (only the writer LLM does, via
+// re-serialization of the whole outline), so we preserve whatever
+// shape the planner emitted and let json round-trip take care of it.
 type OutlineSlide struct {
-	Index        int      `json:"index"`
-	Type         string   `json:"type"`
-	Headline     string   `json:"headline"`
-	KeyPoints    []string `json:"key_points"`
-	SpeakerNotes string   `json:"speaker_notes"`
+	Index        int             `json:"index"`
+	Type         string          `json:"type"`
+	Headline     string          `json:"headline"`
+	KeyPoints    json.RawMessage `json:"key_points"`
+	SpeakerNotes string          `json:"speaker_notes"`
 }
 
 // OutlineResult is what the planner LLM produces. The Theme field carries
@@ -261,8 +268,13 @@ func WriteOneSlide(ctx context.Context, router llm.Router, p WriteOneParams) (*s
 func Assemble(o *OutlineResult, c *ContentResult) schema.Deck {
 	slides := make([]schema.Slide, 0, len(c.Slides))
 	for _, s := range c.Slides {
+		// The content LLM occasionally puts a slide layout/type name
+		// (like "title" or "closing") into the template field by
+		// mistake — the renderer then 404s on that template name.
+		// Detect this by checking against the closed set of known
+		// themes; anything else falls back to the deck-level theme.
 		tpl := s.Template
-		if tpl == "" {
+		if tpl == "" || !isKnownTheme(tpl) {
 			tpl = string(o.Theme)
 		}
 		slides = append(slides, schema.Slide{
@@ -277,6 +289,19 @@ func Assemble(o *OutlineResult, c *ContentResult) schema.Deck {
 		Theme:  o.Theme,
 		Slides: slides,
 	}
+}
+
+// isKnownTheme returns true when name is one of the 11 themes the
+// renderer knows how to load. Used by Assemble to reject bogus
+// template values the content LLM occasionally produces (e.g. it
+// confuses Template with Layout and writes "title" / "section").
+func isKnownTheme(name string) bool {
+	switch name {
+	case "minimalist", "corporate", "pitch-deck", "academic", "playful",
+		"editorial", "retro", "tech", "zen", "warm", "noir":
+		return true
+	}
+	return false
 }
 
 // ─── Shared helpers ──────────────────────────────────────────────────

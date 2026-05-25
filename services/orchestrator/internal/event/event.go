@@ -34,6 +34,13 @@ const (
 	KindSlideUpdated Kind = "slides.updated"
 	KindFinish       Kind = "agent.finish"
 	KindError        Kind = "agent.error"
+
+	// Sprint L1 — HILT pause gates. The orchestrator emits one of these
+	// just before exiting a goroutine that's waiting on user input; the
+	// frontend renders a corresponding interactive card. Resume happens
+	// via POST /api/v1/slides/{id}/messages with an action= field.
+	KindClarificationRequired Kind = "outline.clarification_required"
+	KindOutlineReviewRequired Kind = "outline.review_required"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -74,6 +81,13 @@ type EventData struct {
 	// Errors
 	Stage string `json:"stage,omitempty"`
 	Error string `json:"error,omitempty"`
+
+	// Sprint L1 — HILT pause payloads. ClarificationQuestions populates
+	// KindClarificationRequired; ReviewOutlineJSON populates
+	// KindOutlineReviewRequired (serialized stages.OutlineResult so the
+	// frontend's review card can round-trip the exact same shape back).
+	ClarificationQuestions []string `json:"clarification_questions,omitempty"`
+	ReviewOutlineJSON      string   `json:"review_outline_json,omitempty"`
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -199,6 +213,24 @@ func NewError(stage string, err error) Event {
 		msg = err.Error()
 	}
 	return Event{Kind: KindError, Data: EventData{Stage: stage, Error: msg}}
+}
+
+// NewClarificationRequired pauses the initial-gen flow waiting for the
+// user to answer 1-2 questions before outline planning runs.
+func NewClarificationRequired(questions []string) Event {
+	return Event{Kind: KindClarificationRequired, Data: EventData{
+		ClarificationQuestions: questions,
+	}}
+}
+
+// NewOutlineReviewRequired pauses the initial-gen flow waiting for the
+// user to approve (or edit + approve) the just-planned outline before
+// content writing + rendering kicks in. outlineJSON is the serialized
+// stages.OutlineResult — the frontend reviewer card round-trips it.
+func NewOutlineReviewRequired(outlineJSON string) Event {
+	return Event{Kind: KindOutlineReviewRequired, Data: EventData{
+		ReviewOutlineJSON: outlineJSON,
+	}}
 }
 
 // ─── Emitter machinery ──────────────────────────────────────────────────

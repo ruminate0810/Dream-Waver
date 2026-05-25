@@ -44,7 +44,10 @@ export type EventKind =
   | "slides.render.end"
   | "slides.updated"
   | "agent.finish"
-  | "agent.error";
+  | "agent.error"
+  // Sprint L1 — HILT pause gates
+  | "outline.clarification_required"
+  | "outline.review_required";
 
 export type Tokens = {
   input: number;
@@ -79,6 +82,10 @@ export type EventData = {
   // Errors
   stage?: string;
   error?: string;
+
+  // Sprint L1 — HILT pause payloads
+  clarification_questions?: string[];
+  review_outline_json?: string;
 };
 
 export type AgentEvent = {

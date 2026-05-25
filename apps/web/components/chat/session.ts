@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
-import { postSlideMessage, type SlideJob } from "@/lib/api";
+import {
+  postSlideClarification,
+  postSlideMessage,
+  postSlideOutlineApproval,
+  type SlideJob,
+} from "@/lib/api";
 import {
   useAgentEventStream,
   type AgentEvent,
@@ -53,7 +58,30 @@ export type Step = {
 };
 
 export type TurnKind = "initial" | "edit";
-export type TurnStatus = "running" | "done" | "error";
+export type TurnStatus = "running" | "done" | "error" | "awaiting_user";
+
+// Sprint L1 — HILT pause payload attached to a turn while the
+// initial-generation goroutine has exited waiting on the user. Cleared
+// when the resume action completes.
+export type PendingGate =
+  | { kind: "clarification"; questions: string[] }
+  | { kind: "outline_review"; outline: OutlineForReview };
+
+// OutlineForReview is the subset of stages.OutlineResult the review
+// card actually edits. Round-trips back to the server as
+// `OutlineEdits` when the user clicks 「保存并继续」.
+export type OutlineForReview = {
+  title: string;
+  subtitle?: string;
+  theme: string;
+  slides: Array<{
+    index: number;
+    type: string;
+    headline: string;
+    key_points?: string[];
+    speaker_notes?: string;
+  }>;
+};
 
 export type Turn = {
   id: string;
@@ -68,6 +96,10 @@ export type Turn = {
   slidesTotal: number;
   status: TurnStatus;
   errorMsg?: string;
+  // Sprint L1 — HILT pause payload. Non-null while waiting on user
+  // input; reducer sets it from outline.review_required /
+  // outline.clarification_required events.
+  pending?: PendingGate;
 };
 
 export type AgentSession = {
@@ -82,6 +114,20 @@ export type AgentSession = {
   pendingMessage: string | null;
   dispatchUserMessage: (text: string) => Promise<void>;
   cancelPending: () => void;
+  // Sprint L1 — HILT resume dispatchers. dispatchClarification posts
+  // the H2 gate answers; dispatchOutlineApproval posts the H1 gate
+  // approval (with optional edits). Both clear the corresponding
+  // turn's `pending` and flip status back to running.
+  dispatchClarification: (answers: string[]) => Promise<void>;
+  dispatchOutlineApproval: (edits?: OutlineEditsPayload) => Promise<void>;
+};
+
+// OutlineEditsPayload mirrors the Go-side slides.OutlineEdits struct
+// — the shape POST /messages accepts under the `edits` key.
+export type OutlineEditsPayload = {
+  theme?: string;
+  renames?: Array<{ index: number; title: string }>;
+  delete_indices?: number[];
 };
 
 // ─── Reducer ─────────────────────────────────────────────────────────
@@ -377,6 +423,42 @@ function reduceWS(state: State, ev: AgentEvent): State {
         })),
       };
     }
+
+    // ─── Sprint L1: HILT pause gates ───────────────────────────────
+    case "outline.clarification_required": {
+      // Attach the questions to the active turn AND flip its status
+      // to "awaiting_user" so the UI knows to render the gate card.
+      if (lastIdx < 0 || !data.clarification_questions) return state;
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          pending: { kind: "clarification", questions: data.clarification_questions! },
+          status: "awaiting_user" as TurnStatus,
+        })),
+      };
+    }
+    case "outline.review_required": {
+      if (lastIdx < 0 || !data.review_outline_json) return state;
+      let outline: OutlineForReview;
+      try {
+        outline = JSON.parse(data.review_outline_json) as OutlineForReview;
+      } catch {
+        // Malformed payload — log and ignore so we don't crash the
+        // turn. The user will just see no card and have to refresh.
+        // eslint-disable-next-line no-console
+        console.warn("[L1] failed to parse review_outline_json", data.review_outline_json);
+        return state;
+      }
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          pending: { kind: "outline_review", outline },
+          status: "awaiting_user" as TurnStatus,
+        })),
+      };
+    }
   }
 }
 
@@ -495,6 +577,64 @@ export function useAgentSession(job: SlideJob): AgentSession {
     dispatch({ type: "unqueue" });
   }, []);
 
+  // Sprint L1 — resume dispatchers for the two HILT gates. Both clear
+  // the active turn's `pending` payload (so the card vanishes) AND
+  // flip its status back to "running" so the chat shell knows new
+  // events are imminent. Failures bubble back to the card via the
+  // standard post_error path.
+  const dispatchClarification = useCallback(
+    async (answers: string[]) => {
+      const lastIdx = state.turns.length - 1;
+      const lastTurn = lastIdx >= 0 ? state.turns[lastIdx] : null;
+      if (!lastTurn || lastTurn.pending?.kind !== "clarification") return;
+      // Optimistically clear the gate + go back to running. WS events
+      // from the resumed Phase 1 will fold normally onto this turn.
+      dispatch({
+        type: "ws",
+        event: {
+          session_id: job.session_id,
+          kind: "step.start",
+          at: new Date().toISOString(),
+          data: { agent: "slides", step: 1 },
+        },
+      });
+      try {
+        await postSlideClarification(job.job_id, answers);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
+      }
+    },
+    [state.turns, job.job_id, job.session_id],
+  );
+
+  const dispatchOutlineApproval = useCallback(
+    async (edits?: OutlineEditsPayload) => {
+      const lastIdx = state.turns.length - 1;
+      const lastTurn = lastIdx >= 0 ? state.turns[lastIdx] : null;
+      if (!lastTurn || lastTurn.pending?.kind !== "outline_review") return;
+      // Same optimistic flip as clarification — the resumed Phase 3
+      // will emit slides.content / slides.render.* events that fold
+      // onto the active turn.
+      dispatch({
+        type: "ws",
+        event: {
+          session_id: job.session_id,
+          kind: "step.start",
+          at: new Date().toISOString(),
+          data: { agent: "slides", step: 1 },
+        },
+      });
+      try {
+        await postSlideOutlineApproval(job.job_id, edits);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
+      }
+    },
+    [state.turns, job.job_id, job.session_id],
+  );
+
   // Drain on busy → !busy. When the current turn closes (agent.finish
   // or agent.error) we fire any queued message. The dispatch sets
   // pending=null inside the user_message case so we don't re-fire on
@@ -519,6 +659,8 @@ export function useAgentSession(job: SlideJob): AgentSession {
     pendingMessage: state.pending,
     dispatchUserMessage,
     cancelPending,
+    dispatchClarification,
+    dispatchOutlineApproval,
   };
 }
 

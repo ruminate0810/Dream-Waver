@@ -74,6 +74,12 @@ type Output struct {
 	Title      string `json:"title"`
 	SlideCount int    `json:"slide_count"`
 	Cost       Cost   `json:"cost"`
+
+	// Sprint L1 — Status is "" (defaults to "finished") for completed
+	// runs, or one of "awaiting_clarification" / "awaiting_outline_approval"
+	// when the agent-mode initial-gen flow has paused at a HILT gate.
+	// The API handler reads this to set the job's public status.
+	Status string `json:"status,omitempty"`
 }
 
 // Cost accumulates LLM usage across every step in a single generation.
