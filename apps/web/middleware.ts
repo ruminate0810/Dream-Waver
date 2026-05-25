@@ -17,12 +17,16 @@ import { createServerClient } from "@supabase/ssr";
 // `/public/*`, and `/api/*` (the Go orchestrator handles its own auth
 // for API calls — the browser's cookie just rides along).
 
+// Sprint X1 originally gated every vertical (slides/games/video/design/
+// code) here too, but the Go backend on those routes still accepts
+// anonymous requests until Phase 2b migrates them to required-auth.
+// Gating at the web layer ahead of the backend produces a confusing
+// "I can't even see the page" UX without any real protection win.
+//
+// For now ONLY routes that NEED a user / workspace on the backend
+// today are gated. The verticals get re-added the same sprint we
+// flip them to `auth.Required` server-side.
 const PROTECTED_PREFIXES = [
-  "/slides",
-  "/games",
-  "/video",
-  "/design",
-  "/code",
   "/me",
   "/workspaces",
 ];
@@ -86,9 +90,11 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(loginURL);
   }
 
-  // Signed-in users hitting /login or / get bounced to their workspace.
-  // (Soft default: /slides/new — Dream-Waver's most-used entry today.)
-  if (user && (path === "/login" || path === "/")) {
+  // Signed-in users hitting /login get bounced to where they came
+  // from (or /slides/new as a soft default). We deliberately do NOT
+  // bounce from "/" so the marketing home page stays reachable while
+  // logged in — that surface is still being shaped.
+  if (user && path === "/login") {
     const home = req.nextUrl.searchParams.get("next") ?? "/slides/new";
     return NextResponse.redirect(new URL(home, req.url));
   }
