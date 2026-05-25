@@ -10,12 +10,14 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "15.1.3",
-    "react": "19.0.0",
-    "react-dom": "19.0.0",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.106.1",
     "@tanstack/react-query": "5.62.7",
     "clsx": "2.1.1",
     "lucide-react": "0.469.0",
+    "next": "15.1.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
     "tldraw": "3.6.0",
     "zustand": "5.0.2"
   },
