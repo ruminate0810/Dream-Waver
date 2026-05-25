@@ -246,21 +246,29 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	// the initial deck; the edit conversation that follows always runs
 	// through the agent loop.
 
-	// Sprint L1 — request shape now carries an optional Action that
-	// routes to one of three flows:
-	//   - "clarify"          → ResumeFromClarification (H2 gate resume)
+	// Sprint L1 + N1 — request shape now carries an optional Action that
+	// routes to one of four flows:
+	//   - "wizard_step"      → ResumeFromWizardStep (N1 wizard advance)
+	//   - "clarify"          → ResumeFromClarification (legacy L1 gate)
 	//   - "approve_outline"  → ResumeFromOutlineApproval (H1 gate resume)
 	//   - "" (default)       → Continue (free-text edit turn, unchanged)
 	var req struct {
-		Content string              `json:"content"`
-		Action  string              `json:"action,omitempty"`
-		Answers []string            `json:"answers,omitempty"`
+		Content string               `json:"content"`
+		Action  string               `json:"action,omitempty"`
+		Answers []string             `json:"answers,omitempty"`
 		Edits   *slides.OutlineEdits `json:"edits,omitempty"`
+		// N1 wizard step fields
+		WizardStep   int    `json:"wizard_step,omitempty"`
+		WizardAnswer string `json:"wizard_answer,omitempty"`
+		WizardSkip   bool   `json:"wizard_skip,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+	// Content is only required for the default (free-text edit) flow.
+	// Wizard / clarify / approve_outline actions carry their own typed
+	// payloads and may have an empty content string.
 	if req.Action == "" && strings.TrimSpace(req.Content) == "" {
 		errorJSON(w, http.StatusBadRequest, "content is required")
 		return
@@ -274,6 +282,8 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	jobsMu.Unlock()
 
 	switch req.Action {
+	case "wizard_step":
+		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip)
 	case "clarify":
 		go h.resumeClarification(job, req.Answers)
 	case "approve_outline":
@@ -295,6 +305,19 @@ func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
 
 	out, err := h.deps.AgentRunner.Continue(ctx, job.ID, userMessage)
 	h.finishOrPause(job, ctx, out, err, "slide edit")
+}
+
+// resumeWizardStep drives the N1 wizard one step forward. On non-
+// final steps the call returns with status=awaiting_wizard again (the
+// next step's view was just emitted); on the final step it falls
+// through to outline planning (which itself pauses at the H1 gate).
+func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancel()
+	ctx = event.WithSessionID(ctx, job.SessionID)
+
+	out, err := h.deps.AgentRunner.ResumeFromWizardStep(ctx, job.ID, step, answer, skip)
+	h.finishOrPause(job, ctx, out, err, "wizard step resume")
 }
 
 // resumeClarification drives Phase 1+ after the H2 gate. Result will

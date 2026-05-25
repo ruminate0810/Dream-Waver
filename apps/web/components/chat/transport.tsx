@@ -47,7 +47,9 @@ export type EventKind =
   | "agent.error"
   // Sprint L1 — HILT pause gates
   | "outline.clarification_required"
-  | "outline.review_required";
+  | "outline.review_required"
+  // Sprint N1 — multi-step wizard
+  | "wizard.step";
 
 export type Tokens = {
   input: number;
@@ -86,6 +88,29 @@ export type EventData = {
   // Sprint L1 — HILT pause payloads
   clarification_questions?: string[];
   review_outline_json?: string;
+
+  // Sprint N1 — wizard step payload. JSON-serialised WizardStepView
+  // from the backend; session.ts decodes it into the typed shape.
+  wizard_step_json?: string;
+};
+
+// ─── Sprint N1 — wizard step typed envelope ──────────────────────────
+// Mirror of skill/slides/wizard.go's WizardStepView. The reducer parses
+// the JSON string off wizard_step_json into one of these.
+export type WizardScenarioOption = {
+  value: string;     // "business" | "academic" | "work" | "training" | "event" | "other"
+  label: string;
+  icon: string;      // lucide-react icon name
+};
+
+export type WizardStepView = {
+  step: number;             // 1-based
+  total: number;            // total step count
+  kind: "scenario" | "free-text";
+  question: string;
+  placeholder?: string;
+  options?: WizardScenarioOption[];
+  optional: boolean;
 };
 
 export type AgentEvent = {

@@ -199,6 +199,29 @@ export async function postSlideOutlineApproval(
   await unwrap<{ job_id: string; session_id: string }>(res);
 }
 
+// Sprint N1 — multi-step wizard resume. Each step the user clicks
+// 下一步 or 跳过 we POST here; backend either emits the next step's
+// view (still awaiting_wizard) OR completes the wizard and proceeds
+// to outline planning.
+export async function postSlideWizardStep(
+  jobId: string,
+  step: number,
+  answer: string,
+  skip: boolean,
+): Promise<void> {
+  const res = await fetch(`/api/v1/slides/${jobId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "wizard_step",
+      wizard_step: step,
+      wizard_answer: answer,
+      wizard_skip: skip,
+    }),
+  });
+  await unwrap<{ job_id: string; session_id: string }>(res);
+}
+
 export async function getSlideJob(id: string): Promise<SlideJob> {
   const res = await fetch(`/api/v1/slides/${id}`);
   return unwrap<SlideJob>(res);

@@ -33,6 +33,7 @@ import type { SlideJob } from "@/lib/api";
 import { useAgentSession, type Step, type ToolCallEntry, type Turn } from "./session";
 import { ClarificationCard } from "./ClarificationCard";
 import { OutlineReviewCard } from "./OutlineReviewCard";
+import { WizardCard } from "./WizardCard";
 
 // ChatThread is the production chat surface: vertical stack of role-
 // labelled messages, tool calls collapse to Claude-Code-style inline
@@ -122,6 +123,16 @@ export function ChatThread({
                   outline={pending.outline}
                   busy={session.busy}
                   onApprove={session.dispatchOutlineApproval}
+                />
+              );
+            }
+            // Sprint N1 — multi-step wizard.
+            if (pending.kind === "wizard") {
+              return (
+                <WizardCard
+                  view={pending.view}
+                  busy={session.busy}
+                  onSubmit={session.dispatchWizardStep}
                 />
               );
             }

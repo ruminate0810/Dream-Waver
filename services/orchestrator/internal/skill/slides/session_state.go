@@ -67,23 +67,41 @@ type SessionState struct {
 type PendingUserAction struct {
 	Kind PendingKind `json:"kind"`
 
-	// For Kind == PendingClarification: the 1-2 questions the user
-	// needs to answer before outline planning can run.
+	// For Kind == PendingClarification (legacy L1): the 1-2 questions
+	// the user needs to answer before outline planning can run.
 	Questions []string `json:"questions,omitempty"`
 
 	// For Kind == PendingOutlineReview: the outline JSON the user is
 	// being asked to approve. Stored as raw so the frontend's edit UX
 	// can round-trip the exact same shape back when submitting.
 	OutlineJSON string `json:"outline_json,omitempty"`
+
+	// For Kind == PendingWizard (Sprint N1): the current step's view
+	// envelope (step #, total, body kind, options, etc.). The frontend
+	// reads this directly and renders the appropriate WizardCard body.
+	// Step + scenario are also tracked separately at top-level so we
+	// can resume mid-wizard after a server restart (when SessionState
+	// becomes Postgres-backed).
+	Wizard         *WizardStepView   `json:"wizard,omitempty"`
+	WizardScenario SlideScenario     `json:"wizard_scenario,omitempty"`
+	WizardAnswers  map[string]string `json:"wizard_answers,omitempty"`
 }
 
-// PendingKind enumerates the L1 pause points. Closed set; adding a
+// PendingKind enumerates the L1+N1 pause points. Closed set; adding a
 // new kind also requires a Resume entry point in agent_runner.go.
 type PendingKind string
 
 const (
-	PendingClarification  PendingKind = "clarification"
-	PendingOutlineReview  PendingKind = "outline_review"
+	// Legacy L1 — kept for backwards-compat with any in-flight job at
+	// orchestrator restart. New jobs use PendingWizard instead.
+	PendingClarification PendingKind = "clarification"
+
+	PendingOutlineReview PendingKind = "outline_review"
+
+	// Sprint N1 — multi-step pre-generation wizard. Replaces the
+	// always-on L1 clarification gate. Step state lives in
+	// PendingUserAction.Wizard + .WizardScenario + .WizardAnswers.
+	PendingWizard PendingKind = "wizard"
 )
 
 // Lock / Unlock expose the embedded mutex so edit tools can hold the

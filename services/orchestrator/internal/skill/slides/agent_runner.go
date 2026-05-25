@@ -196,18 +196,22 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 		r.Sessions.Put(state)
 	}
 
-	// Phase 0 — clarification gate (H2). Only fires when the topic is
-	// thin enough that the planner would have to guess.
-	if vague, questions := needsClarification(in.Topic); vague {
-		state.SetPending(&PendingUserAction{
-			Kind:      PendingClarification,
-			Questions: questions,
-		})
-		r.emit(ctx, event.NewClarificationRequired(questions))
-		return &Output{Status: "awaiting_clarification"}, nil
-	}
-
-	return r.runFromOutline(ctx, state)
+	// Phase 0 — wizard gate (Sprint N1).  Always fires now, replacing
+	// the L1 vague-topic heuristic. The wizard is 3 steps; only step 1
+	// (scenario picker) is required. Step 2/3 can be skipped.
+	//
+	// The first step is served unconditionally on Run() entry. The user
+	// answers (or skips) via ResumeFromWizardStep, which either emits
+	// the next step's view OR — when the wizard is done — falls through
+	// to runFromOutline with the answers merged into Input.
+	view := wizardStepView(1, "")
+	state.SetPending(&PendingUserAction{
+		Kind:          PendingWizard,
+		Wizard:        &view,
+		WizardAnswers: map[string]string{},
+	})
+	r.emit(ctx, event.NewWizardStep(view))
+	return &Output{Status: "awaiting_wizard"}, nil
 }
 
 // runFromOutline is the entry point for Phase 1 → Phase 2. Called
@@ -281,6 +285,125 @@ func (r *AgentRunner) ResumeFromClarification(ctx context.Context, jobID string,
 	state.ClearPending()
 
 	return r.runFromOutline(ctx, state)
+}
+
+// ResumeFromWizardStep is the resume entry for the Sprint N1 wizard
+// gate. The user answered (or skipped) the current step; we record
+// the answer, then either emit the next step's view OR — when the
+// wizard is done — call runFromOutline with the answers merged into
+// Input.Audience / Input.ReferenceText so the outline prompt sees
+// them as planning signals.
+//
+// `skip` true means the user pressed 跳过 — we don't store an answer
+// for this step and just advance. The required step-1 (scenario) does
+// NOT accept skip; the API validates that before calling here.
+func (r *AgentRunner) ResumeFromWizardStep(
+	ctx context.Context,
+	jobID string,
+	step int,
+	answer string,
+	skip bool,
+) (*Output, error) {
+	state, ok := r.Sessions.Get(jobID)
+	if !ok {
+		return nil, fmt.Errorf("no session for job %s", jobID)
+	}
+	pending := state.GetPending()
+	if pending == nil || pending.Kind != PendingWizard {
+		return nil, fmt.Errorf("job %s is not awaiting wizard step", jobID)
+	}
+	if pending.Wizard == nil || pending.Wizard.Step != step {
+		// Stale submission (probably a race with a fast-clicking user).
+		// Re-emit the current step so the frontend can resync.
+		if pending.Wizard != nil {
+			r.emit(ctx, event.NewWizardStep(*pending.Wizard))
+		}
+		return &Output{Status: "awaiting_wizard"}, nil
+	}
+
+	// Record the answer unless skipped. Scenario is also captured at
+	// top-level so step 2's question copy can specialise on it.
+	answers := pending.WizardAnswers
+	if answers == nil {
+		answers = map[string]string{}
+	}
+	scenario := pending.WizardScenario
+	if !skip {
+		trimmed := strings.TrimSpace(answer)
+		if step == 1 {
+			if !isValidScenario(trimmed) {
+				return nil, fmt.Errorf("step 1 requires a valid scenario; got %q", trimmed)
+			}
+			scenario = SlideScenario(trimmed)
+			answers["scenario"] = trimmed
+		} else if trimmed != "" {
+			switch step {
+			case 2:
+				answers["audience"] = trimmed
+			case 3:
+				answers["extra"] = trimmed
+			}
+		}
+	}
+
+	// Advance. If there's a next step in the script, emit it and
+	// stay paused. Otherwise the wizard is done — fold answers into
+	// Input and fall through to Phase 1 (outline planning).
+	nextStep := step + 1
+	if nextStep <= WizardTotalSteps {
+		nextView := wizardStepView(nextStep, scenario)
+		state.SetPending(&PendingUserAction{
+			Kind:           PendingWizard,
+			Wizard:         &nextView,
+			WizardScenario: scenario,
+			WizardAnswers:  answers,
+		})
+		r.emit(ctx, event.NewWizardStep(nextView))
+		return &Output{Status: "awaiting_wizard"}, nil
+	}
+
+	// Wizard complete — merge answers into Input and run outline.
+	mergeWizardAnswersIntoInput(&state.Input, scenario, answers)
+	state.ClearPending()
+	return r.runFromOutline(ctx, state)
+}
+
+// mergeWizardAnswersIntoInput folds the wizard's collected answers
+// back into the typed Input the planner sees. The mapping favours
+// surfacing the most useful signal at the most useful slot:
+//
+//   - scenario → prepended as "[场景] xxx" line on ReferenceText so
+//                the outline prompt sees the high-level domain
+//   - audience → Input.Audience (where the prompt actually reads it)
+//   - extra    → appended to ReferenceText verbatim
+//
+// We don't touch Style — it's a deck-level visual choice the user
+// already made (via force_theme or the picker) before the wizard ran.
+func mergeWizardAnswersIntoInput(in *Input, scenario SlideScenario, ans map[string]string) {
+	if audience := strings.TrimSpace(ans["audience"]); audience != "" && in.Audience == "" {
+		in.Audience = audience
+	}
+	var b strings.Builder
+	b.WriteString(in.ReferenceText)
+	if b.Len() > 0 {
+		b.WriteString("\n\n")
+	}
+	if scenario != "" {
+		// Translate the enum value back to its Chinese label for the
+		// planner — the LLM works better with the human-readable form.
+		label := string(scenario)
+		for _, opt := range ScenarioOptions {
+			if opt.Value == scenario {
+				label = opt.Label
+				break
+			}
+		}
+		fmt.Fprintf(&b, "[场景] %s\n", label)
+	}
+	if extra := strings.TrimSpace(ans["extra"]); extra != "" {
+		fmt.Fprintf(&b, "[补充] %s\n", extra)
+	}
+	in.ReferenceText = b.String()
 }
 
 // ResumeFromOutlineApproval is the resume entry for the H1 gate. The

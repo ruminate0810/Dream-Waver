@@ -9,6 +9,7 @@ package event
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -41,6 +42,14 @@ const (
 	// via POST /api/v1/slides/{id}/messages with an action= field.
 	KindClarificationRequired Kind = "outline.clarification_required"
 	KindOutlineReviewRequired Kind = "outline.review_required"
+
+	// Sprint N1 — multi-step pre-generation wizard. Fires once per
+	// wizard step (3 total in the MVP). The step's full view envelope
+	// (step / total / kind / options / etc.) travels as a JSON-
+	// serialised string in EventData.WizardStepJSON; the frontend
+	// decodes it back into a typed WizardStepView and renders the
+	// matching body in WizardCard.
+	KindWizardStep Kind = "wizard.step"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -88,6 +97,14 @@ type EventData struct {
 	// frontend's review card can round-trip the exact same shape back).
 	ClarificationQuestions []string `json:"clarification_questions,omitempty"`
 	ReviewOutlineJSON      string   `json:"review_outline_json,omitempty"`
+
+	// Sprint N1 — wizard step payload. WizardStepJSON is a JSON-
+	// serialised WizardStepView (defined in skill/slides/wizard.go) —
+	// carries step / total / kind / question / options / etc. The
+	// frontend parses it back into a typed view and renders the right
+	// WizardCard body. We marshal it as a string to keep this event
+	// package free of any slides-package import.
+	WizardStepJSON string `json:"wizard_step_json,omitempty"`
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -220,6 +237,26 @@ func NewError(stage string, err error) Event {
 func NewClarificationRequired(questions []string) Event {
 	return Event{Kind: KindClarificationRequired, Data: EventData{
 		ClarificationQuestions: questions,
+	}}
+}
+
+// NewWizardStep pauses the initial-gen flow at the Sprint N1 wizard.
+// The view parameter is any value that JSON-marshals into a frontend-
+// recognised WizardStepView (the slides package defines that type).
+// We accept `any` here so this package stays import-free of the
+// slides package.
+//
+// The frontend's session.ts reducer attaches this event to the
+// current Turn.pending and the chat thread renders the WizardCard.
+func NewWizardStep(view any) Event {
+	b, err := json.Marshal(view)
+	if err != nil {
+		// Should never happen — the WizardStepView is plain typed
+		// structs. Fall back to an empty payload rather than panic.
+		b = []byte("{}")
+	}
+	return Event{Kind: KindWizardStep, Data: EventData{
+		WizardStepJSON: string(b),
 	}}
 }
 

@@ -6,6 +6,7 @@ import {
   postSlideClarification,
   postSlideMessage,
   postSlideOutlineApproval,
+  postSlideWizardStep,
   type SlideJob,
 } from "@/lib/api";
 import {
@@ -13,6 +14,7 @@ import {
   type AgentEvent,
   type EventKind,
   type Tokens,
+  type WizardStepView,
 } from "./transport";
 
 // session.ts is the SINGLE place reducer logic lives.
@@ -65,7 +67,11 @@ export type TurnStatus = "running" | "done" | "error" | "awaiting_user";
 // when the resume action completes.
 export type PendingGate =
   | { kind: "clarification"; questions: string[] }
-  | { kind: "outline_review"; outline: OutlineForReview };
+  | { kind: "outline_review"; outline: OutlineForReview }
+  // Sprint N1 — multi-step wizard. The whole step view (step/total/
+  // options/etc.) rides on this payload so the WizardCard can render
+  // without round-tripping through any other state.
+  | { kind: "wizard"; view: WizardStepView };
 
 // OutlineForReview is the subset of stages.OutlineResult the review
 // card actually edits. Round-trips back to the server as
@@ -120,6 +126,10 @@ export type AgentSession = {
   // turn's `pending` and flip status back to running.
   dispatchClarification: (answers: string[]) => Promise<void>;
   dispatchOutlineApproval: (edits?: OutlineEditsPayload) => Promise<void>;
+  // Sprint N1 — wizard step dispatcher. `skip` true bypasses the
+  // step (only allowed on optional steps; backend rejects skip on
+  // step 1).
+  dispatchWizardStep: (step: number, answer: string, skip: boolean) => Promise<void>;
 };
 
 // OutlineEditsPayload mirrors the Go-side slides.OutlineEdits struct
@@ -459,6 +469,42 @@ function reduceWS(state: State, ev: AgentEvent): State {
         })),
       };
     }
+
+    // ─── Sprint N1: wizard step ────────────────────────────────────
+    case "wizard.step": {
+      if (!data.wizard_step_json) return state;
+      let view: WizardStepView;
+      try {
+        view = JSON.parse(data.wizard_step_json) as WizardStepView;
+      } catch {
+        // eslint-disable-next-line no-console
+        console.warn("[N1] failed to parse wizard_step_json", data.wizard_step_json);
+        return state;
+      }
+      // The wizard fires on Turn 0 (initial generation). If no turn
+      // exists yet — the wizard event arrived before any step.start —
+      // synthesise a Turn 0 here so the card can attach to it.
+      if (lastIdx < 0) {
+        const t: Turn = {
+          id: "t0",
+          kind: "initial",
+          steps: [],
+          slidesRendered: 0,
+          slidesTotal: 0,
+          status: "awaiting_user",
+          pending: { kind: "wizard", view },
+        };
+        return { ...state, turns: [...state.turns, t] };
+      }
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          pending: { kind: "wizard", view },
+          status: "awaiting_user" as TurnStatus,
+        })),
+      };
+    }
   }
 }
 
@@ -635,6 +681,44 @@ export function useAgentSession(job: SlideJob): AgentSession {
     [state.turns, job.job_id, job.session_id],
   );
 
+  // Sprint N1 — wizard step dispatcher. Posts {action:"wizard_step",
+  // wizard_step, wizard_answer, wizard_skip} back to /messages; the
+  // backend either emits the next step's view OR (on the final step)
+  // proceeds to outline planning which itself pauses at the H1 gate.
+  //
+  // The optimistic UI here is lighter than the L1 dispatchers: we do
+  // NOT synthesize a step.start, because the next state we expect is
+  // either ANOTHER wizard.step (still awaiting_user) or — on the last
+  // step — slides.outline events from Phase 1. Either way the existing
+  // event fold handles it. We DO clear the active turn's pending so
+  // the WizardCard disappears immediately; the next event re-attaches
+  // the pending or transitions to running.
+  const dispatchWizardStep = useCallback(
+    async (step: number, answer: string, skip: boolean) => {
+      const lastIdx = state.turns.length - 1;
+      const lastTurn = lastIdx >= 0 ? state.turns[lastIdx] : null;
+      if (!lastTurn || lastTurn.pending?.kind !== "wizard") return;
+
+      // Optimistically clear so the spinner shows.
+      dispatch({
+        type: "ws",
+        event: {
+          session_id: job.session_id,
+          kind: "step.start",
+          at: new Date().toISOString(),
+          data: { agent: "slides", step: lastTurn.steps.length + 1 },
+        },
+      });
+      try {
+        await postSlideWizardStep(job.job_id, step, answer, skip);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
+      }
+    },
+    [state.turns, job.job_id, job.session_id],
+  );
+
   // Drain on busy → !busy. When the current turn closes (agent.finish
   // or agent.error) we fire any queued message. The dispatch sets
   // pending=null inside the user_message case so we don't re-fire on
@@ -661,6 +745,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
     cancelPending,
     dispatchClarification,
     dispatchOutlineApproval,
+    dispatchWizardStep,
   };
 }
 
