@@ -61,10 +61,14 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 	}
 
 	return &Store{
-		Users:      &pgxUsers{pool: pool},
-		Workspaces: &pgxWorkspaces{pool: pool},
-		// Phase 2 wires the rest.
-		closer: func() error { pool.Close(); return nil },
+		Users:           &pgxUsers{pool: pool},
+		Workspaces:      &pgxWorkspaces{pool: pool},
+		SlideJobs:       &pgxSlideJobs{pool: pool},
+		GameJobs:        &pgxGameJobs{pool: pool},
+		VideoRuns:       &pgxVideoRuns{pool: pool},
+		DesignAssets:    &pgxDesignAssets{pool: pool},
+		IdempotencyKeys: &pgxIdempotencyKeys{pool: pool},
+		closer:          func() error { pool.Close(); return nil },
 	}, nil
 }
 

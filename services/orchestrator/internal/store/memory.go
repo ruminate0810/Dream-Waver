@@ -3,21 +3,20 @@ package store
 import "sync"
 
 // NewMemory builds an in-memory Store for tests and for local dev when
-// DATABASE_URL is empty. Phase 1 wires Users + Workspaces only; the
-// rest of the interfaces are typed-nil placeholders the Phase 2 work
-// will replace.
+// DATABASE_URL is empty. Phase 2a fills in all job/asset entities;
+// the in-memory backing keeps local dev working without docker.
 //
-// Memory store is NOT concurrent-safe across goroutines for a multi-
-// member workspace — the per-entity types use sync.RWMutex via the
-// `lock` alias below. Good enough for solo dev / unit tests; the pgx
-// store is the real concurrency story.
+// Memory store is NOT cross-process — each orchestrator instance has
+// its own. Fine for solo dev / unit tests; pgx is the real story.
 func NewMemory() *Store {
 	return &Store{
-		Users:      newMemUsers(),
-		Workspaces: newMemWorkspaces(),
-		// SlideJobs / GameJobs / VideoRuns / DesignAssets all nil for
-		// Phase 1 — the existing in-memory SessionStores in the
-		// skill packages remain the source of truth until Phase 2.
+		Users:           newMemUsers(),
+		Workspaces:      newMemWorkspaces(),
+		SlideJobs:       newMemSlideJobs(),
+		GameJobs:        newMemGameJobs(),
+		VideoRuns:       newMemVideoRuns(),
+		DesignAssets:    newMemDesignAssets(),
+		IdempotencyKeys: newMemIdempotencyKeys(),
 	}
 }
 
