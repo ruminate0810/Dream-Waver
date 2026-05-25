@@ -46,8 +46,16 @@ type SlideRender struct {
 	OutDir      string        // where to write the .pptx output
 	Emitter     event.Emitter // optional progress events; session id comes from ctx
 
-	once   sync.Once
-	loaded *template.Template
+	once sync.Once
+	// loaded and loadErr are the cached result of loadTemplates. Both
+	// are written exactly once inside `once.Do`. loadErr lives on the
+	// receiver (not as a closure-local) so subsequent calls see the
+	// same error instead of seeing nil — without this, a first call
+	// that fails before `loaded = root` would leave loaded == nil but
+	// later calls return nil error, and the downstream Lookup would
+	// nil-deref.
+	loaded  *template.Template
+	loadErr error
 }
 
 // Phase-1 default slide canvas: 16:9 at 1920×1080.
@@ -497,6 +505,12 @@ func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme) ([]byte, er
 	if tplName == "" {
 		tplName = string(schema.ThemeMinimalist)
 	}
+	// Defensive: callers are supposed to invoke loadTemplates() first, but
+	// belt-and-braces — a nil *template.Template would otherwise nil-deref
+	// inside Lookup and take the whole orchestrator down.
+	if r.loaded == nil {
+		return nil, fmt.Errorf("slide_render: templates not loaded (TemplateDir=%q, loadErr=%v)", r.TemplateDir, r.loadErr)
+	}
 	tpl := r.loaded.Lookup(tplName + ".html")
 	if tpl == nil {
 		return nil, fmt.Errorf("template %q not found in %s", tplName, r.TemplateDir)
@@ -577,7 +591,6 @@ func toRoman(n int) string {
 // Themes covered by the new arch take precedence; legacy files for the
 // same theme are skipped to avoid template-name collisions.
 func (r *SlideRender) loadTemplates() error {
-	var firstErr error
 	r.once.Do(func() {
 		root := template.New("root").Funcs(templateFuncs)
 
@@ -602,12 +615,12 @@ func (r *SlideRender) loadTemplates() error {
 				themeName := strings.TrimSuffix(f.Name(), ".css")
 				themeCSS, err := os.ReadFile(filepath.Join(themesDir, f.Name()))
 				if err != nil {
-					firstErr = fmt.Errorf("read theme css %s: %w", f.Name(), err)
+					r.loadErr = fmt.Errorf("read theme css %s: %w", f.Name(), err)
 					return
 				}
 				src := buildSharedTemplateSrc(layoutSrc, baseCSS, themeCSS)
 				if _, err := root.New(themeName + ".html").Parse(src); err != nil {
-					firstErr = fmt.Errorf("parse new-arch template %s: %w", themeName, err)
+					r.loadErr = fmt.Errorf("parse new-arch template %s: %w", themeName, err)
 					return
 				}
 				migrated[themeName] = true
@@ -617,7 +630,7 @@ func (r *SlideRender) loadTemplates() error {
 		// ─── Legacy arch (fallback) ──────────────────────────────
 		entries, err := os.ReadDir(r.TemplateDir)
 		if err != nil {
-			firstErr = err
+			r.loadErr = err
 			return
 		}
 		for _, e := range entries {
@@ -633,14 +646,14 @@ func (r *SlideRender) loadTemplates() error {
 				continue
 			}
 			if _, err := root.New(e.Name() + ".html").Parse(string(b)); err != nil {
-				firstErr = fmt.Errorf("parse legacy %s: %w", htmlPath, err)
+				r.loadErr = fmt.Errorf("parse legacy %s: %w", htmlPath, err)
 				return
 			}
 		}
 
 		r.loaded = root
 	})
-	return firstErr
+	return r.loadErr
 }
 
 // buildSharedTemplateSrc splices the base + theme CSS into the shared

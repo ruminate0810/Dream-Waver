@@ -33,6 +33,7 @@ import { eventsURL } from "@/lib/api";
 
 export type EventKind =
   | "step.start"
+  | "step.end"
   | "llm.thought"
   | "tool.start"
   | "tool.end"
@@ -62,7 +63,12 @@ export type EventData = {
   tool_name?: string;
   tool_id?: string;
   tool_calls?: string[];
+  /** Truncated preview of the args sent to the tool. Surfaced on tool.start. */
+  tool_input?: string;
+  /** Truncated preview of the tool's stdout/result. Surfaced on tool.end. */
   tool_output?: string;
+  /** Wall-clock ms — set on tool.end (per-tool) and step.end (whole step). */
+  duration_ms?: number;
   // Slides
   outline_title?: string;
   slide_count?: number;

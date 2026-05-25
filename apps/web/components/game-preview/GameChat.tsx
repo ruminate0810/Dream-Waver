@@ -18,6 +18,11 @@ import {
   type AgentEvent,
   type EventKind,
 } from "@/components/chat/transport";
+import {
+  ToolStrip,
+  type ToolCallEntry,
+  type ToolCallStatus,
+} from "@/components/chat/ToolStrip";
 
 // GameChat is the chat surface for /code/[id]. It's deliberately simpler
 // than the slides ChatThread: there are no per-slide events, no tool
@@ -29,7 +34,15 @@ import {
 
 type Bubble =
   | { kind: "user"; text: string; id: string }
-  | { kind: "assistant"; text: string; status: "thinking" | "done"; id: string }
+  | {
+      kind: "assistant";
+      text: string;
+      status: "thinking" | "done";
+      id: string;
+      /** Tool calls the agent fired during this turn — populated by
+       *  tool.start / tool.end events. */
+      tools?: ToolCallEntry[];
+    }
   | { kind: "error"; text: string; id: string };
 
 export function GameChat({
@@ -63,6 +76,30 @@ export function GameChat({
         const text = ev.data.text?.trim();
         if (!text) return;
         setBubbles((prev) => upsertLatestAssistantText(prev, text));
+      } else if (k === "tool.start") {
+        const name = ev.data.tool_name;
+        const id = ev.data.tool_id;
+        if (!name || !id) return;
+        setBubbles((prev) =>
+          upsertToolCall(prev, {
+            id,
+            name,
+            status: "running",
+            input: ev.data.tool_input,
+          }),
+        );
+      } else if (k === "tool.end") {
+        const id = ev.data.tool_id;
+        if (!id) return;
+        const isErr = !!ev.data.error;
+        setBubbles((prev) =>
+          patchToolCall(prev, id, {
+            status: (isErr ? "error" : "done") as ToolCallStatus,
+            output: ev.data.tool_output,
+            error: ev.data.error,
+            durationMs: ev.data.duration_ms,
+          }),
+        );
       } else if (k === "agent.finish") {
         setBubbles((prev) => finalizeLatestAssistant(prev));
         inFlightRef.current = false;
@@ -269,6 +306,9 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
             </span>
           ) : null}
         </p>
+        {bubble.tools && bubble.tools.length > 0 ? (
+          <ToolStrip calls={bubble.tools} />
+        ) : null}
       </div>
     </div>
   );
@@ -325,6 +365,56 @@ function seedBubbles(job: GameJob): Bubble[] {
     });
   }
   return out;
+}
+
+// upsertToolCall ensures the latest assistant bubble has a ToolCallEntry
+// for `entry.id`; if one already exists it's left alone (a no-op on
+// duplicate tool.start). The new entry is appended to that bubble's
+// tools array so order matches the agent's invocation order.
+function upsertToolCall(prev: Bubble[], entry: ToolCallEntry): Bubble[] {
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const b = prev[i];
+    if (b.kind !== "assistant") continue;
+    const tools = b.tools ?? [];
+    if (tools.find((t) => t.id === entry.id)) return prev;
+    const next = prev.slice();
+    next[i] = { ...b, tools: [...tools, entry] };
+    return next;
+  }
+  // No assistant bubble yet? Create one so the tool call has a home.
+  return [
+    ...prev,
+    {
+      kind: "assistant",
+      text: "正在为你修改这个游戏…",
+      status: "thinking",
+      id: cryptoRandomId(),
+      tools: [entry],
+    },
+  ];
+}
+
+// patchToolCall finds the tool with `id` across all assistant bubbles
+// (most recent first) and merges the supplied fields. Returns prev
+// untouched if no match — defensive against tool.end without a matching
+// tool.start (shouldn't happen but the chat must survive event re-ordering).
+function patchToolCall(
+  prev: Bubble[],
+  id: string,
+  patch: Partial<ToolCallEntry>,
+): Bubble[] {
+  for (let i = prev.length - 1; i >= 0; i--) {
+    const b = prev[i];
+    if (b.kind !== "assistant" || !b.tools) continue;
+    const idx = b.tools.findIndex((t) => t.id === id);
+    if (idx < 0) continue;
+    const tools = b.tools.slice();
+    tools[idx] = { ...tools[idx], ...patch };
+    const next = prev.slice();
+    next[i] = { ...b, tools };
+    return next;
+  }
+  return prev;
 }
 
 // upsertLatestAssistantText replaces the text of the trailing thinking

@@ -29,6 +29,10 @@ export type ToolCallEntry = {
   id: string;
   name: string;            // 'plan_outline', etc.
   status: ToolCallStatus;
+  /** Truncated args preview from tool.start (~240 chars). */
+  input?: string;
+  /** Wall-clock ms from tool.end. */
+  durationMs?: number;
   output?: string;         // truncated to ~400 chars by the backend
   error?: string;
 };
@@ -40,6 +44,8 @@ const ICON_FOR: Record<string, LucideIcon> = {
   write_content: PenLine,
   render_deck: Layers,
   slide_render: Layers,
+  code_execute: Wrench,
+  write_game: Layers,
   terminate: Power,
 };
 
@@ -50,6 +56,8 @@ const ZH_LABEL: Record<string, string> = {
   write_content: "撰写内容",
   render_deck: "排版渲染",
   slide_render: "排版渲染",
+  code_execute: "沙箱执行",
+  write_game: "生成游戏",
   terminate: "收尾",
 };
 
@@ -70,7 +78,7 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
   const [open, setOpen] = useState(false);
   const Icon = ICON_FOR[call.name] ?? Wrench;
   const zh = ZH_LABEL[call.name];
-  const hasBody = Boolean(call.output || call.error);
+  const hasBody = Boolean(call.output || call.error || call.input);
 
   return (
     <div className="py-4">
@@ -107,6 +115,11 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
                 {zh}
               </span>
             )}
+            {typeof call.durationMs === "number" && call.durationMs > 0 && (
+              <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+                {formatDuration(call.durationMs)}
+              </span>
+            )}
           </div>
           {call.error && (
             <p className="mt-1 font-display text-sm italic text-red-700">
@@ -130,13 +143,39 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
 
       {hasBody && open && (
         <div className="mt-3 ml-13 max-h-64 overflow-y-auto border-l-2 border-[color:var(--rule)] pl-4">
-          <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
-            {call.output || call.error}
-          </pre>
+          {call.input && (
+            <div className="mb-3">
+              <p className="mb-1 font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+                Input
+              </p>
+              <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
+                {call.input}
+              </pre>
+            </div>
+          )}
+          {(call.output || call.error) && (
+            <div>
+              {call.input && (
+                <p className="mb-1 font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+                  {call.error ? "Error" : "Output"}
+                </p>
+              )}
+              <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
+                {call.output || call.error}
+              </pre>
+            </div>
+          )}
         </div>
       )}
     </div>
   );
+}
+
+// formatDuration renders ms either as "312ms" or "4.7s" depending on
+// magnitude. Below 1 s integers; above, one decimal place.
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
 }
 
 function StatusPip({ status }: { status: ToolCallStatus }) {

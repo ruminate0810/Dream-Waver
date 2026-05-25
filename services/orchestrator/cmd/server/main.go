@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/api"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/config"
@@ -21,6 +23,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
+	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
@@ -118,13 +121,36 @@ func main() {
 	// the call site (not buried in AgentRunner) because the live-HTML
 	// preview endpoint also reads decks out of it.
 	sessions := slides.NewSessionStore()
+
+	// ─── Sandbox gRPC ─────────────────────────────────────────────────
+	// Optional — only registers the code_execute tool when the sandbox
+	// service actually answers. We dial lazily with WaitForReady=false
+	// so a missing sandbox does NOT slow down orchestrator boot.
+	var sandboxClient pb.SandboxClient
+	if cfg.SandboxGRPCAddr != "" {
+		conn, err := grpc.NewClient(
+			cfg.SandboxGRPCAddr,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			slog.Warn("sandbox dial failed — code_execute tool will be disabled",
+				"addr", cfg.SandboxGRPCAddr, "err", err)
+		} else {
+			sandboxClient = pb.NewSandboxClient(conn)
+			slog.Info("sandbox gRPC client ready",
+				"addr", cfg.SandboxGRPCAddr,
+				"note", "lazy dial — health check happens on first code_execute call")
+		}
+	}
+
 	agentRunner := &slides.AgentRunner{
-		Router:    router,
-		Renderer:  renderer,
-		Images:    imgSearcher,
-		Emitter:   hub,
-		TavilyKey: cfg.TavilyAPIKey,
-		Sessions:  sessions,
+		Router:        router,
+		Renderer:      renderer,
+		Images:        imgSearcher,
+		Emitter:       hub,
+		TavilyKey:     cfg.TavilyAPIKey,
+		Sessions:      sessions,
+		SandboxClient: sandboxClient,
 	}
 
 	// ─── Games — single-shot HTML5 game generation ───────────────────

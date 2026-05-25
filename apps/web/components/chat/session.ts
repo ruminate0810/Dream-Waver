@@ -30,6 +30,10 @@ export type ToolCallEntry = {
   id: string;
   name: string;
   status: ToolCallStatus;
+  /** Truncated args preview from tool.start (~240 chars). */
+  input?: string;
+  /** Wall-clock ms from tool.end. */
+  durationMs?: number;
   output?: string;
   error?: string;
 };
@@ -211,6 +215,12 @@ function reduceWS(state: State, ev: AgentEvent): State {
       };
     }
 
+    case "step.end":
+      // Step durations land here (data.duration_ms). For now we let the
+      // existing Turn → status logic close things out via agent.finish;
+      // J-3 (ToolStrip / timeline UI) will surface the per-step ms.
+      return state;
+
     case "llm.thought": {
       if (lastIdx < 0) return state;
       const text = (data.text ?? "").trim();
@@ -237,6 +247,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
         id: data.tool_id,
         name: data.tool_name,
         status: "running",
+        input: data.tool_input,
       };
       return {
         ...state,
@@ -270,6 +281,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
                     status: (isErr ? "error" : "done") as ToolCallStatus,
                     output: data.tool_output,
                     error: data.error,
+                    durationMs: data.duration_ms,
                   }
                 : c,
             ),

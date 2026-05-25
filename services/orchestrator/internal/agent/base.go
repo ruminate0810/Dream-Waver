@@ -15,7 +15,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 	"sync"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
@@ -133,12 +135,16 @@ func Run(ctx context.Context, a Agent, userRequest string) (string, error) {
 		b.emit(ctx, event.NewStepStart(a.Name(), step))
 		slog.InfoContext(ctx, "agent step", "agent", a.Name(), "step", step, "max", b.MaxSteps)
 
-		res, err := a.Step(ctx)
+		stepStart := time.Now()
+		res, err := safeStep(ctx, a)
+		stepDur := time.Since(stepStart).Milliseconds()
 		if err != nil {
 			b.setState(schema.StateError)
+			b.emit(ctx, event.NewStepEnd(a.Name(), step, stepDur))
 			b.emit(ctx, event.NewError("step", err))
 			return joinResults(results), err
 		}
+		b.emit(ctx, event.NewStepEnd(a.Name(), step, stepDur))
 		results = append(results, res.Output)
 
 		if b.isStuck() {
@@ -189,4 +195,25 @@ func joinResults(rs []string) string {
 		out += fmt.Sprintf("Step %d: %s", i+1, r)
 	}
 	return out
+}
+
+// safeStep wraps a single Step call with deferred recover so a panic
+// anywhere in Think / Act / a tool that escaped Registry.Execute's own
+// recover (e.g. a non-tool helper called by Act) turns into a normal
+// error return rather than tearing down the whole orchestrator. The
+// caller's existing "if err != nil → set state Error + emit event" path
+// then handles it like any other failure.
+func safeStep(ctx context.Context, a Agent) (res StepResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			slog.ErrorContext(ctx, "agent step panicked",
+				"agent", a.Name(),
+				"panic", fmt.Sprintf("%v", r),
+				"stack", string(stack),
+			)
+			err = fmt.Errorf("agent step panicked: %v", r)
+		}
+	}()
+	return a.Step(ctx)
 }

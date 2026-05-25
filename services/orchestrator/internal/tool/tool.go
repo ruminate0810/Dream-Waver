@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"runtime/debug"
 	"sync"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
@@ -70,11 +72,31 @@ func (r *Registry) Schemas() []schema.ToolSchema {
 
 // Execute looks up `name` and runs it. The agent loop is expected to wrap
 // the result into a tool message and append it to memory.
-func (r *Registry) Execute(ctx context.Context, name string, args json.RawMessage) (schema.ToolResult, error) {
+//
+// A panic inside a tool's Execute is recovered and converted into a
+// ToolResult.Error — the surrounding agent loop should never have to
+// care that some tool implementation nil-derefed deep in a call stack.
+// Without this, a single misbehaving tool tanks the entire orchestrator
+// process (real bug we hit with slide_render.go pre-J-5).
+func (r *Registry) Execute(ctx context.Context, name string, args json.RawMessage) (result schema.ToolResult, err error) {
 	t, ok := r.Get(name)
 	if !ok {
 		return schema.ToolResult{Error: fmt.Sprintf("unknown tool %q", name)}, nil
 	}
+	defer func() {
+		if rec := recover(); rec != nil {
+			stack := debug.Stack()
+			slog.ErrorContext(ctx, "tool panicked",
+				"tool", name,
+				"panic", fmt.Sprintf("%v", rec),
+				"stack", string(stack),
+			)
+			result = schema.ToolResult{
+				Error: fmt.Sprintf("tool %q panicked: %v", name, rec),
+			}
+			err = nil
+		}
+	}()
 	return t.Execute(ctx, args)
 }
 

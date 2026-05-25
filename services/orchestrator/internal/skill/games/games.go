@@ -204,8 +204,8 @@ func (p *Pipeline) Continue(ctx context.Context, jobID string, userMessage strin
 // assistant turn is, so the next Continue() doesn't inherit a polluted
 // conversation.
 func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*Output, error) {
+	stepStart := time.Now()
 	p.emit(ctx, event.NewStepStart("game-writer", 1))
-	p.emit(ctx, event.NewToolStart("write_game", jobID))
 
 	sess.mu.RLock()
 	history := append([]schema.Message(nil), sess.History...)
@@ -215,7 +215,21 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 	}
 	genre := sess.Genre
 	aesthetic := sess.Aesthetic
+	// Build a one-line tool-input preview from the latest user message
+	// so the chat surface can show what the model is being asked to do.
+	var lastUser string
+	for i := len(sess.History) - 1; i >= 0; i-- {
+		if sess.History[i].Role == schema.RoleUser {
+			lastUser = sess.History[i].Content
+			break
+		}
+	}
 	sess.mu.RUnlock()
+
+	toolInputPreview := fmt.Sprintf(`{"prompt":%q,"genre":%q,"aesthetic":%q}`,
+		truncateForEvent(lastUser, 120), genre, aesthetic)
+	p.emit(ctx, event.NewToolStart("write_game", jobID, toolInputPreview))
+	toolStart := time.Now()
 
 	sys := systemPrompt(prior, genre, aesthetic)
 	worker := p.Router.For("worker")
@@ -310,7 +324,9 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 		CacheRead: cost.CacheReadTokens,
 	}))
 	p.emit(ctx, event.NewToolEnd("write_game", jobID,
-		fmt.Sprintf("%d bytes", len(html)), ""))
+		fmt.Sprintf("%d bytes", len(html)), "",
+		time.Since(toolStart).Milliseconds()))
+	p.emit(ctx, event.NewStepEnd("game-writer", 1, time.Since(stepStart).Milliseconds()))
 	p.emit(ctx, event.NewAgentFinish("game-writer"))
 
 	return &Output{
@@ -320,6 +336,16 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 		Cost:        cost,
 		Description: desc,
 	}, nil
+}
+
+// truncateForEvent shortens a string for an event payload — keeps the
+// SSE channel from carrying full prompts. Adds an ellipsis to make
+// truncation visible to the chat surface.
+func truncateForEvent(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // askWorker is the single LLM call site. Generous token cap because a

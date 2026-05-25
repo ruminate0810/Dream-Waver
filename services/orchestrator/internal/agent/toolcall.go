@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
@@ -107,10 +108,16 @@ func (a *ToolCallAgent) Act(ctx context.Context) (string, error) {
 
 	var observations []string
 	for _, call := range a.pendingCalls {
-		a.emit(ctx, event.NewToolStart(call.Name, call.ID))
+		// Surface a truncated input preview so the chat can show what
+		// the model is actually asking the tool to do, not just the
+		// tool name. 240 chars keeps the bubble compact while still
+		// fitting one JSON object reasonably.
+		a.emit(ctx, event.NewToolStart(call.Name, call.ID, truncate(string(call.Args), 240)))
 		slog.InfoContext(ctx, "agent act", "agent", a.AgentName, "tool", call.Name)
 
+		start := time.Now()
 		result, err := a.Tools.Execute(ctx, call.Name, call.Args)
+		dur := time.Since(start).Milliseconds()
 		if err != nil {
 			result = schema.ToolResult{Error: err.Error()}
 		}
@@ -118,7 +125,7 @@ func (a *ToolCallAgent) Act(ctx context.Context) (string, error) {
 		a.Memory.Add(schema.NewTool(call.Name, call.ID, result.String()))
 		observations = append(observations, obs)
 
-		a.emit(ctx, event.NewToolEnd(call.Name, call.ID, truncate(result.Output, 400), result.Error))
+		a.emit(ctx, event.NewToolEnd(call.Name, call.ID, truncate(result.Output, 400), result.Error, dur))
 
 		if tool.IsSpecial(call.Name) {
 			a.Finish()

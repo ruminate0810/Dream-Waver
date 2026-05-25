@@ -10,6 +10,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
+	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/tools"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
@@ -36,6 +37,12 @@ type AgentRunner struct {
 	Emitter   event.Emitter
 	TavilyKey string // optional; empty disables web_research
 	Sessions  *SessionStore
+	// SandboxClient is the gRPC client for the Rust wasmtime sandbox.
+	// When non-nil, the agent gets a code_execute tool it can call for
+	// deterministic compute (parse CSV, run regex, do arithmetic).
+	// Nil means the tool is not registered — Sprint J introduces it as
+	// optional; existing deployments without a sandbox service keep working.
+	SandboxClient pb.SandboxClient
 }
 
 // systemPromptInitial teaches the LLM the slides domain for an initial
@@ -173,6 +180,9 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 	if r.TavilyKey != "" {
 		registryTools = append([]tool.Tool{tool.NewTavilySearch(r.TavilyKey)}, registryTools...)
 	}
+	if r.SandboxClient != nil {
+		registryTools = append(registryTools, tool.CodeExecute{Client: r.SandboxClient})
+	}
 	registry := tool.NewRegistry(registryTools...)
 
 	a := agent.NewToolCallAgent("slides", r.Router, registry, systemPromptInitial, nextStepPrompt, r.Emitter)
@@ -235,6 +245,9 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.EditSpeakerNotes{State: state, Renderer: rendererAdapter},
 		&tools.GenerateImage{State: state, Images: r.Images, Renderer: rendererAdapter},
 		tool.Terminate{},
+	}
+	if r.SandboxClient != nil {
+		registryTools = append(registryTools, tool.CodeExecute{Client: r.SandboxClient})
 	}
 	registry := tool.NewRegistry(registryTools...)
 

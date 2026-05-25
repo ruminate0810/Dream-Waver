@@ -22,10 +22,18 @@ down:
 
 proto:
 	@echo "▶ Generating Go gRPC code…"
+	@# Generate into a temp tree then relocate to match the
+	@# `option go_package` declared in sandbox.proto, which puts the
+	@# package under internal/pb/dreamwaverv1. paths=source_relative
+	@# alone would land them at services/orchestrator/dreamwaver/v1
+	@# which is not the import path the rest of the codebase uses.
 	cd services/orchestrator && \
+	  mkdir -p internal/pb/dreamwaverv1 && \
 	  protoc --go_out=. --go_opt=paths=source_relative \
 	         --go-grpc_out=. --go-grpc_opt=paths=source_relative \
-	         -I ../../proto ../../proto/dreamwaver/v1/*.proto
+	         -I ../../proto ../../proto/dreamwaver/v1/*.proto && \
+	  mv dreamwaver/v1/*.pb.go internal/pb/dreamwaverv1/ && \
+	  rm -rf dreamwaver
 	@echo "▶ Generating Rust gRPC code…"
 	cd services/sandbox && cargo build
 
