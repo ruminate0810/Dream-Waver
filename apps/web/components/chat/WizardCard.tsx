@@ -61,13 +61,18 @@ export function WizardCard({
 
   // Local state per step view. Resets whenever a new step arrives
   // (view identity changes) — guarded by useEffect on view.step.
-  const [scenarioPick, setScenarioPick] = useState<string>("");
+  //
+  // Sprint N1.g — if the backend sent a suggested_value (topic-based
+  // pre-pick for the scenario step), we seed scenarioPick with it so
+  // the user can confirm with a single 下一步 tap. They can still tap
+  // a different card to override.
+  const [scenarioPick, setScenarioPick] = useState<string>(view.suggested_value ?? "");
   const [freeText, setFreeText] = useState<string>("");
 
   useEffect(() => {
-    setScenarioPick("");
+    setScenarioPick(view.suggested_value ?? "");
     setFreeText("");
-  }, [view.step]);
+  }, [view.step, view.suggested_value]);
 
   const progressPct = Math.round(((view.step - 1) / view.total) * 100);
 

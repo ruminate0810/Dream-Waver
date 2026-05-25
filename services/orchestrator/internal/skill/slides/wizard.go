@@ -24,6 +24,8 @@
 // runFromOutline with the merged answers).
 package slides
 
+import "strings"
+
 // SlideScenario enumerates the wizard's step-1 picks. Lowercase ASCII
 // values keep the wire payload small and stable across translations.
 type SlideScenario string
@@ -76,14 +78,22 @@ func isValidScenario(v string) bool {
 //
 // Step + Total drive the progress indicator. Optional flips the 「跳过」
 // button on; Question + Placeholder are i18n-aware copy.
+//
+// SuggestedValue (Sprint N1.g) is the LLM-free pre-pick the frontend
+// uses to initialise the form state. For step=1 (scenario picker), it
+// holds a SlideScenario value the heuristic guessed from the topic
+// vocabulary — when the guess is confident, the user can just hit 下一步
+// without tapping anything. Empty string means "no guess; user must
+// pick from scratch".
 type WizardStepView struct {
-	Step        int              `json:"step"`         // 1-based
-	Total       int              `json:"total"`        // total step count
-	Kind        string           `json:"kind"`         // "scenario" | "free-text"
-	Question    string           `json:"question"`     // header copy
-	Placeholder string           `json:"placeholder,omitempty"`
-	Options     []ScenarioOption `json:"options,omitempty"` // populated only for kind=scenario
-	Optional    bool             `json:"optional"`
+	Step           int              `json:"step"`         // 1-based
+	Total          int              `json:"total"`        // total step count
+	Kind           string           `json:"kind"`         // "scenario" | "free-text"
+	Question       string           `json:"question"`     // header copy
+	Placeholder    string           `json:"placeholder,omitempty"`
+	Options        []ScenarioOption `json:"options,omitempty"` // populated only for kind=scenario
+	Optional       bool             `json:"optional"`
+	SuggestedValue string           `json:"suggested_value,omitempty"`
 }
 
 // WizardTotalSteps is the fixed step count for the MVP wizard. Bumping
@@ -156,10 +166,17 @@ func wizardStepThree(_ SlideScenario) WizardStepView {
 // wizardStepView dispatches to the right step constructor for a given
 // step number. Returns the zero WizardStepView for invalid step
 // numbers so callers can detect "wizard done" by checking Step == 0.
-func wizardStepView(step int, scenario SlideScenario) WizardStepView {
+//
+// The optional `topic` argument is only consulted for step 1, where
+// it seeds the SuggestedValue via suggestScenarioFromTopic. Callers
+// that don't have a topic handy (mid-wizard resumes for steps 2/3)
+// can pass "".
+func wizardStepView(step int, scenario SlideScenario, topic string) WizardStepView {
 	switch step {
 	case 1:
-		return wizardStepOne()
+		v := wizardStepOne()
+		v.SuggestedValue = string(suggestScenarioFromTopic(topic))
+		return v
 	case 2:
 		return wizardStepTwo(scenario)
 	case 3:
@@ -167,4 +184,81 @@ func wizardStepView(step int, scenario SlideScenario) WizardStepView {
 	default:
 		return WizardStepView{}
 	}
+}
+
+// suggestScenarioFromTopic is a tiny keyword heuristic that maps an
+// incoming topic string to one of the six scenarios — saving the user
+// a tap when the topic is unambiguous (e.g. "B 轮融资路演" is obviously
+// business; "本科毕业论文答辩" is obviously academic).
+//
+// The heuristic intentionally errs on the side of NOT guessing: when
+// no keyword matches, we return "" and the wizard renders without a
+// pre-pick (the user picks from scratch, same as before). False-
+// positives are worse than no-pre-pick because they make the wizard
+// feel like it's pretending to read minds when it isn't.
+//
+// Keyword matching is substring + lowercase. Order of the switch
+// matters slightly — earlier cases win ties.
+func suggestScenarioFromTopic(topic string) SlideScenario {
+	if topic == "" {
+		return ""
+	}
+	t := strings.ToLower(topic)
+
+	// Business — pitch decks, product launches, BD, fundraising.
+	for _, kw := range []string{
+		"路演", "融资", "天使轮", "种子轮", "a轮", "b轮", "c轮", "ipo",
+		"商业计划", "bp", "pitch", "fundrais",
+		"产品发布", "新品发布", "发布会", "launch",
+		"客户提案", "商务方案", "招商", "合作方案",
+		"sales", "pricing", "go-to-market", "gtm",
+	} {
+		if strings.Contains(t, kw) {
+			return ScenarioBusiness
+		}
+	}
+	// Academic — papers, theses, conferences, classroom research.
+	for _, kw := range []string{
+		"论文", "答辩", "毕业", "硕士", "博士", "学位",
+		"开题", "中期检查", "评审", "课题",
+		"学术", "研究", "research", "thesis", "dissertation",
+		"paper", "conference", "academia", "academic",
+	} {
+		if strings.Contains(t, kw) {
+			return ScenarioAcademic
+		}
+	}
+	// Work — reports, reviews, retros, OKRs.
+	for _, kw := range []string{
+		"工作总结", "述职", "年终总结", "季度总结", "月度总结",
+		"周报", "月报", "季报", "年报", "okr", "kpi",
+		"项目复盘", "复盘", "项目汇报", "工作汇报",
+		"quarterly", "weekly", "monthly", "retro", "review",
+	} {
+		if strings.Contains(t, kw) {
+			return ScenarioWork
+		}
+	}
+	// Training — classes, tutorials, workshops, onboarding.
+	for _, kw := range []string{
+		"培训", "教学", "课件", "教程", "讲义", "课程",
+		"workshop", "tutorial", "course", "training", "onboarding",
+		"新人", "入职", "新员工",
+	} {
+		if strings.Contains(t, kw) {
+			return ScenarioTraining
+		}
+	}
+	// Event — campaigns, brand, awards, weddings, parties.
+	for _, kw := range []string{
+		"活动策划", "活动方案", "营销活动", "品牌", "campaign",
+		"团建", "年会", "周年", "庆典", "庆祝", "颁奖",
+		"婚礼", "派对", "聚会", "晚会", "party",
+		"宣传", "营销", "marketing",
+	} {
+		if strings.Contains(t, kw) {
+			return ScenarioEvent
+		}
+	}
+	return ""
 }

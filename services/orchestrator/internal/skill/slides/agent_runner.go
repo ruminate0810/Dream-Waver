@@ -204,7 +204,7 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 	// answers (or skips) via ResumeFromWizardStep, which either emits
 	// the next step's view OR — when the wizard is done — falls through
 	// to runFromOutline with the answers merged into Input.
-	view := wizardStepView(1, "")
+	view := wizardStepView(1, "", in.Topic)
 	state.SetPending(&PendingUserAction{
 		Kind:          PendingWizard,
 		Wizard:        &view,
@@ -351,7 +351,7 @@ func (r *AgentRunner) ResumeFromWizardStep(
 	// Input and fall through to Phase 1 (outline planning).
 	nextStep := step + 1
 	if nextStep <= WizardTotalSteps {
-		nextView := wizardStepView(nextStep, scenario)
+		nextView := wizardStepView(nextStep, scenario, state.Input.Topic)
 		state.SetPending(&PendingUserAction{
 			Kind:           PendingWizard,
 			Wizard:         &nextView,

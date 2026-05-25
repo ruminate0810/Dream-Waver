@@ -111,6 +111,8 @@ export type WizardStepView = {
   placeholder?: string;
   options?: WizardScenarioOption[];
   optional: boolean;
+  /** Sprint N1.g — heuristic pre-pick from topic keywords (step 1 only). */
+  suggested_value?: string;
 };
 
 export type AgentEvent = {
