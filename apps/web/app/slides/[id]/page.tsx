@@ -8,7 +8,9 @@ import { getSlideJob, type SlideJob } from "@/lib/api";
 import { Chat } from "@/components/chat/Chat";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { AgentSessionProvider } from "@/components/chat/transport";
+import { ConnectionToast } from "@/components/chat/ConnectionToast";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
+import { updateDeckTitle } from "@/lib/recentDecks";
 
 // The slides workspace is a two-column manuscript:
 //   left  — chat-style generation timeline (the editor's running notes)
@@ -40,6 +42,9 @@ export default function SlideJobPage() {
         const j = await getSlideJob(jobId);
         if (cancelled) return;
         setJob(j);
+        // Sprint I0.5 — backfill the title into the recent-decks list
+        // the moment the planner gives it to us. Idempotent.
+        if (j.title) updateDeckTitle(jobId, j.title);
         if (j.status === "running") {
           timer = setTimeout(poll, 2000);
         }
@@ -142,6 +147,10 @@ function Workspace({
 }) {
   return (
     <AgentSessionProvider sessionId={sessionId || job.session_id}>
+      {/* Sprint I0.6 — surfaces WebSocket disconnection during a session
+          so the user knows the live event stream is reconnecting instead
+          of silently watching a frozen UI. Auto-dismisses on reconnect. */}
+      <ConnectionToast />
       <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14">
         {/* ── Left: chat surface (variant-selected) ───────────────────── */}
         <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">

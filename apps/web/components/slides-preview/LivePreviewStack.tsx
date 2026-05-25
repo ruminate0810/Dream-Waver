@@ -158,6 +158,10 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   const [target, setTarget] = useState<EditTarget | null>(null);
   const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const [busy, setBusy] = useState(false);
+  // Sprint I0.3 — surface the last edit error so the popover can render
+  // it inline + the user can click submit to retry. Cleared on submit
+  // start and on close.
+  const [editError, setEditError] = useState<string | null>(null);
 
   const handleEditOpen = useCallback((req: EditRequest, anchorRect: DOMRect) => {
     setTarget({ slideIndex: req.slideIndex, text: req.text, role: req.role });
@@ -172,6 +176,7 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
     if (idx) setClearTicks((t) => ({ ...t, [idx]: (t[idx] ?? 0) + 1 }));
     setTarget(null);
     setAnchor(null);
+    setEditError(null);
   }, [busy, target]);
 
   const handleEditSubmit = useCallback(
@@ -179,6 +184,7 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
       const message = buildEditInstruction(s);
       try {
         setBusy(true);
+        setEditError(null); // clear any prior failure on a fresh attempt
         // Mark this slide as pending — the slides.updated handler
         // above will detect the match, flash the clicked element
         // green via dw-edit-success, and only THEN close the popover.
@@ -193,13 +199,16 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
             setBusy(false);
             // Don't close — let the user see what happened (still
             // editing) but flip busy off so they can retry / cancel.
+            setEditError("agent 12s 没回响。可以再点「重试」试试。");
           }
         }, 12_000);
-      } catch {
+      } catch (e) {
         // POST itself failed — back out the optimistic busy state and
-        // let the popover stay open for retry.
+        // surface the error inside the popover so the user can retry
+        // without re-typing (Sprint I0.3).
         pendingRef.current = null;
         setBusy(false);
+        setEditError(e instanceof Error ? e.message : "提交失败，请重试");
       }
     },
     [job.job_id],
@@ -262,6 +271,7 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
         target={target}
         anchor={anchor}
         busy={busy}
+        error={editError}
         onSubmit={handleEditSubmit}
         onClose={handleEditClose}
       />

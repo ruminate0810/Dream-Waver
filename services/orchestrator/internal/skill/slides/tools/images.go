@@ -2,9 +2,11 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
@@ -49,6 +51,11 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 	var cacheMu sync.Mutex
 	cache := map[string]*image.Result{}
 
+	// Sprint I0.2 — atomic counters for post-fanout aggregate log. Twins
+	// the same counters added to slides.resolveImages; if you change
+	// one, change both.
+	var succeeded, failed int64
+
 	var wg sync.WaitGroup
 	for _, j := range jobs {
 		j := j
@@ -60,6 +67,9 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 				cacheMu.Unlock()
 				if r != nil {
 					writeImageResult(deck, j.idx, j.gridIdx, r)
+					atomic.AddInt64(&succeeded, 1)
+				} else {
+					atomic.AddInt64(&failed, 1)
 				}
 				return
 			}
@@ -68,6 +78,7 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			r, err := searcher.Search(ctx, j.query)
 			if err != nil {
 				slog.WarnContext(ctx, "image search failed", "query", j.query, "err", err)
+				atomic.AddInt64(&failed, 1)
 				return
 			}
 			cacheMu.Lock()
@@ -75,10 +86,19 @@ func resolveImagesShim(ctx context.Context, searcher image.Searcher, deck *schem
 			cacheMu.Unlock()
 			if r != nil {
 				writeImageResult(deck, j.idx, j.gridIdx, r)
+				atomic.AddInt64(&succeeded, 1)
+			} else {
+				atomic.AddInt64(&failed, 1)
 			}
 		}()
 	}
 	wg.Wait()
+
+	s, f := atomic.LoadInt64(&succeeded), atomic.LoadInt64(&failed)
+	slog.InfoContext(ctx, "image fanout finished",
+		"total", len(jobs), "succeeded", s, "failed", f,
+		"success_rate", fmt.Sprintf("%.0f%%", 100*float64(s)/float64(len(jobs))),
+	)
 }
 
 // writeImageResult is the tools-package twin of slides.writeImageResult;

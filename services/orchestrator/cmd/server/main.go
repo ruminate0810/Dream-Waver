@@ -107,18 +107,20 @@ func main() {
 	// render_deck; emits llm.thought / tool.start / tool.end for the
 	// chat-style UI. Default for /api/v1/slides requests is "agent"; the
 	// pipeline path is kept as a `mode=pipeline` escape hatch.
+	// In-memory session store. When auth + Postgres land, swap this for a
+	// DB-backed implementation that satisfies the same surface. Hoisted to
+	// the call site (not buried in AgentRunner) because the live-HTML
+	// preview endpoint also reads decks out of it, AND pipeline mode now
+	// registers here too (Sprint I0.1) so both paths share the surface.
+	sessions := slides.NewSessionStore()
 	pipeline := &slides.Pipeline{
 		Router:      router,
 		Renderer:    renderer,
 		Emitter:     hub,
 		Images:      imgSearcher,
 		TemplateDir: cfg.TemplateDir,
+		Sessions:    sessions, // I0.1 — enables live preview + edits on pipeline-mode decks
 	}
-	// In-memory session store. When auth + Postgres land, swap this for a
-	// DB-backed implementation that satisfies the same surface. Hoisted to
-	// the call site (not buried in AgentRunner) because the live-HTML
-	// preview endpoint also reads decks out of it.
-	sessions := slides.NewSessionStore()
 	agentRunner := &slides.AgentRunner{
 		Router:    router,
 		Renderer:  renderer,

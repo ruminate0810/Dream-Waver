@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
@@ -39,12 +40,18 @@ type (
 
 // Pipeline runs the deterministic, single-shot generation path. For the
 // agent-driven path see AgentRunner in agent_runner.go.
+//
+// Sessions is OPTIONAL but recommended: when non-nil, Run() registers the
+// rendered deck into the store keyed by jobID so the live-preview HTML
+// endpoint and follow-up edit endpoint work on pipeline-mode decks just
+// like they do on agent-mode decks. Without it, those endpoints 404.
 type Pipeline struct {
 	Router      llm.Router
 	Renderer    *tool.SlideRender
 	Emitter     event.Emitter
 	Images      image.Searcher // optional; NoopSearcher disables hero images
 	TemplateDir string
+	Sessions    *SessionStore // optional; nil disables live preview + edits for pipeline-mode decks
 }
 
 // Input is the request shape both Pipeline.Run and AgentRunner.Run accept.
@@ -82,7 +89,12 @@ type Cost struct {
 // Run is the fast/deterministic execution path: outline → content →
 // assemble → resolve images → render. Token usage is summed across the
 // two LLM calls.
-func (p *Pipeline) Run(ctx context.Context, in Input) (*Output, error) {
+//
+// jobID is used to register the final SessionState into Sessions (when
+// configured) so the live-preview and edit endpoints can reach this
+// deck after Run returns. Pass an empty string from contexts that
+// don't need post-render access (CLI tests, etc.).
+func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, error) {
 	var cost Cost
 
 	outline, u1, err := stages.Outline(ctx, p.Router, stages.OutlineParams{
@@ -122,6 +134,26 @@ func (p *Pipeline) Run(ctx context.Context, in Input) (*Output, error) {
 	}
 
 	cost.EstimatedUSD = estimateCost(cost)
+
+	// Register the session so live-preview HTML + follow-up edits can
+	// reach this deck after Run() returns. Mirrors AgentRunner.Run's
+	// behaviour at agent_runner.go — without this, pipeline-mode decks
+	// hit 404 on /api/v1/slides/{id}/page/{n}.html. No agent memory to
+	// persist (no LLM turns happened on the agent loop), so Memory
+	// stays nil — follow-up edits start a fresh agent against the
+	// existing Deck/Outline/Content.
+	if p.Sessions != nil && jobID != "" {
+		state := &SessionState{
+			JobID:      jobID,
+			Input:      in,
+			Outline:    outline,
+			Content:    content,
+			Deck:       &deck,
+			PptxPath:   pptxPath,
+			SlideCount: len(deck.Slides),
+		}
+		p.Sessions.Put(state)
+	}
 
 	return &Output{
 		PptxPath:   pptxPath,
@@ -178,6 +210,12 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 	var cacheMu sync.Mutex
 	cache := map[string]*image.Result{}
 
+	// Sprint I0.2 — atomic counters so the post-fanout summary log can
+	// surface per-job success rate. Per-goroutine warns are still useful
+	// for diagnosing WHICH queries failed, but without this aggregate
+	// even a 3-of-4-failed grid is invisible at the job-log level.
+	var succeeded, failed int64
+
 	var wg sync.WaitGroup
 	for _, j := range jobs {
 		j := j
@@ -189,6 +227,9 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 				cacheMu.Unlock()
 				if r != nil {
 					writeImageResult(deck, j.idx, j.gridIdx, r)
+					atomic.AddInt64(&succeeded, 1)
+				} else {
+					atomic.AddInt64(&failed, 1)
 				}
 				return
 			}
@@ -197,6 +238,7 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			r, err := searcher.Search(ctx, j.query)
 			if err != nil {
 				slog.WarnContext(ctx, "image search failed", "query", j.query, "err", err)
+				atomic.AddInt64(&failed, 1)
 				return
 			}
 			cacheMu.Lock()
@@ -204,10 +246,19 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			cacheMu.Unlock()
 			if r != nil {
 				writeImageResult(deck, j.idx, j.gridIdx, r)
+				atomic.AddInt64(&succeeded, 1)
+			} else {
+				atomic.AddInt64(&failed, 1)
 			}
 		}()
 	}
 	wg.Wait()
+
+	s, f := atomic.LoadInt64(&succeeded), atomic.LoadInt64(&failed)
+	slog.InfoContext(ctx, "image fanout finished",
+		"total", len(jobs), "succeeded", s, "failed", f,
+		"success_rate", fmt.Sprintf("%.0f%%", 100*float64(s)/float64(len(jobs))),
+	)
 }
 
 // writeImageResult routes one image.Result into the right field of

@@ -15,6 +15,7 @@ import clsx from "clsx";
 
 import { createSlides } from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
+import { rememberDeck } from "@/lib/recentDecks";
 
 // /slides/new is the chat-first entrance to a new deck.
 //
@@ -139,6 +140,15 @@ function NewSlidesChat() {
         slide_count: finalCount,
         force_theme: style,
       });
+      // Sprint I0.5 — remember the deck so it appears in the
+      // "Recent decks" list on the home page. Title gets backfilled
+      // from /slides/{id} once the job finishes.
+      rememberDeck({
+        jobId: res.job_id,
+        sessionId: res.session_id,
+        topic: cleanTopic.slice(0, 80),
+        theme: style,
+      });
       router.push(`/slides/${res.job_id}?session=${res.session_id}`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Unknown error");
@@ -185,6 +195,35 @@ function NewSlidesChat() {
             想做<span className="text-[color:var(--vermillion)]">什么样</span>的演讲？
           </h1>
 
+          {/* Sprint I0.4 — error banner with explicit 重试 button. Replaces
+              the previous tiny red italic that was easy to miss. The retry
+              re-uses the same submit() handler so the topic/style/page-count
+              don't get lost. */}
+          {err && !submitting ? (
+            <div
+              role="alert"
+              className="mt-6 flex flex-wrap items-start gap-3 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] px-4 py-3"
+            >
+              <div className="flex flex-1 items-start gap-2">
+                <span className="mt-[2px] font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+                  Err
+                </span>
+                <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink)]">
+                  {err}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => submit()}
+                disabled={!topic.trim() || submitting}
+                className="group inline-flex items-center gap-1.5 border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)] active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <ArrowUpRight size={11} strokeWidth={1.8} className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]" />
+                <span>重试</span>
+              </button>
+            </div>
+          ) : null}
+
           <form onSubmit={submit} className="mt-8 flex flex-col gap-6">
             <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
               <textarea
@@ -216,7 +255,7 @@ function NewSlidesChat() {
               </button>
 
               <div className="ml-auto flex items-center gap-3">
-                {err ? <span className="font-display text-[14px] italic text-red-800">{err}</span> : null}
+                {/* Error display moved to the banner above the form (I0.4). */}
                 <button
                   type="submit"
                   disabled={!topic.trim() || submitting}
