@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Process-flow layout — 4 numbered steps with arrows">
+  <rect width="640" height="360" fill="#F2EEE7"/>
+
+  <!-- title -->
+  <text x="40" y="60" font-family="Georgia, 'Fraunces', serif" font-size="22" font-weight="600" letter-spacing="-0.3" fill="#1A1614">实施流程 · 4 个关键步骤</text>
+
+  <!-- horizontal connector line behind the circles -->
+  <line x1="78" y1="155" x2="562" y2="155" stroke="#B5371E" stroke-width="2" opacity="0.35"/>
+
+  <!-- 4 numbered circles + labels -->
+  <g font-family="Georgia, 'Fraunces', serif" fill="#1A1614">
+    <!-- Step 1 -->
+    <circle cx="100" cy="155" r="32" fill="#B5371E"/>
+    <circle cx="100" cy="155" r="32" fill="none" stroke="#F2EEE7" stroke-width="3"/>
+    <text x="100" y="164" font-size="22" font-weight="700" fill="#F2EEE7" text-anchor="middle">1</text>
+    <text x="100" y="218" font-size="14" font-weight="600" text-anchor="middle">调研</text>
+    <text x="100" y="238" font-size="10" fill="#57534E" text-anchor="middle">需求收集 + 分析</text>
+
+    <!-- arrow -->
+    <text x="180" y="160" font-size="14" fill="#B5371E" opacity="0.6" text-anchor="middle">▶</text>
+
+    <!-- Step 2 -->
+    <circle cx="254" cy="155" r="32" fill="#B5371E"/>
+    <circle cx="254" cy="155" r="32" fill="none" stroke="#F2EEE7" stroke-width="3"/>
+    <text x="254" y="164" font-size="22" font-weight="700" fill="#F2EEE7" text-anchor="middle">2</text>
+    <text x="254" y="218" font-size="14" font-weight="600" text-anchor="middle">设计</text>
+    <text x="254" y="238" font-size="10" fill="#57534E" text-anchor="middle">原型 + 评审</text>
+
+    <text x="334" y="160" font-size="14" fill="#B5371E" opacity="0.6" text-anchor="middle">▶</text>
+
+    <!-- Step 3 -->
+    <circle cx="408" cy="155" r="32" fill="#B5371E"/>
+    <circle cx="408" cy="155" r="32" fill="none" stroke="#F2EEE7" stroke-width="3"/>
+    <text x="408" y="164" font-size="22" font-weight="700" fill="#F2EEE7" text-anchor="middle">3</text>
+    <text x="408" y="218" font-size="14" font-weight="600" text-anchor="middle">开发</text>
+    <text x="408" y="238" font-size="10" fill="#57534E" text-anchor="middle">迭代实现</text>
+
+    <text x="488" y="160" font-size="14" fill="#B5371E" opacity="0.6" text-anchor="middle">▶</text>
+
+    <!-- Step 4 -->
+    <circle cx="540" cy="155" r="32" fill="#B5371E"/>
+    <circle cx="540" cy="155" r="32" fill="none" stroke="#F2EEE7" stroke-width="3"/>
+    <text x="540" y="164" font-size="22" font-weight="700" fill="#F2EEE7" text-anchor="middle">4</text>
+    <text x="540" y="218" font-size="14" font-weight="600" text-anchor="middle">上线</text>
+    <text x="540" y="238" font-size="10" fill="#57534E" text-anchor="middle">部署 + 监控</text>
+  </g>
+</svg>

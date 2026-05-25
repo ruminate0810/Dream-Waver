@@ -517,3 +517,468 @@ body.layout-quote    .slide { justify-content: center; }
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
+
+/* ─── Sprint H8: image-led layouts ─────────────────────────────────
+   Three layouts built around AI-generated imagery as the slide's
+   primary content (not background). All inherit the theme's --accent
+   and --font-* tokens so they read correctly across all 10 themes.
+*/
+
+/* photo-essay ───────────────────────────────────────────────────────
+   Full-bleed image. One-line title bottom-left in editorial caps.
+   Optional italic caption underneath. Same Ken-Burns as hero-img so
+   it feels alive when viewed live; chromedp captures a static frame
+   for the PPTX. */
+.photo-essay-img {
+  position: absolute; inset: 0; z-index: 0;
+  background-size: cover; background-position: center;
+  transform: scale(1.04); transform-origin: 50% 50%;
+  animation: dw-kenburns 32s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.photo-essay-overlay {
+  position: absolute; inset: 0; z-index: 1;
+  /* Heavier bottom band than hero — title sits lower & needs more contrast */
+  background: linear-gradient(180deg,
+    rgba(15,23,42,0.10) 0%,
+    rgba(15,23,42,0.02) 40%,
+    rgba(15,23,42,0.78) 100%);
+}
+.photo-essay-block {
+  position: absolute; left: 96px; bottom: 96px; right: 96px; z-index: 2;
+  color: #fff;
+  text-shadow: 0 2px 14px rgba(0,0,0,0.55);
+}
+.photo-essay-block .kicker {
+  font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase;
+  color: rgba(255,255,255,0.72);
+  margin-bottom: 16px;
+}
+.photo-essay-block .title {
+  color: #fff;
+  font-size: 112px; line-height: 0.95; letter-spacing: -0.02em;
+  max-width: 70%;
+}
+.photo-essay-block .caption {
+  margin-top: 28px;
+  font-family: var(--font-display, Georgia, serif);
+  font-style: italic;
+  font-size: 26px; line-height: 1.4;
+  color: rgba(255,255,255,0.82);
+  max-width: 56%;
+}
+.photo-essay-fallback {
+  /* When image fetch failed, render as a tasteful text-only slide
+     framed by an accent wash so the deck doesn't look broken. */
+  position: absolute; inset: 96px; z-index: 2;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 64px;
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--accent) 14%, var(--bg)),
+    var(--bg));
+  border-left: 4px solid var(--accent);
+}
+.photo-essay-fallback .kicker {
+  font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase;
+  color: var(--fg-muted); margin-bottom: 16px;
+}
+.photo-essay-fallback .title {
+  font-size: 96px; line-height: 0.95; letter-spacing: -0.02em;
+  color: var(--fg);
+}
+.photo-essay-fallback .caption {
+  margin-top: 24px; font-style: italic; font-size: 24px;
+  color: var(--fg-muted); max-width: 60%;
+}
+
+/* split-image ──────────────────────────────────────────────────────
+   50:50 magazine spread. data-pos="right" flips the order so the
+   image lands on the right half — alternate across consecutive
+   split-image slides for visual rhythm. */
+.split-image-grid {
+  position: absolute; inset: 0; z-index: 0;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+}
+.split-image-grid[data-pos="right"] {
+  direction: rtl;  /* visually swap; text inside resets to ltr below */
+}
+.split-image-grid[data-pos="right"] > * { direction: ltr; }
+
+.split-image-grid .image-side {
+  position: relative; overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+.split-image-grid .image-fill {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  transform: scale(1.02);
+  animation: dw-kenburns 36s ease-in-out infinite alternate;
+}
+.split-image-grid .image-fallback {
+  position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 8%, transparent) 0 24px,
+      transparent 24px 48px),
+    color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.split-image-grid .image-credit {
+  position: absolute; left: 24px; bottom: 24px;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: rgba(255,255,255,0.85);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  background: rgba(15,23,42,0.55); padding: 5px 10px; border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+.split-image-grid .text-side {
+  padding: 96px 80px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: var(--bg);
+}
+.split-image-grid .text-side .kicker {
+  font-size: 13px; letter-spacing: 0.32em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 20px;
+}
+.split-image-grid .text-side .title {
+  font-size: 72px; line-height: 1.02; letter-spacing: -0.01em;
+  color: var(--fg);
+  margin-bottom: 24px;
+}
+.split-image-grid .text-side .body-text {
+  font-size: 22px; line-height: 1.55; color: var(--fg-muted);
+  margin-bottom: 18px;
+}
+.split-image-grid .text-side .bullets {
+  list-style: none; padding: 0; margin: 0;
+}
+.split-image-grid .text-side .bullets .bullet {
+  position: relative;
+  padding-left: 22px;
+  margin-bottom: 12px;
+  font-size: 20px; line-height: 1.4;
+  color: var(--fg);
+}
+.split-image-grid .text-side .bullets .bullet::before {
+  content: "";
+  position: absolute; left: 0; top: 0.6em;
+  width: 8px; height: 8px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* image-grid ───────────────────────────────────────────────────────
+   3 or 4 AI images arranged as a moodboard. Title sits above, single
+   italic caption below. Uses data-count to pick 1x3 (panoramic) vs
+   2x2 (dense) layout. */
+.image-grid-wrap {
+  position: absolute; inset: 80px 96px;
+  display: flex; flex-direction: column;
+  gap: 28px;
+}
+.image-grid-wrap > .title {
+  font-size: 40px; line-height: 1.1; color: var(--fg);
+  letter-spacing: -0.01em;
+  flex: 0 0 auto;
+}
+.image-grid {
+  flex: 1 1 auto;
+  display: grid; gap: 20px;
+  min-height: 0;
+}
+.image-grid[data-count="3"] { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr; }
+.image-grid[data-count="4"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.image-grid[data-count="2"] { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.image-grid[data-count="6"] { grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.image-grid .grid-tile {
+  background-size: cover; background-position: center;
+  border-radius: 6px;
+  background-color: color-mix(in srgb, var(--accent) 8%, var(--bg));
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 8px 24px -8px rgba(0,0,0,0.18);
+}
+.image-grid .grid-tile-fallback {
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 10%, transparent) 0 18px,
+      transparent 18px 36px),
+    color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.image-grid-wrap > .caption {
+  flex: 0 0 auto;
+  font-family: var(--font-display, Georgia, serif);
+  font-style: italic;
+  font-size: 18px; line-height: 1.4;
+  color: var(--fg-muted);
+  max-width: 70%;
+}
+
+/* ─── Sprint K1 layouts ───────────────────────────────────────────
+   Six layouts that cover info-architecture patterns the prior 17
+   couldn't compose (process-flow / bento-grid / pull-quote /
+   before-after / icon-grid / team-roster). All use --accent /
+   --font-* tokens so every theme paints them in its own palette.
+*/
+
+/* K1.1 · process-flow ─────────────────────────────────────────── */
+.process-wrap { display: flex; flex-direction: column; gap: 56px; padding-top: 40px; }
+.process-flow {
+  list-style: none; padding: 0; margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 28px;
+  position: relative;
+}
+/* Horizontal connector line behind the numbers — drawn as a single
+   accent rule offset to the number-center. */
+.process-flow::before {
+  content: ""; position: absolute;
+  top: 30px; left: 5%; right: 5%;
+  height: 2px;
+  background: var(--accent); opacity: 0.35;
+}
+.process-step {
+  position: relative;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 18px;
+}
+.process-step .step-num {
+  width: 60px; height: 60px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--font-display); font-size: 28px; font-weight: 700;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 50%;
+  border: 4px solid var(--bg);
+  position: relative; z-index: 1;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
+}
+/* Arrow head between steps — drawn on each step's number element
+   pointing at the next one. Last step has no arrow (CSS nth-last). */
+.process-step:not(:last-child) .step-num::after {
+  content: "▶";
+  position: absolute;
+  right: -28px; top: 50%; transform: translateY(-50%);
+  font-size: 14px; color: var(--accent); opacity: 0.65;
+}
+.process-step .step-body { padding-right: 20px; }
+.process-step .step-label {
+  font-family: var(--font-display);
+  font-size: 26px; line-height: 1.25; font-weight: 600;
+  color: var(--fg);
+  margin-bottom: 8px;
+}
+.process-step .step-desc {
+  font-size: 18px; line-height: 1.45;
+  color: var(--fg-muted);
+}
+
+/* K1.2 · bento-grid ──────────────────────────────────────────── */
+.bento-wrap { display: flex; flex-direction: column; gap: 36px; padding-top: 24px; height: calc(100% - var(--pad-y, 100px)); }
+.bento-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 1fr;
+  gap: 20px;
+  min-height: 0;
+}
+.bento-card {
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
+  border-radius: 16px;
+  padding: 32px;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 16px;
+  overflow: hidden;
+  position: relative;
+}
+.bento-card[data-size="large"] { grid-column: span 2; grid-row: span 2; }
+.bento-card[data-size="small"] { grid-column: span 2; grid-row: span 1; }
+/* Common pattern: 1 large (top-left) + 3-4 small fills the rest.
+   With 4-col grid, large=2×2 = 4 cells, then small=2×1 each = 2 cells. */
+.bento-card .bento-title {
+  font-family: var(--font-display);
+  font-size: 28px; line-height: 1.15; font-weight: 600;
+  color: var(--fg);
+  letter-spacing: -0.01em;
+}
+.bento-card[data-size="large"] .bento-title { font-size: 40px; }
+.bento-card .bento-body {
+  font-size: 18px; line-height: 1.5;
+  color: var(--fg-muted);
+}
+.bento-card[data-size="large"] .bento-body { font-size: 22px; }
+.bento-card .bento-metric {
+  font-family: var(--font-display);
+  font-size: 96px; line-height: 1; font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--accent);
+}
+.bento-card[data-size="large"] .bento-metric { font-size: 140px; }
+.bento-card .bento-metric-label {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.24em;
+  text-transform: uppercase; color: var(--fg-muted);
+}
+.bento-card .bento-image {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+}
+.bento-card .bento-image-caption {
+  position: relative; align-self: flex-end; margin-top: auto;
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(15,23,42,0.55); backdrop-filter: blur(8px);
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.22em;
+  text-transform: uppercase; color: #fff;
+}
+
+/* K1.3 · pull-quote ─────────────────────────────────────────── */
+.pull-quote-wrap {
+  display: flex; flex-direction: column; gap: 36px;
+  height: 100%; justify-content: center;
+  padding: 0 80px;
+}
+.pq-context {
+  font-size: 22px; line-height: 1.6;
+  color: var(--fg-muted);
+  max-width: 80%;
+  font-style: italic;
+  font-family: var(--font-display);
+}
+.pq-quote {
+  margin: 0; padding: 0;
+  font-family: var(--font-display);
+  font-size: 72px; line-height: 1.18;
+  letter-spacing: -0.015em;
+  font-weight: 500;
+  color: var(--fg);
+  position: relative;
+}
+.pq-quote .pq-mark {
+  display: inline-block;
+  font-size: 220px; line-height: 0.6;
+  color: var(--accent); opacity: 0.65;
+  font-family: var(--font-display);
+  vertical-align: -0.4em; margin-right: 12px;
+}
+.pq-quote .pq-text { display: inline; }
+.pq-footer {
+  display: flex; flex-direction: column; gap: 8px;
+  font-style: normal;
+}
+.pq-footer .pq-attribution {
+  font-family: var(--font-display);
+  font-size: 24px; color: var(--accent);
+  font-weight: 600;
+}
+.pq-footer .pq-citation {
+  font-family: var(--font-mono);
+  font-size: 13px; letter-spacing: 0.20em; text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* K1.4 · before-after ──────────────────────────────────────── */
+.before-after-wrap {
+  display: flex; flex-direction: column; gap: 24px;
+  padding-top: 16px;
+  height: 100%;
+}
+.before-after-grid {
+  flex: 1;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+  min-height: 0;
+}
+.ba-side {
+  position: relative; overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+.ba-label {
+  position: absolute; top: 20px; left: 20px; z-index: 2;
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.28em;
+  text-transform: uppercase; color: #fff;
+  background: rgba(15,23,42,0.55); padding: 7px 14px; border-radius: 999px;
+  backdrop-filter: blur(6px);
+}
+.ba-fill {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+}
+.ba-fallback {
+  position: absolute; inset: 0;
+  background:
+    repeating-linear-gradient(135deg,
+      color-mix(in srgb, var(--accent) 10%, transparent) 0 18px,
+      transparent 18px 36px),
+    color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+/* K1.5 · icon-grid ─────────────────────────────────────────── */
+.icon-grid-wrap { display: flex; flex-direction: column; gap: 56px; padding-top: 16px; }
+.icon-grid {
+  display: grid; gap: 40px 56px;
+}
+.icon-grid[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
+.icon-grid[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
+.icon-grid[data-count="6"] { grid-template-columns: repeat(3, 1fr); }
+.icon-grid[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+.icon-cell {
+  display: flex; flex-direction: column; gap: 12px;
+  padding-top: 8px;
+  border-top: 2px solid var(--accent);
+}
+.icon-glyph {
+  font-size: 56px; line-height: 1;
+  margin-bottom: 4px;
+}
+.icon-label {
+  font-family: var(--font-display);
+  font-size: 24px; font-weight: 600; line-height: 1.2;
+  color: var(--fg);
+}
+.icon-desc {
+  font-size: 17px; line-height: 1.5;
+  color: var(--fg-muted);
+}
+
+/* K1.6 · team-roster ──────────────────────────────────────── */
+.team-wrap { display: flex; flex-direction: column; gap: 56px; padding-top: 24px; }
+.team-roster {
+  display: grid; gap: 40px;
+}
+.team-roster[data-count="3"] { grid-template-columns: repeat(3, 1fr); }
+.team-roster[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
+.team-roster[data-count="5"] { grid-template-columns: repeat(5, 1fr); }
+.team-roster[data-count="6"] { grid-template-columns: repeat(6, 1fr); }
+.team-card {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 14px;
+}
+.team-avatar {
+  width: 140px; height: 140px;
+  border-radius: 50%;
+  background-size: cover; background-position: center;
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  box-shadow: 0 1px 0 rgba(0,0,0,0.04), 0 12px 24px -12px rgba(0,0,0,0.18);
+}
+.team-avatar-fallback {
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-size: 56px; font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg));
+}
+.team-name {
+  font-family: var(--font-display);
+  font-size: 22px; line-height: 1.2; font-weight: 600;
+  color: var(--fg);
+}
+.team-role {
+  font-family: var(--font-mono);
+  font-size: 12px; letter-spacing: 0.20em; text-transform: uppercase;
+  color: var(--accent);
+}
+.team-bio {
+  font-size: 15px; line-height: 1.5;
+  color: var(--fg-muted);
+  max-width: 24ch;
+  margin-top: 4px;
+}

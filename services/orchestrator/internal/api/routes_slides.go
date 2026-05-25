@@ -129,7 +129,7 @@ func (h *handlers) runSlideJob(job *slideJob, in slides.Input) {
 	)
 	switch job.Mode {
 	case "pipeline":
-		out, err = h.deps.Pipeline.Run(ctx, in)
+		out, err = h.deps.Pipeline.Run(ctx, job.ID, in)
 	default: // "agent"
 		out, err = h.deps.AgentRunner.Run(ctx, job.ID, in)
 	}
@@ -223,10 +223,11 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusNotFound, "job not found")
 		return
 	}
-	if job.Mode != "agent" {
-		errorJSON(w, http.StatusBadRequest, "follow-up edits require the deck to have been generated in agent mode")
-		return
-	}
+	// Pipeline-mode decks now register their SessionState too (Sprint
+	// I0.1), so follow-up edits work on either mode. The AgentRunner is
+	// what actually drives the edit turn — pipeline mode just provides
+	// the initial deck; the edit conversation that follows always runs
+	// through the agent loop.
 
 	var req struct {
 		Content string `json:"content"`

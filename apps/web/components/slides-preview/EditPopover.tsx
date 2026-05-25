@@ -42,12 +42,17 @@ export function EditPopover({
   target,
   anchor,
   busy,
+  error,
   onSubmit,
   onClose,
 }: {
   target: EditTarget | null;
   anchor: DOMRect | null;
   busy: boolean;
+  /** Sprint I0.3 — last submission error. When non-null the popover
+   *  stays open and renders this above the Footer with a retry hint;
+   *  the existing submit button doubles as the retry action. */
+  error?: string | null;
   onSubmit: (s: EditSubmit) => void;
   onClose: () => void;
 }) {
@@ -60,6 +65,7 @@ export function EditPopover({
       target={target}
       anchor={anchor}
       busy={busy}
+      error={error}
       onSubmit={onSubmit}
       onClose={onClose}
     />,
@@ -76,12 +82,14 @@ function PopoverBody({
   target,
   anchor,
   busy,
+  error,
   onSubmit,
   onClose,
 }: {
   target: EditTarget;
   anchor: DOMRect;
   busy: boolean;
+  error?: string | null;
   onSubmit: (s: EditSubmit) => void;
   onClose: () => void;
 }) {
@@ -291,9 +299,10 @@ function PopoverBody({
                   className="w-full bg-transparent font-display text-[18px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
                 />
               </div>
+              {error && !busy ? <ErrorRow message={error} /> : null}
               <Footer
-                hint="Enter 提交 · Esc 取消"
-                actionLabel="覆盖"
+                hint={error ? "Enter 重试 · Esc 取消" : "Enter 提交 · Esc 取消"}
+                actionLabel={error ? "重试" : "覆盖"}
                 disabled={!canSubmitDirect}
                 busy={busy}
                 onSubmit={submitDirect}
@@ -318,9 +327,10 @@ function PopoverBody({
                   className="w-full resize-none bg-transparent font-display text-[16px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
                 />
               </div>
+              {error && !busy ? <ErrorRow message={error} /> : null}
               <Footer
-                hint="⌘ / Ctrl + Enter 提交 · Esc 取消"
-                actionLabel="重写"
+                hint={error ? "⌘ / Ctrl + Enter 重试 · Esc 取消" : "⌘ / Ctrl + Enter 提交 · Esc 取消"}
+                actionLabel={error ? "重试" : "重写"}
                 disabled={!canSubmitRewrite}
                 busy={busy}
                 onSubmit={submitRewrite}
@@ -404,6 +414,27 @@ function Footer({
         )}
         <span>{actionLabel}</span>
       </button>
+    </div>
+  );
+}
+
+// Sprint I0.3 — inline error pill rendered above Footer when the last
+// edit attempt failed. Single hairline rule + vermillion left-tab to
+// signal "something went sideways" without yelling — the popover
+// stays open and the existing submit button (now labelled 重试) is
+// the action.
+function ErrorRow({ message }: { message: string }) {
+  return (
+    <div
+      role="alert"
+      className="mt-3 flex items-start gap-2 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.04] px-3 py-2"
+    >
+      <span className="mt-[2px] font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--vermillion)]">
+        Err
+      </span>
+      <span className="font-display text-[12px] italic leading-snug text-[color:var(--ink)]">
+        {message}
+      </span>
     </div>
   );
 }

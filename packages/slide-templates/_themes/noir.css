@@ -1,0 +1,234 @@
+/* noir.css — high-contrast cinematic. Designed expressly to pair with
+ * nano-banana B&W AI photography on the H8 image-led layouts.
+ *
+ * The reference point is film-noir editorial: deep black canvas,
+ * paper-white type, a single acid neon accent (cadmium yellow) used
+ * sparingly as punctuation. Display type uses Bodoni Moda — a high-
+ * contrast serif whose extreme weight modulation reads "couture
+ * fashion magazine" instantly.
+ *
+ * Distinctive markers (vs every other theme):
+ *   - 100% black bg with subtle film-grain noise overlay
+ *   - Bodoni Moda display, thin weight, all-caps tracked at 0.04em
+ *   - Single neon-yellow accent (no second colour) — used for
+ *     accent rule, bullets, kickers, metric numbers
+ *   - Hairline 1px rules everywhere; nothing thicker
+ *   - Photo-essay / split-image titles get a tiny film-cell sprocket
+ *     mark left of the kicker
+ *   - Footer is a thin mono "FRAME ###" code, like a contact sheet
+ */
+
+.theme-noir {
+  --bg: #0A0A0B;          /* near-black; not pure-#000 to keep grain visible */
+  --fg: #F4F1E8;          /* warm paper-white; not pure-#fff (less clinical) */
+  --fg-muted: #9A9590;
+  --fg-faint: #5A5650;
+
+  --accent: var(--brand-primary, #E8FF3C);     /* acid cadmium yellow */
+  --accent-2: var(--brand-accent, #E8FF3C);
+
+  --font-body: var(--brand-font, 'Bodoni Moda', 'Noto Serif SC', 'Didot', Georgia, serif);
+  --font-display: 'Bodoni Moda', 'Noto Serif SC', 'Didot', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 160px;
+  --pad-y: 120px;
+  --bullet-size: 0;       /* we draw our own bullet markers */
+}
+
+/* Film-grain noise. SVG fractal noise baked into a CSS data URL so no
+ * extra HTTP request — the pattern repeats across the slide and the
+ * blend mode soft-lights it into the black canvas. */
+.theme-noir .slide {
+  background-color: var(--bg);
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
+}
+
+/* ─── Top-bar contact-sheet header ─────────────────────────────── */
+
+.theme-noir .slide::before {
+  content: "NOIR · NEGATIVE 35MM · DREAM·WAVER";
+  position: absolute;
+  top: 56px; left: 160px; right: 160px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(244,241,232,0.16);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+/* Bottom contact-sheet "FRAME" code — mimics a film strip's annotation */
+.theme-noir .slide::after {
+  content: "— FRAME";
+  position: absolute;
+  bottom: 56px; right: 160px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.36em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* ─── Typography ───────────────────────────────────────────────── */
+
+/* Bodoni's extreme contrast wants light weights for display sizes
+ * and a touch more letter-spacing to keep the thins from disappearing. */
+.theme-noir .title,
+.theme-noir .display {
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+.theme-noir .title-block .title {
+  font-size: 156px;
+  line-height: 1.0;
+  font-weight: 200;     /* even thinner at largest size */
+  letter-spacing: 0.01em;
+}
+.theme-noir .section-block .title,
+.theme-noir .closing-block .title {
+  font-size: 124px;
+  font-weight: 300;
+}
+
+.theme-noir .subtitle {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--fg-muted);
+  font-size: 30px;
+}
+
+.theme-noir .kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.40em;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-weight: 500;
+  margin-bottom: 36px;
+  /* film-cell sprocket dot before kicker text */
+  padding-left: 20px;
+  position: relative;
+}
+.theme-noir .kicker::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 8px; height: 8px;
+  background: var(--accent);
+}
+
+/* ─── Bullets ──────────────────────────────────────────────────── */
+
+.theme-noir .bullets { gap: 26px; }
+.theme-noir .bullet {
+  font-size: 30px;
+  color: var(--fg);
+  padding-left: 28px;
+  position: relative;
+}
+.theme-noir .bullet::before {
+  content: "";
+  background: var(--accent);
+  width: 14px;
+  height: 2px;
+  border-radius: 0;
+  margin-top: 0;
+  position: absolute;
+  left: 0; top: 0.65em;
+}
+
+/* ─── Quote ────────────────────────────────────────────────────── */
+
+.theme-noir .quote {
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-size: 80px;
+  font-style: italic;
+  line-height: 1.18;
+  letter-spacing: 0.01em;
+}
+.theme-noir .attribution {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ─── Metric ────────────────────────────────────────────────────── */
+
+.theme-noir .metric {
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-size: 220px;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+.theme-noir .metric-context {
+  font-family: var(--font-body);
+  font-style: italic;
+  color: var(--fg-muted);
+}
+
+/* ─── Footer ────────────────────────────────────────────────────── */
+
+.theme-noir .footer {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+}
+
+/* ─── Specialised layouts — Bodoni-flavoured overrides ─────────── */
+
+/* Comparison-pair: accent column dividers stay yellow but lighter */
+.theme-noir .comparison-pair::before { opacity: 0.45; }
+.theme-noir .comparison-header { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* Multi-metric tiles — borderless, just an accent top hairline */
+.theme-noir .metric-tile {
+  border-top-color: var(--accent);
+  border-top-width: 2px;
+  background: transparent;
+}
+
+/* SWOT quadrants — keep colour-coded headers per convention but flatten
+ * surface to a single 6%-alpha card so the noir mood holds. */
+.theme-noir .swot-cell {
+  background: rgba(244,241,232,0.04);
+  border-color: rgba(244,241,232,0.12);
+}
+
+/* Image-led layouts inherit base.css; the hero overlay reads dark
+ * against noir's already-dark bg, so the fallback states look
+ * intentional. */
+.theme-noir .photo-essay-fallback {
+  background: linear-gradient(135deg,
+    rgba(232,255,60,0.06), rgba(10,10,11,1));
+  border-left-color: var(--accent);
+}
+.theme-noir .photo-essay-fallback .title { color: var(--fg); }
+.theme-noir .photo-essay-fallback .caption { color: var(--fg-muted); }
+
+.theme-noir .split-image-grid .text-side { background: var(--bg); }
+.theme-noir .split-image-grid .text-side .title { color: var(--fg); }
+.theme-noir .split-image-grid .text-side .body-text { color: var(--fg-muted); }
+.theme-noir .split-image-grid .text-side .bullets .bullet { color: var(--fg); }
+.theme-noir .split-image-grid .image-fallback {
+  background:
+    repeating-linear-gradient(135deg,
+      rgba(232,255,60,0.05) 0 18px, transparent 18px 36px),
+    var(--bg);
+}
+
+.theme-noir .image-grid .grid-tile {
+  background-color: rgba(244,241,232,0.04);
+  box-shadow: 0 0 0 1px rgba(244,241,232,0.06);
+}

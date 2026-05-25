@@ -24,8 +24,10 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
 	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -109,19 +111,20 @@ func main() {
 	// render_deck; emits llm.thought / tool.start / tool.end for the
 	// chat-style UI. Default for /api/v1/slides requests is "agent"; the
 	// pipeline path is kept as a `mode=pipeline` escape hatch.
+	// In-memory session store. When auth + Postgres land, swap this for a
+	// DB-backed implementation that satisfies the same surface. Hoisted to
+	// the call site (not buried in AgentRunner) because the live-HTML
+	// preview endpoint also reads decks out of it, AND pipeline mode now
+	// registers here too (Sprint I0.1) so both paths share the surface.
+	sessions := slides.NewSessionStore()
 	pipeline := &slides.Pipeline{
 		Router:      router,
 		Renderer:    renderer,
 		Emitter:     hub,
 		Images:      imgSearcher,
 		TemplateDir: cfg.TemplateDir,
+		Sessions:    sessions, // I0.1 — enables live preview + edits on pipeline-mode decks
 	}
-	// In-memory session store. When auth + Postgres land, swap this for a
-	// DB-backed implementation that satisfies the same surface. Hoisted to
-	// the call site (not buried in AgentRunner) because the live-HTML
-	// preview endpoint also reads decks out of it.
-	sessions := slides.NewSessionStore()
-
 	// ─── Sandbox gRPC ─────────────────────────────────────────────────
 	// Optional — only registers the code_execute tool when the sandbox
 	// service actually answers. We dial lazily with WaitForReady=false
@@ -164,6 +167,31 @@ func main() {
 		Sessions: gameSessions,
 	}
 
+	// ─── Video — Opendream click-to-regen cinematic short pipeline ───
+	// The Go side is just a bridge: it forwards story_spec.json runs to
+	// the Opendream FastAPI, proxies the timeline SSE stream, and
+	// rewrites artifact URLs onto our own prefix. Disabled when
+	// OPENDREAM_BASE_URL is unset — /api/v1/video/* then 503s with a
+	// setup hint instead of crashing the boot.
+	var videoBridge *video.Bridge
+	if cfg.OpendreamBaseURL != "" {
+		videoBridge = video.NewBridge(cfg.OpendreamBaseURL, nil)
+		slog.Info("video bridge enabled (Opendream FastAPI)", "base_url", cfg.OpendreamBaseURL)
+	} else {
+		slog.Info("video bridge disabled — set OPENDREAM_BASE_URL to enable /api/v1/video/*")
+	}
+
+	// ─── Design — dreamapi-sidecar (DreamAPI image generation) ────────
+	// Same pattern as video. Powers the TLDraw canvas's "+ AI image"
+	// button via POST /api/v1/design/images/generate.
+	var designBridge *design.Bridge
+	if cfg.DreamapiSidecarURL != "" {
+		designBridge = design.NewBridge(cfg.DreamapiSidecarURL, nil)
+		slog.Info("design bridge enabled (dreamapi-sidecar)", "base_url", cfg.DreamapiSidecarURL)
+	} else {
+		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
+	}
+
 	// ─── HTTP server ──────────────────────────────────────────────────
 	srv := api.NewServer(api.Dependencies{
 		Hub:          hub,
@@ -181,6 +209,8 @@ func main() {
 			}
 			return ""
 		}(),
+		VideoBridge:  videoBridge,
+		DesignBridge: designBridge,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

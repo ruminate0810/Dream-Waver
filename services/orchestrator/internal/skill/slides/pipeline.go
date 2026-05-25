@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
@@ -39,12 +40,18 @@ type (
 
 // Pipeline runs the deterministic, single-shot generation path. For the
 // agent-driven path see AgentRunner in agent_runner.go.
+//
+// Sessions is OPTIONAL but recommended: when non-nil, Run() registers the
+// rendered deck into the store keyed by jobID so the live-preview HTML
+// endpoint and follow-up edit endpoint work on pipeline-mode decks just
+// like they do on agent-mode decks. Without it, those endpoints 404.
 type Pipeline struct {
 	Router      llm.Router
 	Renderer    *tool.SlideRender
 	Emitter     event.Emitter
 	Images      image.Searcher // optional; NoopSearcher disables hero images
 	TemplateDir string
+	Sessions    *SessionStore // optional; nil disables live preview + edits for pipeline-mode decks
 }
 
 // Input is the request shape both Pipeline.Run and AgentRunner.Run accept.
@@ -82,7 +89,12 @@ type Cost struct {
 // Run is the fast/deterministic execution path: outline → content →
 // assemble → resolve images → render. Token usage is summed across the
 // two LLM calls.
-func (p *Pipeline) Run(ctx context.Context, in Input) (*Output, error) {
+//
+// jobID is used to register the final SessionState into Sessions (when
+// configured) so the live-preview and edit endpoints can reach this
+// deck after Run returns. Pass an empty string from contexts that
+// don't need post-render access (CLI tests, etc.).
+func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, error) {
 	var cost Cost
 
 	outline, u1, err := stages.Outline(ctx, p.Router, stages.OutlineParams{
@@ -123,6 +135,26 @@ func (p *Pipeline) Run(ctx context.Context, in Input) (*Output, error) {
 
 	cost.EstimatedUSD = estimateCost(cost)
 
+	// Register the session so live-preview HTML + follow-up edits can
+	// reach this deck after Run() returns. Mirrors AgentRunner.Run's
+	// behaviour at agent_runner.go — without this, pipeline-mode decks
+	// hit 404 on /api/v1/slides/{id}/page/{n}.html. No agent memory to
+	// persist (no LLM turns happened on the agent loop), so Memory
+	// stays nil — follow-up edits start a fresh agent against the
+	// existing Deck/Outline/Content.
+	if p.Sessions != nil && jobID != "" {
+		state := &SessionState{
+			JobID:      jobID,
+			Input:      in,
+			Outline:    outline,
+			Content:    content,
+			Deck:       &deck,
+			PptxPath:   pptxPath,
+			SlideCount: len(deck.Slides),
+		}
+		p.Sessions.Put(state)
+	}
+
 	return &Output{
 		PptxPath:   pptxPath,
 		Title:      outline.Title,
@@ -146,22 +178,19 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 	if searcher == nil {
 		return
 	}
-	type job struct {
-		idx   int
-		query string
-	}
-	jobs := []job{}
-	for i, s := range deck.Slides {
-		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
-			jobs = append(jobs, job{i, q})
-		}
-	}
+	jobs := collectImageJobs(deck)
 	if len(jobs) == 0 {
 		return
 	}
 
 	var cacheMu sync.Mutex
 	cache := map[string]*image.Result{}
+
+	// Sprint I0.2 — atomic counters so the post-fanout summary log can
+	// surface per-job success rate. Per-goroutine warns are still useful
+	// for diagnosing WHICH queries failed, but without this aggregate
+	// even a 3-of-4-failed grid is invisible at the job-log level.
+	var succeeded, failed int64
 
 	var wg sync.WaitGroup
 	for _, j := range jobs {
@@ -173,8 +202,10 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			if r, ok := cache[j.query]; ok {
 				cacheMu.Unlock()
 				if r != nil {
-					deck.Slides[j.idx].Data.Image = r.URL
-					deck.Slides[j.idx].Data.ImageCredit = r.Credit
+					writeImageResult(deck, j, r)
+					atomic.AddInt64(&succeeded, 1)
+				} else {
+					atomic.AddInt64(&failed, 1)
 				}
 				return
 			}
@@ -183,18 +214,119 @@ func resolveImages(ctx context.Context, searcher image.Searcher, deck *Deck) {
 			r, err := searcher.Search(ctx, j.query)
 			if err != nil {
 				slog.WarnContext(ctx, "image search failed", "query", j.query, "err", err)
+				atomic.AddInt64(&failed, 1)
 				return
 			}
 			cacheMu.Lock()
 			cache[j.query] = r // record nil too so we don't retry empty hits
 			cacheMu.Unlock()
 			if r != nil {
-				deck.Slides[j.idx].Data.Image = r.URL
-				deck.Slides[j.idx].Data.ImageCredit = r.Credit
+				writeImageResult(deck, j, r)
+				atomic.AddInt64(&succeeded, 1)
+			} else {
+				atomic.AddInt64(&failed, 1)
 			}
 		}()
 	}
 	wg.Wait()
+
+	s, f := atomic.LoadInt64(&succeeded), atomic.LoadInt64(&failed)
+	slog.InfoContext(ctx, "image fanout finished",
+		"total", len(jobs), "succeeded", s, "failed", f,
+		"success_rate", fmt.Sprintf("%.0f%%", 100*float64(s)/float64(len(jobs))),
+	)
+}
+
+// imageJobKind enumerates every place a slide can store an image URL.
+// Routing by typed kind beats the prior gridIdx-int sentinel approach
+// once we have ≥ 4 targets (Image / Images[i] / BeforeImage /
+// AfterImage / TeamMembers[i].Avatar / BentoCards[i].Image).
+type imageJobKind int
+
+const (
+	imgJobSingle      imageJobKind = iota // SlideData.Image
+	imgJobGrid                            // SlideData.Images[subIdx]
+	imgJobBeforeImage                     // SlideData.BeforeImage
+	imgJobAfterImage                      // SlideData.AfterImage
+	imgJobTeamAvatar                      // SlideData.TeamMembers[subIdx].Avatar
+	imgJobBentoCard                       // SlideData.BentoCards[subIdx].Image
+)
+
+type imageJob struct {
+	slideIdx int
+	query    string
+	kind     imageJobKind
+	subIdx   int // index into Images / TeamMembers / BentoCards (ignored for the others)
+}
+
+// collectImageJobs walks every slide and emits one imageJob per pending
+// image fetch across all layouts. Pre-allocates the destination slices
+// (Images, etc.) so the goroutines can write by index without locking.
+func collectImageJobs(deck *Deck) []imageJob {
+	var jobs []imageJob
+	for i, s := range deck.Slides {
+		// Single hero image (title / section / closing / photo-essay / split-image / pull-quote etc.)
+		if q := strings.TrimSpace(s.Data.ImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobSingle, 0})
+		}
+		// Image-grid: N parallel queries → indexed Images slice
+		if len(s.Data.ImageQueries) > 0 {
+			deck.Slides[i].Data.Images = make([]string, len(s.Data.ImageQueries))
+			for gi, q := range s.Data.ImageQueries {
+				if q = strings.TrimSpace(q); q != "" {
+					jobs = append(jobs, imageJob{i, q, imgJobGrid, gi})
+				}
+			}
+		}
+		// Before-after: two distinct queries → BeforeImage / AfterImage
+		if q := strings.TrimSpace(s.Data.BeforeImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobBeforeImage, 0})
+		}
+		if q := strings.TrimSpace(s.Data.AfterImageQuery); q != "" {
+			jobs = append(jobs, imageJob{i, q, imgJobAfterImage, 0})
+		}
+		// Team-roster: one avatar per member with an AvatarQuery
+		for mi, m := range s.Data.TeamMembers {
+			if q := strings.TrimSpace(m.AvatarQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobTeamAvatar, mi})
+			}
+		}
+		// Bento-grid: one image per card with an ImageQuery
+		for ci, c := range s.Data.BentoCards {
+			if q := strings.TrimSpace(c.ImageQuery); q != "" {
+				jobs = append(jobs, imageJob{i, q, imgJobBentoCard, ci})
+			}
+		}
+	}
+	return jobs
+}
+
+// writeImageResult routes one image.Result into the right field of the
+// right slide based on the job's typed kind. Centralised so every new
+// image-bearing layout extends ONE switch instead of growing if-chains
+// throughout the codebase.
+func writeImageResult(deck *Deck, j imageJob, r *image.Result) {
+	s := &deck.Slides[j.slideIdx]
+	switch j.kind {
+	case imgJobSingle:
+		s.Data.Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobGrid:
+		s.Data.Images[j.subIdx] = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobBeforeImage:
+		s.Data.BeforeImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobAfterImage:
+		s.Data.AfterImage = r.URL
+		s.Data.ImageCredit = r.Credit
+	case imgJobTeamAvatar:
+		s.Data.TeamMembers[j.subIdx].Avatar = r.URL
+		// Avatars don't show per-member credit — too noisy.
+	case imgJobBentoCard:
+		s.Data.BentoCards[j.subIdx].Image = r.URL
+		s.Data.ImageCredit = r.Credit
+	}
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────

@@ -5,7 +5,9 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 type Config struct {
@@ -55,6 +57,17 @@ type Config struct {
 
 	TemplateDir string
 	OutDir      string
+
+	// OpendreamBaseURL points at the Opendream FastAPI service that
+	// powers /api/v1/video/*. Empty disables the bridge — every video
+	// route 503s with a setup hint until this is configured. See
+	// /Users/sheng/git/Opendream/server/README.md.
+	OpendreamBaseURL string
+
+	// DreamapiSidecarURL points at services/dreamapi-sidecar (the
+	// FastAPI front for DreamAPI image generation) that powers
+	// /api/v1/design/*. Empty disables the bridge.
+	DreamapiSidecarURL string
 }
 
 func Load() (*Config, error) {
@@ -89,8 +102,14 @@ func Load() (*Config, error) {
 		ModelWorker:  envOr("LLM_MODEL_WORKER", "deepseek-v4-flash"),
 		ModelCritic:  envOr("LLM_MODEL_CRITIC", "deepseek-v4-pro"),
 		SandboxGRPCAddr: envOr("SANDBOX_GRPC_ADDR", "localhost:50051"),
-		TemplateDir:     envOr("SLIDE_TEMPLATE_DIR", "/app/templates"),
+		TemplateDir:     resolveTemplateDir(),
 		OutDir:          envOr("SLIDE_OUT_DIR", "/tmp/dreamwaver-out"),
+		// Convention matches Opendream's local-dev port. Override in
+		// staging/prod to point at the in-cluster service URL.
+		OpendreamBaseURL: envOr("OPENDREAM_BASE_URL", ""),
+		// dreamapi-sidecar default port. Set DREAMAPI_SIDECAR_URL to
+		// enable the design skill.
+		DreamapiSidecarURL: envOr("DREAMAPI_SIDECAR_URL", ""),
 	}
 	if err := c.validatePrimary(); err != nil {
 		return nil, err
@@ -116,4 +135,41 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// resolveTemplateDir picks the slide-templates dir. Honour
+// SLIDE_TEMPLATE_DIR first; otherwise scan a handful of conventional
+// locations so local-dev works without env setup:
+//
+//  1. /app/templates              (the Dockerfile install path)
+//  2. ./packages/slide-templates  (running from repo root, like `go run`)
+//  3. ../packages/slide-templates (running from services/orchestrator)
+//  4. ../../packages/slide-templates (running from services/orchestrator/cmd/server)
+//
+// Falls through to /app/templates so the error message stays
+// recognisable when nothing matches (the renderer's own error
+// message points at it).
+func resolveTemplateDir() string {
+	if v := os.Getenv("SLIDE_TEMPLATE_DIR"); v != "" {
+		return v
+	}
+	cwd, _ := os.Getwd()
+	candidates := []string{
+		"/app/templates",
+		filepath.Join(cwd, "packages", "slide-templates"),
+		filepath.Join(cwd, "..", "packages", "slide-templates"),
+		filepath.Join(cwd, "..", "..", "packages", "slide-templates"),
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			// Check the dir actually contains template assets — a bare
+			// empty dir match would be unhelpful.
+			if _, err := os.Stat(filepath.Join(p, "_shared")); err == nil {
+				abs, _ := filepath.Abs(p)
+				slog.Info("templates auto-resolved", "path", abs, "via", "filesystem-scan")
+				return abs
+			}
+		}
+	}
+	return "/app/templates"
 }

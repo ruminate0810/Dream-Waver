@@ -2,6 +2,7 @@ import { Sidebar } from "@/components/workspace/Sidebar";
 import { Hero } from "@/components/workspace/Hero";
 import { AgentGrid } from "@/components/workspace/AgentGrid";
 import { TopRight } from "@/components/workspace/TopRight";
+import { RecentDecks } from "@/components/workspace/RecentDecks";
 
 // Workspace homepage — Genspark-4.0 style: fixed left rail of capability
 // icons, big centered prompt input, agent grid underneath. Today only
@@ -15,6 +16,7 @@ export default function Home() {
       <main className="ml-[72px] flex min-h-screen flex-col">
         <Hero />
         <AgentGrid />
+        <RecentDecks />
         <footer className="mt-auto px-10 py-8 text-xs text-zinc-400">
           © 2026 Dream-Waver · MIT · Powered by Go + Rust + DeepSeek
         </footer>

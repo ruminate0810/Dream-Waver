@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-label="Photo-essay layout — full-bleed image with editorial title bottom-left">
+  <defs>
+    <linearGradient id="photoFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#5C6B73"/>
+      <stop offset="0.55" stop-color="#3E4A52"/>
+      <stop offset="1" stop-color="#1F2830"/>
+    </linearGradient>
+    <linearGradient id="darken" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0F172A" stop-opacity="0.10"/>
+      <stop offset="0.45" stop-color="#0F172A" stop-opacity="0.02"/>
+      <stop offset="1" stop-color="#0F172A" stop-opacity="0.78"/>
+    </linearGradient>
+    <radialGradient id="rim" cx="0.6" cy="0.3" r="0.8">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="0.7" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- full-bleed photo region -->
+  <rect x="0" y="0" width="640" height="360" fill="url(#photoFill)"/>
+  <rect x="0" y="0" width="640" height="360" fill="url(#rim)"/>
+  <!-- horizon line + suggestion of subject -->
+  <rect x="0" y="220" width="640" height="140" fill="#0F172A" fill-opacity="0.25"/>
+  <circle cx="430" cy="155" r="58" fill="#FFFFFF" fill-opacity="0.06"/>
+  <!-- dark overlay for legibility -->
+  <rect x="0" y="0" width="640" height="360" fill="url(#darken)"/>
+
+  <!-- editorial kicker (mono caps) -->
+  <text x="40" y="282" font-family="ui-monospace, Menlo, monospace" font-size="9" letter-spacing="3" fill="#FFFFFF" fill-opacity="0.62">PHOTO ESSAY</text>
+  <!-- one-line title — Fraunces-like serif feel -->
+  <text x="40" y="320" font-family="Georgia, 'Fraunces', serif" font-size="34" font-weight="600" letter-spacing="-0.5" fill="#FFFFFF">浅草寺の朝</text>
+
+  <!-- AI-generated credit pill bottom-right -->
+  <rect x="528" y="324" width="98" height="20" rx="10" fill="#0F172A" fill-opacity="0.42" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="0.7"/>
+  <text x="540" y="338" font-family="ui-monospace, Menlo, monospace" font-size="8" letter-spacing="2" fill="#FFFFFF" fill-opacity="0.7">AI · GEMINI</text>
+</svg>

@@ -144,14 +144,13 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 		Model:        router.ModelFor("planner"),
 		SystemPrompt: prompts.Outline,
 		Messages:     []schema.Message{schema.NewUser(user)},
-		// 6000 to match Content's cap — the outline schema grew (theme
-		// + per-slide headlines + key_points) and 3000 turns out to be
-		// tight enough that topics with 15+ slides (or any topic the
-		// model wants to riff on, e.g. media analysis with editorial
-		// theme) trip finish_reason="length" mid-string. F1's retry
-		// path can't recover from that because both attempts use the
-		// same cap. Cost delta is negligible: ~¥0.02 worst case per
-		// outline call at deepseek-v4-pro pricing.
+		// 6000 to match Content's cap. Both branches independently raised
+		// this from 3000 (F3 / Sprint K1-followup) because the outline
+		// schema grew — theme + per-slide headlines + key_points + longer
+		// speaker_notes — and 3000 trips finish_reason="length" mid-
+		// string for any topic that wants 15+ slides or an editorial
+		// theme. F1's retry path can't recover because both attempts use
+		// the same cap. Cost delta is ~¥0.02 per call on deepseek-v4-pro.
 		MaxTokens:         6000,
 		EnablePromptCache: true,
 	}, func(content string) error {

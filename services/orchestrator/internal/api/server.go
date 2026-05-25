@@ -15,8 +15,10 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -46,6 +48,17 @@ type Dependencies struct {
 	// iframe + chromedp render can both fetch them by HTTP URL. Leave
 	// empty to skip mounting the route (e.g. when image-gen is off).
 	AIImagesDir string
+
+	// VideoBridge proxies the click-to-regen cinematic short pipeline
+	// to the Opendream FastAPI service. Optional; when nil, every
+	// /api/v1/video/* route returns 503 with a hint to set
+	// OPENDREAM_BASE_URL. See services/orchestrator/internal/skill/video.
+	VideoBridge *video.Bridge
+
+	// DesignBridge proxies image generation to the dreamapi-sidecar
+	// FastAPI service. Optional; when nil, /api/v1/design/* returns
+	// 503 with a hint to set DREAMAPI_SIDECAR_URL.
+	DesignBridge *design.Bridge
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -105,6 +118,36 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/games/{id}/messages", h.PostGameMessage)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
+
+		// Video — bridge to the Opendream FastAPI iteration backend.
+		// Every route 503s when VideoBridge is nil so the surface is
+		// always present and the failure mode is descriptive.
+		r.Route("/video", func(r chi.Router) {
+			r.Post("/runs", h.CreateVideoRun)
+			r.Get("/runs/{id}", h.GetVideoTimeline)
+			r.Post("/runs/{id}/regen", h.RegenVideoNodes)
+			r.Get("/runs/{id}/events", h.StreamVideoEvents)
+			r.Get("/runs/{id}/artifacts/*", h.GetVideoArtifact)
+		})
+
+		// Design — bridge to dreamapi-sidecar (image generation that
+		// the TLDraw canvas drops onto the workspace). Same shape as
+		// video above: route exists unconditionally, 503s with a
+		// setup hint when the bridge isn't wired.
+		r.Route("/design", func(r chi.Router) {
+			r.Post("/images/generate", h.GenerateDesignImage)
+			r.Post("/images/generate/submit", h.SubmitDesignGenerate)
+			// Note the trailing path segment ordering: `/{task_id}/events`
+			// would collide with `/generate/submit` if it lived under
+			// `/images/{task_id}`. Putting `events` under its own
+			// `/images/jobs/{task_id}` sub-route avoids the ambiguity.
+			r.Get("/images/jobs/{task_id}/events", h.StreamDesignGenerateEvents)
+			r.Post("/images/variants", h.GenerateDesignVariants)
+			r.Post("/images/remove_bg", h.RemoveDesignImageBG)
+			r.Post("/images/enhance", h.EnhanceDesignImage)
+			r.Post("/images/outpaint", h.OutpaintDesignImage)
+			r.Post("/images/image2image", h.Image2ImageDesignImage)
+		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into
 		// AIImagesDir; this route serves them so both the browser
