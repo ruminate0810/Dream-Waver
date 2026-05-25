@@ -14,11 +14,13 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/auth"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -59,6 +61,18 @@ type Dependencies struct {
 	// FastAPI service. Optional; when nil, /api/v1/design/* returns
 	// 503 with a hint to set DREAMAPI_SIDECAR_URL.
 	DesignBridge *design.Bridge
+
+	// Store is the persistence layer. Phase 1 (Sprint X1) wires
+	// Users + Workspaces. Phase 2 fills in SlideJobs / GameJobs /
+	// VideoRuns / DesignAssets and migrates the in-memory
+	// SessionStores in slides / games over to it.
+	Store *store.Store
+
+	// AuthMiddleware is mounted on the /api/v1 group. PERMISSIVE —
+	// it populates ctx with User/Workspace when auth headers are
+	// present, passes anonymous traffic through otherwise. Routes
+	// that require auth wrap with `r.With(auth.Required)`.
+	AuthMiddleware func(http.Handler) http.Handler
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -91,6 +105,28 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 
 	h := &handlers{deps: deps}
 	r.Route("/api/v1", func(r chi.Router) {
+		// Auth middleware (permissive) — populates ctx with User /
+		// Workspace when headers are present; no-ops otherwise. Routes
+		// that require auth wrap themselves with `r.With(auth.Required)`.
+		if deps.AuthMiddleware != nil {
+			r.Use(deps.AuthMiddleware)
+		}
+
+		// ─── Workspace + identity routes (auth-required) ────────────
+		// These are the first surface that strictly requires login.
+		// Existing slides / games / video / design routes stay
+		// anonymous through Phase 1; Phase 2 migrates them.
+		r.Group(func(r chi.Router) {
+			r.Use(auth.Required)
+			r.Get("/me", h.GetMe)
+			r.Get("/workspaces", h.ListWorkspaces)
+			r.Post("/workspaces", h.CreateWorkspace)
+			r.Get("/workspaces/{id}", h.GetWorkspace)
+			r.Get("/workspaces/{id}/members", h.ListWorkspaceMembers)
+			r.Post("/workspaces/{id}/members", h.AddWorkspaceMember)
+			r.Delete("/workspaces/{id}/members/{user_id}", h.RemoveWorkspaceMember)
+		})
+
 		r.Post("/slides", h.CreateSlides)
 		r.Get("/slides/{id}", h.GetSlides)
 		r.Get("/slides/{id}/download", h.DownloadSlides)

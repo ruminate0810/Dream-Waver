@@ -1,5 +1,39 @@
 // Thin client for the Go orchestrator. Routes go through Next.js rewrites
 // during local dev so we never set Origin / CORS headers from the browser.
+//
+// Phase 1 (Sprint X1) introduces apiFetch — a centralized wrapper that
+// injects the active X-Workspace-ID header on every call. Existing
+// helpers below still call `fetch()` directly because their backend
+// routes haven't migrated to required-auth yet (Phase 2 does that).
+// NEW helpers (workspace CRUD, /me) use apiFetch so they round-trip
+// the workspace context cleanly.
+
+import { getActiveWorkspaceID } from "@/lib/workspace";
+
+/**
+ * apiFetch is the thin wrapper around fetch() that:
+ *   - Prepends nothing — caller passes the full /api/v1/... path.
+ *   - Injects the X-Workspace-ID header from the workspace cookie
+ *     when one is set. Skipped when not (so anonymous calls still go).
+ *   - Defaults Content-Type to application/json when the caller
+ *     passes a body but no header.
+ *
+ * Future Phase 2 migration: every existing `fetch("/api/v1/…")` call
+ * below swaps to apiFetch(…) so workspace context is uniform. For
+ * now we leave the existing call sites alone to keep the Sprint X1
+ * diff focused.
+ */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const wsID = getActiveWorkspaceID();
+  if (wsID && !headers.has("X-Workspace-ID")) {
+    headers.set("X-Workspace-ID", wsID);
+  }
+  if (init?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(path, { ...init, headers });
+}
 
 export type CreateSlidesRequest = {
   topic: string;
@@ -609,4 +643,81 @@ export async function submitDesignGenerate(
 /** Same-origin SSE URL — no rewrite, no WS, no special headers. */
 export function designGenerateEventsURL(taskId: string): string {
   return `/api/v1/design/images/jobs/${taskId}/events`;
+}
+
+// ─── Workspace + identity (Sprint X1, Phase 1) ──────────────────────
+//
+// All helpers below use apiFetch so the X-Workspace-ID header rides
+// along. These routes 401 without auth on the backend — the web
+// middleware bounces unauth users to /login before they get here.
+
+export type Workspace = {
+  id: string;
+  name: string;
+  kind: "personal" | "team";
+  owner_user_id: string;
+  created_at: string;
+};
+
+export type Me = {
+  user_id: string;
+  email: string;
+  active_workspace_id: string;
+  active_workspace: Workspace | null;
+};
+
+export async function getMe(): Promise<Me> {
+  const res = await apiFetch("/api/v1/me");
+  return unwrap<Me>(res);
+}
+
+export async function listWorkspaces(): Promise<{ workspaces: Workspace[] }> {
+  const res = await apiFetch("/api/v1/workspaces");
+  return unwrap<{ workspaces: Workspace[] }>(res);
+}
+
+export async function createWorkspace(
+  body: { name: string },
+): Promise<Workspace> {
+  const res = await apiFetch("/api/v1/workspaces", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return unwrap<Workspace>(res);
+}
+
+export type WorkspaceMember = {
+  user_id: string;
+  email: string;
+  role: "owner" | "admin" | "member";
+  created_at: string;
+};
+
+export async function listWorkspaceMembers(
+  workspaceID: string,
+): Promise<{ members: WorkspaceMember[] }> {
+  const res = await apiFetch(`/api/v1/workspaces/${workspaceID}/members`);
+  return unwrap<{ members: WorkspaceMember[] }>(res);
+}
+
+export async function addWorkspaceMember(
+  workspaceID: string,
+  body: { email: string; role?: "owner" | "admin" | "member" },
+): Promise<WorkspaceMember> {
+  const res = await apiFetch(`/api/v1/workspaces/${workspaceID}/members`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return unwrap<WorkspaceMember>(res);
+}
+
+export async function removeWorkspaceMember(
+  workspaceID: string,
+  userID: string,
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/v1/workspaces/${workspaceID}/members/${userID}`,
+    { method: "DELETE" },
+  );
+  await unwrap<{ status: string }>(res);
 }

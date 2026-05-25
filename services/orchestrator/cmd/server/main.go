@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/api"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/auth"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/config"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
@@ -28,6 +29,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/video"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -192,6 +194,35 @@ func main() {
 		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
 	}
 
+	// ─── Persistence (store) ──────────────────────────────────────────
+	// store.New auto-falls back to an in-memory adapter when
+	// DATABASE_URL is empty (local dev without docker compose), so
+	// the orchestrator still boots. Migrations land on every start —
+	// applied tracker means re-running is a no-op.
+	bootCtx, bootCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	dataStore, err := store.New(bootCtx, cfg.DatabaseURL, cfg.MigrationsDir)
+	bootCancel()
+	if err != nil {
+		slog.Error("store init", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = dataStore.Close() }()
+
+	// ─── Auth middleware ──────────────────────────────────────────────
+	// Permissive at mount — populates ctx when auth headers are
+	// present, no-ops otherwise. Routes that require auth wrap with
+	// `r.With(auth.Required)`. In dev mode (no SUPABASE_JWKS_URL),
+	// the middleware accepts X-Dev-User-Id headers.
+	authCfg := auth.Config{
+		JWKSURL:  cfg.SupabaseJWKSURL,
+		Audience: cfg.SupabaseAudience,
+		DevMode:  cfg.Env == "development",
+	}
+	authMW := auth.Middleware(authCfg, auth.Deps{
+		Users:      dataStore.Users,
+		Workspaces: dataStore.Workspaces,
+	})
+
 	// ─── HTTP server ──────────────────────────────────────────────────
 	srv := api.NewServer(api.Dependencies{
 		Hub:          hub,
@@ -209,8 +240,10 @@ func main() {
 			}
 			return ""
 		}(),
-		VideoBridge:  videoBridge,
-		DesignBridge: designBridge,
+		VideoBridge:    videoBridge,
+		DesignBridge:   designBridge,
+		Store:          dataStore,
+		AuthMiddleware: authMW,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

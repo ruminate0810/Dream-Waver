@@ -68,6 +68,23 @@ type Config struct {
 	// FastAPI front for DreamAPI image generation) that powers
 	// /api/v1/design/*. Empty disables the bridge.
 	DreamapiSidecarURL string
+
+	// ─── Auth (Supabase) ─────────────────────────────────────────────
+	// SupabaseJWKSURL is the project's JWKS endpoint, e.g.
+	// https://<project>.supabase.co/auth/v1/.well-known/jwks.json.
+	// Empty + Env=development falls back to a dev mode that trusts
+	// X-Dev-User-Id headers (loud warning at boot). Empty + Env=
+	// production is a misconfiguration — Auth routes will 401.
+	SupabaseJWKSURL  string
+	// SupabaseAudience must match the `aud` claim Supabase emits;
+	// defaults to "authenticated" which is the right value for the
+	// out-of-the-box Supabase config.
+	SupabaseAudience string
+
+	// MigrationsDir is the on-disk path where 000N_*.sql files live.
+	// Auto-resolved (similar to TemplateDir) so local dev works without
+	// env setup. Empty in tests that seed their own schema.
+	MigrationsDir string
 }
 
 func Load() (*Config, error) {
@@ -110,6 +127,11 @@ func Load() (*Config, error) {
 		// dreamapi-sidecar default port. Set DREAMAPI_SIDECAR_URL to
 		// enable the design skill.
 		DreamapiSidecarURL: envOr("DREAMAPI_SIDECAR_URL", ""),
+
+		SupabaseJWKSURL:  os.Getenv("SUPABASE_JWKS_URL"),
+		SupabaseAudience: envOr("SUPABASE_AUDIENCE", "authenticated"),
+
+		MigrationsDir: resolveMigrationsDir(),
 	}
 	if err := c.validatePrimary(); err != nil {
 		return nil, err
@@ -135,6 +157,32 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// resolveMigrationsDir picks the migrations dir using the same
+// candidate-scan trick as resolveTemplateDir below. Honour
+// ORCHESTRATOR_MIGRATIONS_DIR first; otherwise probe common locations
+// so `go run ./cmd/server` works from any of services/orchestrator,
+// the repo root, or the Dockerfile install path.
+func resolveMigrationsDir() string {
+	if v := os.Getenv("ORCHESTRATOR_MIGRATIONS_DIR"); v != "" {
+		return v
+	}
+	cwd, _ := os.Getwd()
+	candidates := []string{
+		"/app/migrations",
+		filepath.Join(cwd, "services", "orchestrator", "migrations"),
+		filepath.Join(cwd, "migrations"),
+		filepath.Join(cwd, "..", "migrations"),
+		filepath.Join(cwd, "..", "..", "migrations"),
+	}
+	for _, p := range candidates {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			abs, _ := filepath.Abs(p)
+			return abs
+		}
+	}
+	return ""
 }
 
 // resolveTemplateDir picks the slide-templates dir. Honour
