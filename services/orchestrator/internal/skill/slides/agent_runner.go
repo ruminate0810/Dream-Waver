@@ -206,15 +206,63 @@ Vague aesthetic requests (HARD — read this carefully):
     回答用户：「目前不支持单页字号微调 — 后续 sprint 会加
     style_slide。」不要硬选 apply_brand 凑数。
 
-Other rules:
-  - Call exactly ONE edit tool per turn unless the user explicitly asks
-    for multiple changes.
-  - After the edit tool returns, IMMEDIATELY call terminate.
-  - Keep your reasoning between tool calls to one sentence.
+Reflection tools (Sprint O — call as described below, NOT optional):
+  - analyze_deck      — read-only: returns the deck's full shape (title,
+                        theme, brand, per-slide title + layout + body
+                        excerpt). Call this FIRST when the user's request
+                        is deck-level ("整体更好看 / 更有说服力 / 更紧
+                        凑") so you can pick SPECIFIC slides to edit
+                        rather than blindly regenerating. Cheap; no LLM.
+  - critic_deck       — review the deck AFTER your edit tool returned,
+                        to check whether the change satisfied the user
+                        AND nothing else regressed (lost brand, voice
+                        drift, broken rhythm). Returns a JSON {"notes":
+                        [...], "is_clean": bool}. Each note's 'fix'
+                        names a specific edit tool with args.
+  - revise_slide      — targeted per-slide rewrite driven by a single
+                        critic note. Use when critic_deck flagged one
+                        slide and you want a precise correction (vs
+                        regenerate_slide's free-form rewrite).
+
+Reflection loop (use this shape EVERY edit turn):
+
+  1. (optional) analyze_deck — if the user's request is deck-level
+     (vague "整体" / "全部" / "更 X" requests), read the structure first.
+     Skip for crisp single-slide requests ("把第 3 页的标题改成 X").
+
+  2. Apply your edit tool (edit_slide_text / regenerate_slide / add_slide
+     / delete_slide / change_theme / apply_brand / set_footer / etc.)
+     OR if you can't (e.g. unsupported feature), reply explaining + skip
+     to terminate. Do NOT pretend a tool worked when it doesn't exist.
+
+  3. critic_deck — pass the user's verbatim instruction + 1-line summary
+     of your tool call. ALWAYS call this after a content-changing tool
+     (regenerate_slide / add_slide / revise_slide / edit_slide_text /
+     change_theme / apply_brand / generate_image). SKIP only after
+     trivial mechanical tools (delete_slide / reorder_slide / duplicate_slide /
+     set_footer / edit_speaker_notes).
+
+  4. If critic_deck returned is_clean=true → terminate.
+     If non-empty notes → fix the TOP issue with the tool the note's
+     'fix' field names (typically regenerate_slide or revise_slide).
+     Then critic_deck AGAIN. After 2 rounds of revisions, ship anyway
+     (terminate) — don't loop forever.
+
+Hard caps:
+  - At most 3 edit-tool calls per turn (the initial edit + up to 2
+    critic-driven revisions).
+  - At most 2 critic_deck rounds. After the second non-clean response,
+    terminate.
+  - For trivial mechanical edits (delete / reorder / duplicate /
+    set_footer / edit_speaker_notes) skip critic_deck — those can't
+    really go wrong.
 
 Communication style:
   - Match the user's language (Chinese or English).
-  - Be brief in your text replies — the visible result is the new slide.`
+  - Be brief in your text replies — the visible result is the new slide.
+  - When you skip critic_deck (mechanical edit), say one line on what
+    you did. When critic_deck flagged and you fixed it, briefly mention
+    "已审核 + 微调".`
 
 const nextStepPrompt = `Based on the work so far, what is the single next tool call?`
 
@@ -655,9 +703,18 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 	// Edit-tool registry. We do NOT include plan_outline / write_content /
 	// render_deck on this turn — the deck already exists; the agent's job
 	// is to mutate it via the edit tools.
+	//
+	// Sprint O.3 added 3 reflection tools (analyze_deck / critic_deck /
+	// revise_slide) so the agent can introspect before acting and verify
+	// after — systemPromptEdit teaches the loop.
 	registryTools := []tool.Tool{
+		// Introspection (Sprint O.3) — call first when request is
+		// deck-level; cheap, no LLM.
+		&tools.AnalyzeDeck{State: state},
+		// Action tools — mutate the deck.
 		&tools.EditSlideText{State: state, Renderer: rendererAdapter},
 		&tools.RegenerateSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
+		&tools.ReviseSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DeleteSlide{State: state, Renderer: rendererAdapter},
 		&tools.AddSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DuplicateSlide{State: state, Renderer: rendererAdapter},
@@ -667,6 +724,9 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.SetFooter{State: state, Renderer: rendererAdapter},
 		&tools.EditSpeakerNotes{State: state, Renderer: rendererAdapter},
 		&tools.GenerateImage{State: state, Images: r.Images, Renderer: rendererAdapter},
+		// Reflection (Sprint O.3) — call after content-changing tool to
+		// verify edit landed and nothing regressed.
+		&tools.CriticDeck{State: state, Router: r.Router},
 		tool.Terminate{},
 	}
 	if r.SandboxClient != nil {
@@ -676,7 +736,10 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 
 	a := agent.NewToolCallAgent("slides-edit", r.Router, registry, systemPromptEdit, nextStepPrompt, r.Emitter)
 	a.Model = r.Router.ModelFor("planner")
-	a.MaxSteps = 6 // edits should be 1 tool + terminate
+	// Sprint O.3 — bumped from 6 → 18 to give the reflection loop room:
+	// analyze + edit + critic + revise + critic + revise + terminate = 7,
+	// with slack for caps and one full round of re-critiquing.
+	a.MaxSteps = 18
 
 	// Restore prior conversation so the model sees what was already
 	// produced (outline, content, render result, previous user turns).
