@@ -85,6 +85,23 @@ func workspaceFromCtx(ctx context.Context) (uuid.UUID, bool) {
 	return v, true
 }
 
+// WorkspaceID is the public read-side mirror of workspaceFromCtx —
+// returns uuid.Nil when the auth middleware didn't set a workspace
+// (anonymous request, or auth not configured). Skill code (the
+// slides AgentRunner, the design recorder, etc.) reads this when it
+// needs to scope persistence / billing / idempotency to the active
+// workspace. Sprint X2b-2 exported it so the slides SessionState can
+// capture workspace at job creation without importing the auth
+// package directly (slides → auth would loop through store via the
+// idempotency decorator — not actually a cycle, but the indirection
+// is awkward).
+func WorkspaceID(ctx context.Context) uuid.UUID {
+	if v, ok := workspaceFromCtx(ctx); ok {
+		return v
+	}
+	return uuid.Nil
+}
+
 // ─── Decorator ─────────────────────────────────────────────────────
 
 type idempotentTool struct {

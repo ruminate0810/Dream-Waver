@@ -113,12 +113,26 @@ func main() {
 	// render_deck; emits llm.thought / tool.start / tool.end for the
 	// chat-style UI. Default for /api/v1/slides requests is "agent"; the
 	// pipeline path is kept as a `mode=pipeline` escape hatch.
-	// In-memory session store. When auth + Postgres land, swap this for a
-	// DB-backed implementation that satisfies the same surface. Hoisted to
-	// the call site (not buried in AgentRunner) because the live-HTML
-	// preview endpoint also reads decks out of it, AND pipeline mode now
+	// X2b-2 — session store is DB-backed when persistence is
+	// configured below. NewSessionStoreWithDB(nil) degrades cleanly
+	// to in-memory when store init is skipped. Hoisted to the call
+	// site (not buried in AgentRunner) because the live-HTML preview
+	// endpoint also reads decks out of it, AND pipeline mode now
 	// registers here too (Sprint I0.1) so both paths share the surface.
-	sessions := slides.NewSessionStore()
+	//
+	// Bootstrap order: store first (we need its SlideJobs handle),
+	// then sessions, then pipeline/agent. The store block below was
+	// hoisted from later in this file specifically for this.
+	bootCtx, bootCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	dataStore, err := store.New(bootCtx, cfg.DatabaseURL, cfg.MigrationsDir)
+	bootCancel()
+	if err != nil {
+		slog.Error("store init", "err", err)
+		os.Exit(1)
+	}
+	defer func() { _ = dataStore.Close() }()
+
+	sessions := slides.NewSessionStoreWithDB(dataStore.SlideJobs)
 	pipeline := &slides.Pipeline{
 		Router:      router,
 		Renderer:    renderer,
@@ -193,20 +207,6 @@ func main() {
 	} else {
 		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
 	}
-
-	// ─── Persistence (store) ──────────────────────────────────────────
-	// store.New auto-falls back to an in-memory adapter when
-	// DATABASE_URL is empty (local dev without docker compose), so
-	// the orchestrator still boots. Migrations land on every start —
-	// applied tracker means re-running is a no-op.
-	bootCtx, bootCancel := context.WithTimeout(context.Background(), 30*time.Second)
-	dataStore, err := store.New(bootCtx, cfg.DatabaseURL, cfg.MigrationsDir)
-	bootCancel()
-	if err != nil {
-		slog.Error("store init", "err", err)
-		os.Exit(1)
-	}
-	defer func() { _ = dataStore.Close() }()
 
 	// ─── Auth middleware ──────────────────────────────────────────────
 	// Permissive at mount — populates ctx when auth headers are

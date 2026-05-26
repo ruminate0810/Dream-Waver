@@ -253,8 +253,17 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	job, ok := jobs[id]
 	jobsMu.RUnlock()
 	if !ok {
-		errorJSON(w, http.StatusNotFound, "job not found")
-		return
+		// X2b-2 — restart hydration. The in-memory jobs map is empty
+		// after a process bounce, but the DB row + persisted
+		// SessionState (Pending/Memory/Deck) may still be there.
+		// Rebuild both from store so the wizard resume flow works
+		// across restarts.
+		if hydrated := h.hydrateSlideJob(r.Context(), id); hydrated != nil {
+			job = hydrated
+		} else {
+			errorJSON(w, http.StatusNotFound, "job not found")
+			return
+		}
 	}
 	// Pipeline-mode decks now register their SessionState too (Sprint
 	// I0.1), so follow-up edits work on either mode. The AgentRunner is
@@ -804,4 +813,77 @@ func (h *handlers) DownloadSlides(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.presentationml.presentation")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(job.PptxPath)+`"`)
 	_, _ = io.Copy(w, f)
+}
+
+// hydrateSlideJob is Sprint X2b-2's restart-recovery entry point: when
+// the in-memory `jobs` map misses (process bounced since the job was
+// created) we try to rebuild both the metadata record AND the
+// SessionState from the persisted store rows. Returns nil when the
+// store isn't configured, the request has no workspace, or the row
+// doesn't exist — in which case the caller proceeds to 404.
+//
+// Side effects on success:
+//   - jobs map is populated (so subsequent reads in this process hit
+//     the cache);
+//   - SessionStore is populated via Sessions.GetOrLoad (Pending /
+//     Memory / Deck deserialised from jsonb columns).
+//
+// Until X2b-3 swaps the jobs map for store reads entirely, this
+// hydrator is the bridge that makes wizard-survives-restart actually
+// work end-to-end through the routes layer.
+func (h *handlers) hydrateSlideJob(ctx context.Context, jobID string) *slideJob {
+	if h.deps.Store == nil || h.deps.Store.SlideJobs == nil {
+		return nil
+	}
+	wsID := workspaceIDFromCtx(ctx)
+	if wsID == uuid.Nil {
+		// Anonymous request after restart — we have nothing to hydrate
+		// (anonymous sessions don't persist; see SessionStore.Put).
+		return nil
+	}
+	jobUUID, err := uuid.Parse(jobID)
+	if err != nil {
+		return nil
+	}
+	row, err := h.deps.Store.SlideJobs.Get(ctx, wsID, jobUUID)
+	if err != nil {
+		return nil // ErrNotFound or transport error; both mean "give up gracefully"
+	}
+
+	// Rebuild the metadata record. Input is the original
+	// CreateSlidesRequest shape stored as jsonb; on decode failure
+	// we still surface the rest (Status / Title / etc.) so the
+	// resume flow can proceed even with a missing Input echo.
+	job := &slideJob{
+		ID:         row.ID.String(),
+		SessionID:  row.SessionID.String(),
+		Status:     row.Status,
+		Mode:       row.Mode,
+		Title:      row.Title,
+		SlideCount: row.SlideCount,
+		PptxPath:   row.PptxPath,
+		Error:      row.Error,
+		StartedAt:  row.StartedAt,
+	}
+	if row.FinishedAt != nil {
+		job.FinishedAt = *row.FinishedAt
+	}
+	if len(row.Input) > 0 {
+		_ = json.Unmarshal(row.Input, &job.Input)
+	}
+
+	// Cache it so subsequent reads in this process hit the map.
+	jobsMu.Lock()
+	jobs[jobID] = job
+	jobsMu.Unlock()
+
+	// Warm the SessionStore in the same shot — the resume goroutines
+	// look up by jobID via Sessions.Get (in-memory only) so we need
+	// the cache populated BEFORE the goroutine kicks off.
+	if h.deps.Sessions != nil {
+		_, _ = h.deps.Sessions.GetOrLoad(ctx, wsID, jobID)
+	}
+	slog.InfoContext(ctx, "slide job hydrated from store after restart",
+		"job_id", jobID, "workspace_id", wsID, "status", job.Status)
+	return job
 }

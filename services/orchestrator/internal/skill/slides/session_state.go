@@ -1,12 +1,19 @@
 package slides
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -24,6 +31,13 @@ import (
 type SessionState struct {
 	JobID   string
 	Input   Input
+
+	// Sprint X2b-2 — workspace this session belongs to. Captured at
+	// job creation from the request ctx (via tool.WorkspaceID(ctx)
+	// inside agent_runner.go). uuid.Nil for anonymous sessions, in
+	// which case the persister below is a no-op and the session
+	// lives only in process memory.
+	WorkspaceID uuid.UUID
 
 	// Last successfully rendered representations. Outline + Content are
 	// the LLM-produced JSON; Deck is the assembled, image-resolved view
@@ -56,6 +70,13 @@ type SessionState struct {
 	// the outline). nil = no pause active. The API resume handlers
 	// read this to figure out which phase to drive next.
 	Pending *PendingUserAction
+
+	// Sprint X2b-2 — write-through persister. nil = in-memory only
+	// (legacy / anonymous path). Set by SessionStore.Put when both
+	// the store is configured AND state.WorkspaceID is non-Nil. Every
+	// SetPending / SetMemory / SetDeck call below fans out to it
+	// fire-and-forget; errors are logged but never failed up.
+	persister *sessionPersister
 
 	mu sync.Mutex
 }
@@ -394,10 +415,19 @@ func (s *SessionState) SetContent(c any) {
 }
 func (s *SessionState) SetDeck(d *schema.Deck) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.Deck = d
 	if d != nil {
 		s.SlideCount = len(d.Slides)
+	}
+	p := s.persister
+	memory := s.Memory
+	pending := s.Pending
+	s.mu.Unlock()
+	if p != nil {
+		// X2b-2 — write-through. Edit tools call SetDeck after every
+		// successful mutation; piggy-backing the snapshot on the
+		// same code path is cheaper than a separate "now save" call.
+		p.saveCheckpoint(memory, d, pending)
 	}
 }
 func (s *SessionState) SetPptxPath(path string) {
@@ -426,10 +456,20 @@ func (s *SessionState) SetAssets(a []tool.SlideAsset) {
 
 // SetMemory replaces the persisted agent memory. Called by AgentRunner
 // after each turn so the next Continue() can reload the full conversation.
+//
+// X2b-2 — also writes through to the store when persister is set, so a
+// process bounce mid-conversation doesn't lose the agent's context.
+// Best-effort: errors are logged, not propagated.
 func (s *SessionState) SetMemory(msgs []schema.Message) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.Memory = msgs
+	p := s.persister
+	deck := s.Deck
+	pending := s.Pending
+	s.mu.Unlock()
+	if p != nil {
+		p.saveCheckpoint(msgs, deck, pending)
+	}
 }
 
 // ─── Sprint L1: HILT pending-pause accessors ──────────────────────
@@ -437,10 +477,19 @@ func (s *SessionState) SetMemory(msgs []schema.Message) {
 // SetPending stores a paused gate's payload. Callers should also flip
 // the corresponding job.Status to "awaiting_*" so the API can route
 // later resume calls correctly. nil clears.
+//
+// X2b-2 — writes through to the store (with status "awaiting_*"
+// derived from the pending kind) so a process bounce mid-wizard
+// doesn't lose the user's questionnaire progress. Anonymous / no-
+// workspace sessions skip persistence silently.
 func (s *SessionState) SetPending(p *PendingUserAction) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.Pending = p
+	pr := s.persister
+	s.mu.Unlock()
+	if pr != nil {
+		pr.savePending(p, statusForPending(p))
+	}
 }
 
 // GetPending returns the current pause envelope (nil if no pause active).
@@ -451,11 +500,31 @@ func (s *SessionState) GetPending() *PendingUserAction {
 }
 
 // ClearPending is convenience for `SetPending(nil)` called after a
-// resume handler kicks off the next phase.
+// resume handler kicks off the next phase. Also nils the DB column
+// so a later restart doesn't think the job is still paused.
 func (s *SessionState) ClearPending() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.Pending = nil
+	s.SetPending(nil)
+}
+
+// statusForPending maps a pending kind to the "awaiting_*" sentinel
+// the API exposes. Centralised so the API handler and the persister
+// agree on the wire string.
+func statusForPending(p *PendingUserAction) string {
+	if p == nil {
+		// nil pending → the resume handler will set the right status
+		// on its own (running / finished / error). Pass "running" so
+		// the DB column doesn't lie about an in-progress run.
+		return "running"
+	}
+	switch p.Kind {
+	case PendingClarification:
+		return "awaiting_clarification"
+	case PendingOutlineReview:
+		return "awaiting_outline_approval"
+	case PendingWizard:
+		return "awaiting_wizard"
+	}
+	return "running"
 }
 
 // MergeOutlineEdits applies a user's outline-review edits onto the
@@ -519,24 +588,60 @@ type SlideRename struct {
 	Title string `json:"title"`
 }
 
-// SessionStore is the in-memory registry keyed by job ID. Concurrent reads
-// are fine; mutations on a given session are serialised through the
-// session's own mutex (above), not the store-level lock.
+// SessionStore is the per-process registry keyed by job ID. Concurrent
+// reads are fine; mutations on a given session are serialised through
+// the session's own mutex (above), not the store-level lock.
+//
+// X2b-2 — when DB is configured (via NewSessionStoreWithDB), a
+// SessionState's write-through hooks fire after each SetPending /
+// SetMemory / SetDeck call. The in-memory map remains the hot-path
+// cache; the DB is the recovery point across restarts. Anonymous
+// sessions (WorkspaceID == uuid.Nil) skip persistence entirely.
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*SessionState
+	// db is the optional write-through + hydration backend. nil =
+	// pure in-memory (legacy / dev-without-DB path).
+	db store.SlideJobs
 }
 
+// NewSessionStore returns an in-memory-only store. Kept for tests +
+// for the legacy code paths that haven't been updated to thread the
+// store handle through.
 func NewSessionStore() *SessionStore {
 	return &SessionStore{sessions: make(map[string]*SessionState)}
 }
 
+// NewSessionStoreWithDB returns a store that ALSO persists to DB. nil
+// db is allowed (degrades cleanly to in-memory) so main.go can call
+// this unconditionally.
+func NewSessionStoreWithDB(db store.SlideJobs) *SessionStore {
+	return &SessionStore{
+		sessions: make(map[string]*SessionState),
+		db:       db,
+	}
+}
+
+// Put registers the session for in-memory lookup. When the store is
+// DB-backed AND the session has a workspace, also attaches the
+// write-through persister so subsequent SetPending / SetMemory /
+// SetDeck calls fan out.
 func (s *SessionStore) Put(state *SessionState) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.db != nil && state.WorkspaceID != uuid.Nil && state.persister == nil {
+		if jobUUID, err := uuid.Parse(state.JobID); err == nil {
+			state.persister = newSessionPersister(s.db, state.WorkspaceID, jobUUID)
+			// Bootstrap the row so subsequent partial updates have a
+			// target. Fire-and-forget; errors logged inside.
+			state.persister.bootstrap(state)
+		}
+	}
 	s.sessions[state.JobID] = state
 }
 
+// Get is the in-memory-only lookup (kept for backward compatibility).
+// Callers that need restart-survival hydration use GetOrLoad below.
 func (s *SessionStore) Get(jobID string) (*SessionState, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -544,8 +649,160 @@ func (s *SessionStore) Get(jobID string) (*SessionState, bool) {
 	return st, ok
 }
 
+// GetOrLoad is the X2b-2 hydration entry point — on in-memory miss,
+// queries the DB and rebuilds the SessionState from the persisted
+// jsonb columns. Workspace must match (no cross-tenant rehydration).
+// Returns (nil, false) when neither memory nor DB has the job.
+//
+// Use this from HILT resume handlers (POST /slides/{id}/messages)
+// so a server bounce mid-wizard doesn't strand the user's
+// questionnaire progress in the dead process.
+func (s *SessionStore) GetOrLoad(ctx context.Context, workspaceID uuid.UUID, jobID string) (*SessionState, bool) {
+	if st, ok := s.Get(jobID); ok {
+		return st, true
+	}
+	if s.db == nil || workspaceID == uuid.Nil {
+		return nil, false
+	}
+	jobUUID, err := uuid.Parse(jobID)
+	if err != nil {
+		return nil, false
+	}
+	row, err := s.db.Get(ctx, workspaceID, jobUUID)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			slog.WarnContext(ctx, "session hydrate query failed", "job_id", jobID, "err", err)
+		}
+		return nil, false
+	}
+
+	state := &SessionState{
+		JobID:       jobID,
+		WorkspaceID: workspaceID,
+		SlideCount:  row.SlideCount,
+		PptxPath:    row.PptxPath,
+	}
+	// Best-effort decode. Each blob is optional — a partial hydrate
+	// (e.g. memory survived but deck didn't) is still useful.
+	if len(row.Input) > 0 {
+		_ = json.Unmarshal(row.Input, &state.Input)
+	}
+	if len(row.Pending) > 0 {
+		var p PendingUserAction
+		if err := json.Unmarshal(row.Pending, &p); err == nil {
+			state.Pending = &p
+		}
+	}
+	if len(row.Memory) > 0 {
+		_ = json.Unmarshal(row.Memory, &state.Memory)
+	}
+	if len(row.Deck) > 0 {
+		var d schema.Deck
+		if err := json.Unmarshal(row.Deck, &d); err == nil {
+			state.Deck = &d
+		}
+	}
+	state.persister = newSessionPersister(s.db, workspaceID, jobUUID)
+
+	// Cache the freshly-hydrated state so subsequent Get(jobID) calls
+	// hit memory.
+	s.mu.Lock()
+	s.sessions[jobID] = state
+	s.mu.Unlock()
+	return state, true
+}
+
 func (s *SessionStore) Delete(jobID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.sessions, jobID)
+}
+
+// ─── sessionPersister (X2b-2 write-through) ───────────────────────
+//
+// One persister per session. Holds the (store, workspace_id, job_id)
+// tuple every write needs. All methods are best-effort: on error they
+// log and return; the session continues happily in memory. This means
+// a transient DB outage can't fail user-visible actions; the cost is
+// "your wizard answer might not survive a restart that immediately
+// follows a DB hiccup".
+
+type sessionPersister struct {
+	db          store.SlideJobs
+	workspaceID uuid.UUID
+	jobID       uuid.UUID
+}
+
+func newSessionPersister(db store.SlideJobs, workspaceID, jobID uuid.UUID) *sessionPersister {
+	return &sessionPersister{db: db, workspaceID: workspaceID, jobID: jobID}
+}
+
+// bootstrap creates the slide_jobs row if it doesn't exist yet. Called
+// from SessionStore.Put on first registration. Idempotent (uses Put's
+// ON CONFLICT DO UPDATE semantics).
+func (p *sessionPersister) bootstrap(state *SessionState) {
+	if p == nil || p.db == nil {
+		return
+	}
+	ctx, cancel := persistenceCtx()
+	defer cancel()
+	job := &store.SlideJob{
+		ID:          p.jobID,
+		WorkspaceID: p.workspaceID,
+		SessionID:   p.jobID, // legacy: routes_slides.go derives session_id separately; this is fine until X2b-3 unifies
+		Status:      "running",
+		StartedAt:   time.Now().UTC(),
+	}
+	if inputJSON, err := json.Marshal(state.Input); err == nil {
+		job.Input = inputJSON
+	}
+	if err := p.db.Put(ctx, job); err != nil {
+		slog.WarnContext(ctx, "session bootstrap failed (continuing in-memory)",
+			"job_id", p.jobID, "err", err)
+	}
+}
+
+func (p *sessionPersister) saveCheckpoint(memory []schema.Message, deck *schema.Deck, pending *PendingUserAction) {
+	if p == nil || p.db == nil {
+		return
+	}
+	ctx, cancel := persistenceCtx()
+	defer cancel()
+	var memJSON, deckJSON, pendingJSON []byte
+	if len(memory) > 0 {
+		memJSON, _ = json.Marshal(memory)
+	}
+	if deck != nil {
+		deckJSON, _ = json.Marshal(deck)
+	}
+	if pending != nil {
+		pendingJSON, _ = json.Marshal(pending)
+	}
+	if err := p.db.SaveCheckpoint(ctx, p.workspaceID, p.jobID, memJSON, deckJSON, pendingJSON); err != nil {
+		slog.WarnContext(ctx, "session checkpoint failed (audit only — session continues in-memory)",
+			"job_id", p.jobID, "err", err)
+	}
+}
+
+func (p *sessionPersister) savePending(pending *PendingUserAction, status string) {
+	if p == nil || p.db == nil {
+		return
+	}
+	ctx, cancel := persistenceCtx()
+	defer cancel()
+	var pendingJSON []byte
+	if pending != nil {
+		pendingJSON, _ = json.Marshal(pending)
+	}
+	if err := p.db.SavePending(ctx, p.workspaceID, p.jobID, pendingJSON, status); err != nil {
+		slog.WarnContext(ctx, "session pending save failed (in-memory state still authoritative)",
+			"job_id", p.jobID, "status", status, "err", err)
+	}
+}
+
+// persistenceCtx caps each write at 3s so a wedged DB can't stall the
+// agent goroutine. The store layer's own timeouts (pgx pool acquire +
+// query) are independent.
+func persistenceCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 3*time.Second)
 }

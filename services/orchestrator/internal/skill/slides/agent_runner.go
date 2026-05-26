@@ -283,6 +283,13 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 	state := &SessionState{
 		JobID: jobID,
 		Input: in,
+		// X2b-2 — capture workspace at job creation so SetPending /
+		// SetMemory / SetDeck can fan out write-through to store.
+		// tool.WorkspaceID returns uuid.Nil for anonymous requests
+		// (no auth middleware ran or middleware ran but no header
+		// present), in which case the persister hookup in
+		// SessionStore.Put silently no-ops.
+		WorkspaceID: tool.WorkspaceID(ctx),
 	}
 
 	// Register state immediately so the resume endpoints can find this
