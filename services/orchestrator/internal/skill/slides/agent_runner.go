@@ -12,7 +12,6 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
-	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/tools"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -75,6 +74,63 @@ Communication style:
   - If the user prompt is in Chinese, reply in Chinese.
   - Keep your reasoning between tool calls short — 1-2 sentences, not
     a long monologue.`
+
+// systemPromptOutlinePhase teaches the agent the Sprint O Phase 1
+// loop — plan_outline → critic_outline → (if notes) revise_outline →
+// terminate. The L1 outline-review user gate fires AFTER this loop;
+// the agent's job here is just to produce the best outline it can
+// BEFORE showing the user.
+const systemPromptOutlinePhase = `You are Dream-Waver's AI presentation assistant, working the OUTLINE phase of an initial deck generation.
+
+Your sole job in this phase: produce the best possible outline JSON. The user will review it next; do not skip the critic.
+
+Tools (in the order you'll use them):
+
+  1. plan_outline(topic, audience, slide_count, style, reference_text)
+     — Call this FIRST. Returns an outline JSON. Pass the topic/audience/slide_count/style/reference_text that the user message provides.
+
+  2. critic_outline(outline_json, topic, audience, slide_count, style)
+     — Call this SECOND, on the outline plan_outline just returned. Pass the outline JSON verbatim. Returns {"notes": [...], "is_clean": bool}. If is_clean is true, skip to terminate. If notes is non-empty, call revise_outline next.
+
+  3. revise_outline(topic, audience, slide_count, style, reference_text, critic_notes_json)
+     — Only call this when critic_outline returned non-empty notes. Pass the SAME args you gave plan_outline plus the verbatim notes array as critic_notes_json. Returns a fresh outline JSON that addresses each note.
+
+  4. terminate — End the loop after the outline is final.
+
+Hard rules:
+  - plan_outline → critic_outline → (revise_outline if needed) → terminate. NEVER skip critic_outline. NEVER call plan_outline twice.
+  - At most ONE revise_outline call per turn. After revising, terminate — do not re-critic.
+  - Pass JSON outputs between tools verbatim — do NOT summarise or modify.
+  - Keep your reasoning between tool calls short — 1-2 sentences.
+  - If the user prompt is in Chinese, reply in Chinese (Latin / 数字 keep as-is).`
+
+// systemPromptContentPhase teaches the agent the Sprint O Phase 3
+// loop — write_content → critic_content → (per flagged slide)
+// revise_slide → render_deck → terminate. The outline is already
+// approved by this point; the agent operates on it directly.
+const systemPromptContentPhase = `You are Dream-Waver's AI presentation assistant, working the CONTENT + RENDER phase of an initial deck generation.
+
+The outline has already been planned, critiqued, and approved by the user. You have the outline JSON in the user message. Your job: write per-slide content, critique it, fix flagged slides, then render.
+
+Tools (in the order you'll use them):
+
+  1. write_content(outline) — Call this FIRST. Pass the outline JSON from the user message verbatim. Returns a content JSON.
+
+  2. critic_content(outline_json, content_json) — Call this SECOND. Pass both JSONs verbatim. Returns {"notes": [...], "is_clean": bool}. If is_clean is true, skip to render_deck. If notes is non-empty, call revise_slide for EACH unique slide index in notes before moving on.
+
+  3. revise_slide(slide_index, critic_note_json) — Call this once per flagged slide. Pass the SINGLE critic note object that targets that slide as critic_note_json. The session's draft content is mutated in place; you do NOT need to feed the result anywhere — render_deck will pick it up.
+
+  4. render_deck(outline, content, force_theme?) — Call this AFTER all revise_slide calls. Pass the outline JSON (verbatim) and the LATEST content JSON. After this returns successfully, call terminate IMMEDIATELY.
+
+  5. terminate — End the loop after render_deck succeeds.
+
+Hard rules:
+  - write_content → critic_content → (per-slide revise_slide × N) → render_deck → terminate. NEVER skip critic_content.
+  - Do not call revise_slide more than 3 times in one turn. If critic flagged more than 3 slides, address the top 3 (by category severity: structural > specificity > completeness > voice > visual-fit) and ship.
+  - After render_deck, IMMEDIATELY terminate. Do NOT critic the rendered deck.
+  - Pass JSON outputs between tools verbatim.
+  - Keep your reasoning between tool calls short — 1-2 sentences.
+  - If the user prompt is in Chinese, reply in Chinese.`
 
 // systemPromptEdit replaces the initial system prompt when the user is
 // continuing the conversation with edit requests. The deck is already
@@ -214,31 +270,52 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 	return &Output{Status: "awaiting_wizard"}, nil
 }
 
-// runFromOutline is the entry point for Phase 1 → Phase 2. Called
-// from Run() when the topic is clear, or from ResumeFromClarification
-// after the user has answered the gate's questions.
+// runFromOutline drives Sprint O Phase 1 — the agentic outline loop.
+// Called from Run() when the topic is clear, from ResumeFromClarification
+// after the L1 H2 gate resumes, or from ResumeFromWizardStep when the
+// N1 wizard's final step completes.
+//
+// The agent runs plan_outline → critic_outline → (revise_outline) →
+// terminate. The L1 H1 outline-review user gate then fires on the
+// agent-produced outline; the L1 contract is unchanged.
 func (r *AgentRunner) runFromOutline(ctx context.Context, state *SessionState) (*Output, error) {
-	// Phase 1 — outline planning. Reuses the existing stages.Outline
-	// (so its prompt + retry + cache stay the single source of truth).
-	outline, _, err := stages.Outline(ctx, r.Router, stages.OutlineParams{
-		Topic:         state.Input.Topic,
-		Audience:      state.Input.Audience,
-		SlideCount:    state.Input.SlideCount,
-		Style:         state.Input.Style,
-		ReferenceText: state.Input.ReferenceText,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("outline: %w", err)
+	// Phase 1 — agentic outline loop.
+	registry := tool.NewRegistry(
+		&tools.PlanOutline{Router: r.Router, Emitter: r.Emitter, State: state},
+		&tools.CriticOutline{Router: r.Router},
+		&tools.ReviseOutline{Router: r.Router, Emitter: r.Emitter, State: state},
+		tool.Terminate{},
+	)
+
+	a := agent.NewToolCallAgent("slides-outline-phase", r.Router, registry,
+		systemPromptOutlinePhase, nextStepPrompt, r.Emitter)
+	a.Model = r.Router.ModelFor("planner")
+	a.MaxSteps = 6 // plan + critic + (revise) + critic + terminate, with slack
+
+	if _, err := agent.Run(ctx, a, buildUserPrompt(state.Input)); err != nil {
+		return nil, fmt.Errorf("outline phase: %w", err)
 	}
+
+	// The tools populated state.Outline as a side effect. If for any
+	// reason it didn't (agent terminated without calling plan_outline),
+	// surface a clear error rather than crashing downstream.
+	if state.Outline == nil {
+		return nil, fmt.Errorf("outline phase finished without producing an outline")
+	}
+	outline := state.Outline
 	if state.Input.ForceTheme != "" {
 		outline.Theme = schema.Theme(state.Input.ForceTheme)
+		state.SetOutline(outline)
 	}
-	state.SetOutline(outline)
-	r.emit(ctx, event.NewOutline(outline.Title, len(outline.Slides)))
 
-	// Phase 2 — outline review gate (H1, always fires). Serialize the
-	// outline so the frontend's review card has the exact same shape
-	// the planner produced; round-trip on approval.
+	// Save the augmented memory so Phase 3 (which runs in a fresh
+	// ToolCallAgent) doesn't lose what just happened. Not strictly
+	// required — Phase 3 prompts itself with the outline JSON — but
+	// preserves the conversation if a future edit turn cares.
+	state.SetMemory(a.Memory.Snapshot())
+
+	// L1 Phase 2 — outline review gate. Unchanged: serialize the
+	// agent's final outline + flip status to awaiting_outline_approval.
 	outlineJSON, _ := json.Marshal(outline)
 	state.SetPending(&PendingUserAction{
 		Kind:        PendingOutlineReview,
@@ -483,35 +560,74 @@ func (r *AgentRunner) ResumeFromOutlineApproval(ctx context.Context, jobID strin
 // runFromContent is Phase 3 — content writing + image fanout + render.
 // Runs to completion; the job goes finished (or error) when this
 // returns.
+// runFromContent drives Sprint O Phase 3 — the agentic content +
+// render loop. Called from ResumeFromOutlineApproval once the user
+// has approved (or edited + approved) the outline.
+//
+// The agent runs write_content → critic_content → (per flagged
+// slide) revise_slide → render_deck → terminate. State.Outline
+// must already be populated; this func errors if not.
 func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (*Output, error) {
 	outline := state.Outline
 	if outline == nil {
 		return nil, fmt.Errorf("internal: runFromContent without an outline")
 	}
 
-	// Phase 3a — per-slide content via the worker LLM.
-	content, _, err := stages.Content(ctx, r.Router, outline)
-	if err != nil {
-		return nil, fmt.Errorf("content: %w", err)
-	}
-	state.SetContent(content)
+	// Phase 3 — agentic content + render loop. RenderDeck talks to a
+	// session-aware adapter (same one Continue uses) so per-slide asset
+	// caching survives across calls.
+	rendererAdapter := &sessionRenderer{Renderer: r.Renderer, State: state}
+	registry := tool.NewRegistry(
+		&tools.WriteContent{Router: r.Router, State: state},
+		&tools.CriticContent{Router: r.Router},
+		// revise_slide in Phase 3 mutates state.Content in place but does
+		// NOT re-render — render_deck handles the final pass. So pass nil
+		// renderer to keep per-call cost low.
+		&tools.ReviseSlide{State: state, Router: r.Router, Renderer: nil},
+		&tools.RenderDeck{Renderer: rendererAdapter, Images: r.Images, State: state},
+		tool.Terminate{},
+	)
 
-	// Phase 3b — assemble + resolve images + render. Reuses pipeline
-	// helpers so K1's image-fanout + I0.2 aggregate log apply.
-	deck := stages.Assemble(outline, content)
-	resolveImages(ctx, r.Images, &deck)
+	a := agent.NewToolCallAgent("slides-content-phase", r.Router, registry,
+		systemPromptContentPhase, nextStepPrompt, r.Emitter)
+	a.Model = r.Router.ModelFor("planner")
+	// write + critic + up to 3 revise_slide + render + terminate, plus
+	// a 2-step slack budget.
+	a.MaxSteps = 10
 
-	pptxPath, err := r.Renderer.RenderDeck(ctx, deck)
-	if err != nil {
-		return nil, fmt.Errorf("render: %w", err)
+	// Prime the agent with the approved outline JSON — its first tool
+	// call (write_content) needs this verbatim.
+	outlineJSON, _ := json.Marshal(outline)
+	userMsg := fmt.Sprintf(
+		"The outline has been approved. Write the per-slide content, critique it, fix any flagged slides, then render.\n\nOutline JSON (pass verbatim to write_content):\n%s",
+		string(outlineJSON),
+	)
+	if state.Input.ForceTheme != "" {
+		userMsg += "\n\nPass force_theme=" + state.Input.ForceTheme + " to render_deck."
 	}
-	state.SetDeck(&deck)
-	state.SetPptxPath(pptxPath)
+
+	if _, err := agent.Run(ctx, a, userMsg); err != nil {
+		return nil, fmt.Errorf("content phase: %w", err)
+	}
+
+	// Save augmented memory so follow-up edit turns see the conversation.
+	state.SetMemory(a.Memory.Snapshot())
+
+	// render_deck side-effected state.Deck + state.PptxPath. If the
+	// agent terminated before render_deck ran, surface a clear error.
+	if state.PptxPath == "" {
+		return nil, fmt.Errorf("content phase finished without rendering a deck")
+	}
+	deck, count := state.Snapshot()
+	title := outline.Title
+	if deck != nil && deck.Title != "" {
+		title = deck.Title
+	}
 
 	return &Output{
-		PptxPath:   pptxPath,
-		Title:      outline.Title,
-		SlideCount: len(deck.Slides),
+		PptxPath:   state.PptxPath,
+		Title:      title,
+		SlideCount: count,
 		Cost:       Cost{},
 	}, nil
 }
