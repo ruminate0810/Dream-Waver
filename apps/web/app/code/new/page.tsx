@@ -9,10 +9,15 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 import { createGame } from "@/lib/api";
+import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP);
 
 // /code/new is the chat-first entrance to a new HTML5 game. Mirrors
 // /slides/new so the two surfaces feel like siblings: one big textarea,
@@ -56,6 +61,7 @@ function NewGameChat() {
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const t = search?.get("prompt");
@@ -66,6 +72,34 @@ function NewGameChat() {
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Sprint Y2 — entrance mirrors /slides/new (sibling surface).
+  // Header settles, caption + title rise, form + suggestions follow.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-game-header", { y: -8, opacity: 0, duration: DUR.secondary })
+          .from(".dw-game-caption", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.3")
+          .from(".dw-game-title", { y: 24, opacity: 0 }, "-=0.2")
+          .from(
+            ".dw-game-form",
+            { y: 18, opacity: 0, duration: DUR.secondary },
+            "-=0.4",
+          );
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(
+          ".dw-game-header, .dw-game-caption, .dw-game-title, .dw-game-form",
+          { opacity: 0, duration: 0.2, stagger: 0.04 },
+        );
+      });
+    },
+    { scope: mainRef },
+  );
 
   async function submit(e?: FormEvent | KeyboardEvent) {
     e?.preventDefault();
@@ -88,10 +122,13 @@ function NewGameChat() {
   }
 
   return (
-    <main className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased">
+    <main
+      ref={mainRef}
+      className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased"
+    >
       <Grain />
 
-      <header className="relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
+      <header className="dw-game-header relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
         <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
           <a
             href="/"
@@ -112,15 +149,15 @@ function NewGameChat() {
 
       <div className="relative z-10 mx-auto flex max-w-3xl flex-col px-6 pt-20 md:px-12">
         <div className="mb-10">
-          <p className="mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+          <p className="dw-game-caption mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
             Brief · 描述你脑中的小游戏
           </p>
-          <h1 className="font-display text-[44px] leading-[1.05] tracking-tight text-[color:var(--ink)] md:text-[56px]">
+          <h1 className="dw-game-title font-display text-[44px] leading-[1.05] tracking-tight text-[color:var(--ink)] md:text-[56px]">
             想做<span className="text-[color:var(--vermillion)]">什么样</span>的小游戏？
           </h1>
         </div>
 
-        <form onSubmit={submit} className="flex flex-col gap-6">
+        <form onSubmit={submit} className="dw-game-form flex flex-col gap-6">
           <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
             <textarea
               ref={textareaRef}

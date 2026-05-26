@@ -10,12 +10,18 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ArrowLeft, ArrowUpRight, Check, ChevronDown, Loader2, X } from "lucide-react";
 import clsx from "clsx";
 
 import { createSlides } from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
 import { rememberDeck } from "@/lib/recentDecks";
+import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 // /slides/new is the chat-first entrance to a new deck.
 //
@@ -154,6 +160,7 @@ function NewSlidesChat() {
   // Currently-open preview modal target. null = closed.
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   // Prefill from ?topic= so the homepage hero hand-off still works.
   useEffect(() => {
@@ -165,6 +172,107 @@ function NewSlidesChat() {
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
+
+  // Sprint Y2 — entrance choreography. Header settles first, then the
+  // brief (caption + title rise), then the form, then the helper text.
+  // Template + Layout galleries reveal via ScrollTrigger when they
+  // approach the viewport — first-fold visitors see the brief settle,
+  // scrolling reveals the galleries with the same `.dw-recent-card`
+  // vocabulary used on home.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-new-header", { y: -8, opacity: 0, duration: DUR.secondary })
+          .from(".dw-new-caption", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.3")
+          .from(".dw-new-title", { y: 24, opacity: 0 }, "-=0.2")
+          .from(
+            ".dw-new-form",
+            { y: 18, opacity: 0, duration: DUR.secondary },
+            "-=0.4",
+          )
+          .from(
+            ".dw-new-helper",
+            { y: 8, opacity: 0, duration: DUR.micro },
+            "-=0.25",
+          );
+
+        // Template gallery — ScrollTrigger reveal. Section header
+        // settles first, cards stagger up.
+        gsap.from(".dw-new-template-head", {
+          y: 12,
+          opacity: 0,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-template-head",
+            start: "top 90%",
+            once: true,
+          },
+        });
+        gsap.from(".dw-new-template-card", {
+          y: 16,
+          opacity: 0,
+          stagger: STAGGER.card,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-template-grid",
+            start: "top 88%",
+            once: true,
+          },
+        });
+
+        // Layout examples — same treatment, separate trigger so the
+        // two galleries don't share a fate.
+        gsap.from(".dw-new-layout-head", {
+          y: 12,
+          opacity: 0,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-layout-head",
+            start: "top 90%",
+            once: true,
+          },
+        });
+        gsap.from(".dw-new-layout-card", {
+          y: 16,
+          opacity: 0,
+          stagger: STAGGER.card,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-layout-grid",
+            start: "top 88%",
+            once: true,
+          },
+        });
+      });
+
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(
+          ".dw-new-header, .dw-new-caption, .dw-new-title, .dw-new-form, .dw-new-helper",
+          { opacity: 0, duration: 0.2, stagger: 0.04 },
+        );
+        gsap.from(".dw-new-template-card, .dw-new-layout-card", {
+          opacity: 0,
+          duration: 0.2,
+          stagger: 0.02,
+          scrollTrigger: {
+            trigger: ".dw-new-template-grid",
+            start: "top 95%",
+            once: true,
+          },
+        });
+      });
+    },
+    { scope: mainRef },
+  );
 
   async function submit(e?: FormEvent | KeyboardEvent) {
     e?.preventDefault();
@@ -211,10 +319,13 @@ function NewSlidesChat() {
   const selectedTemplate = TEMPLATES.find((t) => t.name === style) ?? TEMPLATES[0];
 
   return (
-    <main className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased">
+    <main
+      ref={mainRef}
+      className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased"
+    >
       <Grain />
 
-      <header className="relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
+      <header className="dw-new-header relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
         <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
           <a
             href="/"
@@ -232,10 +343,10 @@ function NewSlidesChat() {
       <div className="relative z-10 mx-auto max-w-6xl px-6 pt-16 md:px-12">
         {/* ── Prompt area ───────────────────────────────────────── */}
         <section className="mb-16 max-w-3xl">
-          <p className="mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+          <p className="dw-new-caption mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
             Brief · 一句话开始
           </p>
-          <h1 className="font-display text-[44px] leading-[1.05] tracking-tight text-[color:var(--ink)] md:text-[56px]">
+          <h1 className="dw-new-title font-display text-[44px] leading-[1.05] tracking-tight text-[color:var(--ink)] md:text-[56px]">
             想做<span className="text-[color:var(--vermillion)]">什么样</span>的演讲？
           </h1>
 
@@ -268,7 +379,7 @@ function NewSlidesChat() {
             </div>
           ) : null}
 
-          <form onSubmit={submit} className="mt-8 flex flex-col gap-6">
+          <form onSubmit={submit} className="dw-new-form mt-8 flex flex-col gap-6">
             <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
               <textarea
                 ref={textareaRef}
@@ -326,7 +437,7 @@ function NewSlidesChat() {
               <PagesPicker slideCount={slideCount} setSlideCount={setSlideCount} />
             ) : null}
 
-            <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            <p className="dw-new-helper font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
               ⌘ / Ctrl + Enter 提交 · agent 会一边规划一边跟你 chat
             </p>
           </form>
@@ -334,7 +445,7 @@ function NewSlidesChat() {
 
         {/* ── Template gallery ──────────────────────────────────── */}
         <section className="mb-24">
-          <div className="mb-6 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-4">
+          <div className="dw-new-template-head mb-6 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-4">
             <h2 className="font-display text-[28px] tracking-tight text-[color:var(--ink)]">
               模板风格 <span className="font-mono-jb text-[12px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">· Templates</span>
             </h2>
@@ -343,7 +454,7 @@ function NewSlidesChat() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="dw-new-template-grid grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {TEMPLATES.map((t) => (
               <TemplateCard
                 key={t.name}
@@ -357,7 +468,7 @@ function NewSlidesChat() {
 
         {/* ── H8 image-led layouts gallery ──────────────────────── */}
         <section className="mb-24">
-          <div className="mb-6 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-4">
+          <div className="dw-new-layout-head mb-6 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-4">
             <h2 className="font-display text-[28px] tracking-tight text-[color:var(--ink)]">
               图像化版式 <span className="font-mono-jb text-[12px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">· Image-led layouts</span>
             </h2>
@@ -371,11 +482,11 @@ function NewSlidesChat() {
             nano-banana 直接生成贴合主题的 16:9 配图。
           </p>
 
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+          <div className="dw-new-layout-grid grid grid-cols-1 gap-5 md:grid-cols-3">
             {LAYOUT_EXAMPLES.map((l) => (
               <article
                 key={l.key}
-                className="group flex flex-col overflow-hidden border border-[color:var(--rule)] bg-white shadow-[0_1px_0_rgba(26,22,20,0.04)] transition-all duration-200 hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]"
+                className="dw-new-layout-card group flex flex-col overflow-hidden border border-[color:var(--rule)] bg-white shadow-[0_1px_0_rgba(26,22,20,0.04)] transition-all duration-200 hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -431,7 +542,7 @@ function TemplateCard({
       type="button"
       onClick={onClick}
       className={clsx(
-        "group relative flex flex-col overflow-hidden border bg-white text-left transition-all duration-200",
+        "dw-new-template-card group relative flex flex-col overflow-hidden border bg-white text-left transition-all duration-200",
         selected
           ? "border-[color:var(--vermillion)] shadow-[0_0_0_3px_rgba(181,55,30,0.15),0_18px_36px_-22px_rgba(181,55,30,0.35)]"
           : "border-[color:var(--rule)] shadow-[0_1px_0_rgba(26,22,20,0.04)] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)] hover:-translate-y-[2px]",

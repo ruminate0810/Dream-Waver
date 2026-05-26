@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { ArrowLeft, FileQuestion, Plus } from "lucide-react";
 
 import { ApiError, getSlideJob, type SlideJob } from "@/lib/api";
@@ -12,6 +14,9 @@ import { AgentSessionProvider } from "@/components/chat/transport";
 import { ConnectionToast } from "@/components/chat/ConnectionToast";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
 import { forgetDeck, updateDeckTitle } from "@/lib/recentDecks";
+import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP);
 
 // The slides workspace is a two-column manuscript:
 //   left  — chat-style generation timeline (the editor's running notes)
@@ -40,6 +45,36 @@ export default function SlideJobPage() {
   // on "Loading session…" forever and the iframes / WS keep firing
   // failed requests in the background.
   const [notFound, setNotFound] = useState(false);
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  // Sprint Y2 — header settles in on first paint; the loading-state
+  // caption fades. Workspace + DeckNotFound run their own entrances
+  // on mount (deferred until poll resolves).
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        gsap.from(".dw-deck-header", {
+          y: -8,
+          opacity: 0,
+          duration: DUR.secondary,
+          ease: EASE.entrance,
+        });
+        gsap.from(".dw-deck-loading", {
+          opacity: 0,
+          duration: DUR.micro,
+          delay: 0.3,
+        });
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(".dw-deck-header, .dw-deck-loading", {
+          opacity: 0,
+          duration: 0.2,
+        });
+      });
+    },
+    { scope: mainRef },
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -80,7 +115,10 @@ export default function SlideJobPage() {
   }, [jobId]);
 
   return (
-    <main className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased">
+    <main
+      ref={mainRef}
+      className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased"
+    >
       {/* Paper grain — fixed, pointer-events-none so it never re-paints
           during scroll. Mix-blend-multiply keeps the paper warm rather
           than washing it grey. */}
@@ -96,7 +134,7 @@ export default function SlideJobPage() {
 
       {/* Publication header — kept hairline thin so it doesn't fight the
           two columns underneath. */}
-      <header className="relative z-20 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
+      <header className="dw-deck-header relative z-20 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
         <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
           <a
             href="/"
@@ -141,7 +179,7 @@ export default function SlideJobPage() {
             }}
           />
         ) : (
-          <div className="px-2 py-20">
+          <div className="dw-deck-loading px-2 py-20">
             <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
               Loading session…
             </p>
@@ -183,6 +221,32 @@ function Workspace({
    */
   onDeckGone: () => void;
 }) {
+  const wsRef = useRef<HTMLDivElement | null>(null);
+
+  // Sprint Y2 — two-column entrance. Chat slides in from the left
+  // edge, preview from the right, so the eye reads the spread opening
+  // up rather than two unrelated panels popping. Compound timeline
+  // keeps the columns locked to one heartbeat.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-deck-chat", { x: -20, opacity: 0 })
+          .from(".dw-deck-preview", { x: 20, opacity: 0 }, "-=0.5");
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(".dw-deck-chat, .dw-deck-preview", {
+          opacity: 0,
+          duration: 0.2,
+        });
+      });
+    },
+    { scope: wsRef },
+  );
+
   return (
     <AgentSessionProvider
       sessionId={sessionId || job.session_id}
@@ -192,9 +256,12 @@ function Workspace({
           so the user knows the live event stream is reconnecting instead
           of silently watching a frozen UI. Auto-dismisses on reconnect. */}
       <ConnectionToast />
-      <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14">
+      <div
+        ref={wsRef}
+        className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14"
+      >
         {/* ── Left: chat surface (variant-selected) ───────────────────── */}
-        <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">
+        <section className="dw-deck-chat relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">
           <UiToggle current={uiVariant} />
           {uiVariant === "thread" ? (
             <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)]">
@@ -208,7 +275,7 @@ function Workspace({
         </section>
 
         {/* ── Right: live HTML preview stack ──────────────────────────── */}
-        <section className="relative lg:pl-2">
+        <section className="dw-deck-preview relative lg:pl-2">
           <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pl-4 lg:pr-2 lg:pt-2 lg:[scrollbar-width:thin]">
             <LivePreviewStack job={job} />
           </div>
@@ -258,10 +325,34 @@ function TabLink({
 // deep-link to a deck someone else generated. The polling effect has
 // already pruned this deck from localStorage by the time we render.
 function DeckNotFound({ jobId }: { jobId: string }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Sprint Y2 — terminal-state card scales in (subtle 0.96 → 1) so the
+  // "your deck is gone" message has a beat to land, rather than
+  // appearing as a hard cut. feedback ease feels right here — the
+  // page is *settling on bad news*, not announcing it.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        gsap.from(".dw-deck-notfound", {
+          scale: 0.96,
+          opacity: 0,
+          duration: DUR.secondary,
+          ease: EASE.feedback,
+        });
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(".dw-deck-notfound", { opacity: 0, duration: 0.2 });
+      });
+    },
+    { scope: wrapRef },
+  );
+
   return (
-    <div className="mx-auto max-w-2xl px-2 py-24">
+    <div ref={wrapRef} className="mx-auto max-w-2xl px-2 py-24">
       <div
-        className="relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] p-10 text-center"
+        className="dw-deck-notfound relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] p-10 text-center"
         style={{
           boxShadow:
             "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32)",

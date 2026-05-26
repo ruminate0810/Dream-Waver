@@ -1,10 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 
 import { ApiError, createVideoRun } from "@/lib/api";
+import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP);
 
 // /video/new is the entrance to the click-to-regen cinematic short
 // pipeline. Compared to /slides/new this is intentionally bare-bones:
@@ -84,6 +89,39 @@ export default function NewVideoRunPage() {
   const [dryRun, setDryRun] = useState(true); // safer default — see comment
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<{ message: string; fieldErrors: string[] } | null>(null);
+  const mainRef = useRef<HTMLElement | null>(null);
+
+  // Sprint Y2 — entrance: header settles, title rises, description fades,
+  // form fields cascade. Reduced motion = opacity fade only.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-vid-header", { y: -8, opacity: 0, duration: DUR.secondary })
+          .from(".dw-vid-title", { y: 18, opacity: 0 }, "-=0.2")
+          .from(
+            ".dw-vid-desc",
+            { y: 12, opacity: 0, duration: DUR.secondary },
+            "-=0.4",
+          )
+          .from(
+            ".dw-vid-form > *",
+            { y: 14, opacity: 0, stagger: 0.06, duration: DUR.secondary },
+            "-=0.35",
+          );
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(
+          ".dw-vid-header, .dw-vid-title, .dw-vid-desc, .dw-vid-form > *",
+          { opacity: 0, duration: 0.2, stagger: 0.04 },
+        );
+      });
+    },
+    { scope: mainRef },
+  );
 
   // Why dry-run defaults ON: a real run can spend tens of dollars on
   // Seedance + Gemini calls. We'd rather the user opt INTO the spend
@@ -131,8 +169,8 @@ export default function NewVideoRunPage() {
   }
 
   return (
-    <main className="min-h-screen bg-white">
-      <header className="border-b border-zinc-100">
+    <main ref={mainRef} className="min-h-screen bg-white">
+      <header className="dw-vid-header border-b border-zinc-100">
         <div className="mx-auto flex max-w-4xl items-baseline justify-between px-6 py-4">
           <a
             href="/"
@@ -147,8 +185,8 @@ export default function NewVideoRunPage() {
       </header>
 
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <h1 className="text-2xl font-medium text-zinc-900">Start a video run</h1>
-        <p className="mt-2 max-w-2xl text-sm text-zinc-600">
+        <h1 className="dw-vid-title text-2xl font-medium text-zinc-900">Start a video run</h1>
+        <p className="dw-vid-desc mt-2 max-w-2xl text-sm text-zinc-600">
           Submit a <code className="rounded bg-zinc-100 px-1 py-0.5 text-[12px]">story_spec.json</code> describing
           characters and scenes; the click-to-regen timeline opens once the
           DAG is built. Opendream validates the spec before any provider
@@ -156,7 +194,7 @@ export default function NewVideoRunPage() {
           message.
         </p>
 
-        <form onSubmit={onSubmit} className="mt-8 space-y-5">
+        <form onSubmit={onSubmit} className="dw-vid-form mt-8 space-y-5">
           <div>
             <label
               htmlFor="title"

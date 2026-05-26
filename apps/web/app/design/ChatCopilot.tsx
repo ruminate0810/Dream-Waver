@@ -81,7 +81,7 @@ export function ChatCopilot({ history, onSubmit, onFocus }: ChatCopilotProps) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-10 shrink-0 items-center justify-center border-r border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-800"
+        className="dw-design-copilot flex w-10 shrink-0 items-center justify-center border-r border-zinc-200 bg-white text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-800"
         aria-label="Open chat copilot"
       >
         <ChevronRight size={14} />
@@ -90,7 +90,7 @@ export function ChatCopilot({ history, onSubmit, onFocus }: ChatCopilotProps) {
   }
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-r border-zinc-200 bg-white">
+    <aside className="dw-design-copilot flex w-80 shrink-0 flex-col border-r border-zinc-200 bg-white">
       <header className="flex items-baseline justify-between border-b border-zinc-100 px-4 py-3">
         <h2 className="inline-flex items-baseline gap-1.5 text-[13px] font-medium text-zinc-900">
           <Sparkles size={12} className="self-center text-fuchsia-500" />

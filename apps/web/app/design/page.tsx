@@ -9,6 +9,8 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import {
   ArrowLeft,
   Eraser,
@@ -35,6 +37,9 @@ import type {
   SelectedImageInfo,
 } from "./TldrawCanvas";
 import { ChatCopilot } from "./ChatCopilot";
+import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP);
 
 // /design is the canvas surface — TLDraw as the artboard, our toolbars
 // float on top:
@@ -88,6 +93,7 @@ export default function DesignPage() {
   const controllerRef = useRef<CanvasController | null>(null);
   const [selected, setSelected] = useState<SelectedImageInfo | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const mainRef = useRef<HTMLElement | null>(null);
 
   const handleReady = useCallback((controller: CanvasController) => {
     controllerRef.current = controller;
@@ -95,9 +101,64 @@ export default function DesignPage() {
 
   const startGeneration = useGenerateWithProgress(controllerRef, setHistory);
 
+  // Sprint Y2 — chrome-only entrance. Header settles from above, the
+  // copilot drawer slides in from the left edge, the AI panel floats
+  // in from the right. Deliberately NOT animating TldrawCanvas itself —
+  // tldraw owns its own pointer model, and a stale GSAP transform on
+  // the canvas wrapper would fight selection drags.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-design-header", {
+          y: -8,
+          opacity: 0,
+          duration: DUR.secondary,
+        })
+          .from(".dw-design-copilot", { x: -24, opacity: 0 }, "-=0.3")
+          .from(".dw-design-ai-panel", { x: 24, opacity: 0 }, "-=0.5");
+      });
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(
+          ".dw-design-header, .dw-design-copilot, .dw-design-ai-panel",
+          { opacity: 0, duration: 0.2, stagger: 0.04 },
+        );
+      });
+    },
+    { scope: mainRef },
+  );
+
+  // Selection toolbar appears mid-session when a user clicks an AI image.
+  // Scale-from-0.94 + fade so it lands like an answer to the click,
+  // not a sudden overlay. Effect-driven (not part of mount timeline)
+  // because `selected` flips during use, not on first paint.
+  useEffect(() => {
+    if (!selected) return;
+    const card = mainRef.current?.querySelector(".dw-design-toolbar");
+    if (!card) return;
+    const mm = gsap.matchMedia();
+    mm.add(PREFERS_FULL_MOTION, () => {
+      gsap.from(card, {
+        scale: 0.94,
+        opacity: 0,
+        duration: DUR.micro,
+        ease: EASE.feedback,
+      });
+    });
+    return () => {
+      mm.revert();
+    };
+  }, [selected]);
+
   return (
-    <main className="flex h-screen flex-col bg-zinc-50 text-zinc-900">
-      <header className="z-10 flex items-baseline justify-between border-b border-zinc-100 bg-white px-6 py-3">
+    <main
+      ref={mainRef}
+      className="flex h-screen flex-col bg-zinc-50 text-zinc-900"
+    >
+      <header className="dw-design-header z-10 flex items-baseline justify-between border-b border-zinc-100 bg-white px-6 py-3">
         <Link
           href="/"
           className="inline-flex items-baseline gap-2 text-xs text-zinc-500 hover:text-zinc-800"
@@ -128,7 +189,7 @@ export default function DesignPage() {
               rather than anchored to the shape — dragging the image
               doesn't require re-positioning the popover. */}
           {selected && (
-            <div className="pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2">
+            <div className="dw-design-toolbar pointer-events-none absolute left-1/2 top-4 z-20 -translate-x-1/2">
               <SelectionToolbar
                 selected={selected}
                 onResult={(url, w, h) =>
@@ -140,7 +201,7 @@ export default function DesignPage() {
 
           {/* AI panel — floating top-right. Always present; closed by
               default to keep the canvas uncluttered. */}
-          <div className="pointer-events-none absolute right-4 top-4 z-20">
+          <div className="dw-design-ai-panel pointer-events-none absolute right-4 top-4 z-20">
             <AiImagePanel
               onSingle={(req) => startGeneration(req)}
               onVariants={(variants) =>
