@@ -12,10 +12,15 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
-import { createSlides } from "@/lib/api";
+import {
+  createSlides,
+  deleteUserTemplate,
+  listUserTemplates,
+  type UserTemplate,
+} from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
 import { rememberDeck } from "@/lib/recentDecks";
 import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
@@ -30,6 +35,7 @@ import {
   TemplateCard,
 } from "@/components/slides/TemplateCard";
 import { LayoutExampleCard } from "@/components/slides/LayoutExampleCard";
+import { TemplateCreator } from "@/components/slides/TemplateCreator";
 
 gsap.registerPlugin(useGSAP);
 
@@ -63,6 +69,8 @@ const STARTER_PROMPTS = [
   "8 页摄影集风格 deck：京都樱花季的一周，photo-essay + split-image 配图",
 ] as const;
 
+type StyleTab = "explore" | "mine";
+
 function NewSlidesChat() {
   const router = useRouter();
   const search = useSearchParams();
@@ -72,6 +80,16 @@ function NewSlidesChat() {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
+  // Sprint T4 — Style Atlas tab + saved-templates state.
+  const [styleTab, setStyleTab] = useState<StyleTab>("explore");
+  const [myTemplates, setMyTemplates] = useState<UserTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  // When non-null, the user picked a saved template — submit will pass
+  // the brand alongside force_theme.
+  const [selectedMyTemplate, setSelectedMyTemplate] = useState<UserTemplate | null>(null);
+  // Creator modal open / closed.
+  const [showCreator, setShowCreator] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -84,6 +102,32 @@ function NewSlidesChat() {
 
   useEffect(() => {
     textareaRef.current?.focus();
+  }, []);
+
+  // Sprint T4 — fetch saved templates on mount. We always fetch (cheap,
+  // workspace-scoped via X-Dev-User-Id header) so the tab badge reflects
+  // the actual count without the user having to click "我的模板" first.
+  useEffect(() => {
+    let cancelled = false;
+    setTemplatesLoading(true);
+    listUserTemplates()
+      .then((rows) => {
+        if (!cancelled) {
+          setMyTemplates(rows);
+          setTemplatesError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setTemplatesError(e instanceof Error ? e.message : "load failed");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTemplatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Entrance choreography. Header settles first, then the brief settles,
@@ -188,13 +232,26 @@ function NewSlidesChat() {
       const { cleanTopic, hints } = parseTopic(t);
       const finalCount =
         hints.slideCount && slideCount === 8 ? hints.slideCount : slideCount;
+      // Sprint T4 — when the user picked a saved "我的模板", attach
+      // its brand so the backend applies it after content generation.
+      // Empty-brand payload is dropped server-side so a Style-Atlas-
+      // only pick (no brand) still works.
+      const brand =
+        selectedMyTemplate &&
+        (selectedMyTemplate.brand_primary ||
+          selectedMyTemplate.brand_accent ||
+          selectedMyTemplate.font_family)
+          ? {
+              primary_color: selectedMyTemplate.brand_primary,
+              accent_color: selectedMyTemplate.brand_accent,
+              font_family: selectedMyTemplate.font_family,
+            }
+          : undefined;
       const res = await createSlides({
         topic: cleanTopic,
         slide_count: finalCount,
-        // Sprint T1 — force_theme is back. User picks via Style Atlas
-        // gallery (default "minimalist"). Agent honours it verbatim;
-        // the user can still change_theme mid-chat.
         force_theme: style,
+        brand,
       });
       rememberDeck({
         jobId: res.job_id,
@@ -207,6 +264,29 @@ function NewSlidesChat() {
       setErr(e instanceof Error ? e.message : "Unknown error");
       setSubmitting(false);
     }
+  }
+
+  // Sprint T4 — helpers for "我的模板" pick + delete + create.
+  function applyUserTemplate(t: UserTemplate) {
+    setStyle(t.theme);
+    setSelectedMyTemplate(t);
+  }
+  async function handleDeleteTemplate(t: UserTemplate) {
+    const ok = window.confirm(`删除模板「${t.name}」？此操作不可撤销。`);
+    if (!ok) return;
+    try {
+      await deleteUserTemplate(t.id);
+      setMyTemplates((prev) => prev.filter((x) => x.id !== t.id));
+      if (selectedMyTemplate?.id === t.id) setSelectedMyTemplate(null);
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : "delete failed");
+    }
+  }
+  function handleTemplateCreated(created: UserTemplate) {
+    setMyTemplates((prev) => [created, ...prev]);
+    setShowCreator(false);
+    setStyleTab("mine");
+    applyUserTemplate(created);
   }
 
   const selectedTemplate: Template =
@@ -389,7 +469,7 @@ function NewSlidesChat() {
 
         {/* ── § 02 — Style Atlas (theme picker) ───────────────────── */}
         <section className="mb-24">
-          <div className="dw-new-template-head mb-8 flex items-baseline gap-4">
+          <div className="dw-new-template-head mb-6 flex items-baseline gap-4">
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
               § 02
             </span>
@@ -398,28 +478,69 @@ function NewSlidesChat() {
             </span>
             <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
-              {TEMPLATES.length} 个
+              {styleTab === "explore" ? `${TEMPLATES.length} 个` : `${myTemplates.length} 个`}
             </span>
           </div>
 
-          <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
-            点任一卡片切换风格。当前选中
-            <span className="not-italic text-[color:var(--ink)]"> {selectedTemplate.label} </span>
-            —— Begin 时 agent 按这套色板和字体写所有幻灯片。
-          </p>
-
-          <FeaturedTemplateCard template={selectedTemplate} />
-
-          <div className="dw-new-template-grid mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {galleryTemplates.map((t) => (
-              <TemplateCard
-                key={t.name}
-                template={t}
-                selected={false}
-                onClick={() => setStyle(t.name)}
-              />
-            ))}
+          {/* Sprint T4 — tab bar (探索 / 我的模板). Editorial-style
+              underline indicator + caps mono labels so it doesn't
+              feel like a generic SaaS tab strip. */}
+          <div className="mb-6 flex items-baseline gap-6 border-b border-[color:var(--rule)]">
+            <StyleTabButton
+              active={styleTab === "explore"}
+              onClick={() => setStyleTab("explore")}
+              label="探索"
+              hint={`${TEMPLATES.length} themes`}
+            />
+            <StyleTabButton
+              active={styleTab === "mine"}
+              onClick={() => setStyleTab("mine")}
+              label="我的模板"
+              hint={
+                templatesLoading
+                  ? "loading…"
+                  : myTemplates.length > 0
+                  ? `${myTemplates.length} saved`
+                  : "empty"
+              }
+            />
           </div>
+
+          {styleTab === "explore" ? (
+            <>
+              <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+                点任一卡片切换风格。当前选中
+                <span className="not-italic text-[color:var(--ink)]"> {selectedTemplate.label} </span>
+                —— Begin 时 agent 按这套色板和字体写所有幻灯片。
+              </p>
+
+              <FeaturedTemplateCard template={selectedTemplate} />
+
+              <div className="dw-new-template-grid mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {galleryTemplates.map((t) => (
+                  <TemplateCard
+                    key={t.name}
+                    template={t}
+                    selected={false}
+                    onClick={() => {
+                      setStyle(t.name);
+                      setSelectedMyTemplate(null);
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          ) : (
+            <MyTemplatesGrid
+              templates={myTemplates}
+              loading={templatesLoading}
+              error={templatesError}
+              selectedID={selectedMyTemplate?.id ?? null}
+              onPick={applyUserTemplate}
+              onDelete={handleDeleteTemplate}
+              onCreate={() => setShowCreator(true)}
+            />
+          )}
         </section>
 
         {/* ── § 03 — Composition (image-led / IA layouts, read-only) */}
@@ -451,7 +572,225 @@ function NewSlidesChat() {
           </div>
         </section>
       </div>
+
+      {/* Sprint T4 — TemplateCreator modal. Mounted at the page root
+          (portal anyway) so the gallery sections' overflow-hidden
+          don't clip it. Default theme prefills from the currently-
+          picked Style Atlas card. */}
+      {showCreator ? (
+        <TemplateCreator
+          defaultTheme={style}
+          onClose={() => setShowCreator(false)}
+          onCreated={handleTemplateCreated}
+        />
+      ) : null}
     </main>
+  );
+}
+
+// ─── Style Atlas tab bar pieces ───────────────────────────────────
+
+function StyleTabButton({
+  active,
+  onClick,
+  label,
+  hint,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  hint: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "group relative -mb-px border-b-2 pb-3 pt-1 transition-colors",
+        active
+          ? "border-[color:var(--vermillion)]"
+          : "border-transparent hover:border-[color:var(--ink)]/30",
+      )}
+    >
+      <span className="flex items-baseline gap-2">
+        <span
+          className={clsx(
+            "font-display text-[17px] transition-colors",
+            active ? "text-[color:var(--ink)]" : "text-[color:var(--ink-soft)] group-hover:text-[color:var(--ink)]",
+          )}
+        >
+          {label}
+        </span>
+        <span
+          className={clsx(
+            "font-mono-jb text-[9px] uppercase tracking-[0.22em] transition-colors",
+            active ? "text-[color:var(--vermillion)]" : "text-[color:var(--ink-faint)]",
+          )}
+        >
+          {hint}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function MyTemplatesGrid({
+  templates,
+  loading,
+  error,
+  selectedID,
+  onPick,
+  onDelete,
+  onCreate,
+}: {
+  templates: UserTemplate[];
+  loading: boolean;
+  error: string | null;
+  selectedID: string | null;
+  onPick: (t: UserTemplate) => void;
+  onDelete: (t: UserTemplate) => void;
+  onCreate: () => void;
+}) {
+  return (
+    <>
+      <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+        保存你常用的
+        <span className="not-italic text-[color:var(--ink)]"> 主题 + 品牌色 + 字体 </span>
+        组合，下次新建演讲一键复用。
+      </p>
+
+      {error ? (
+        <div
+          role="alert"
+          className="mb-4 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] px-3 py-2 font-display text-[14px] italic text-[color:var(--ink)]"
+        >
+          {error}
+        </div>
+      ) : null}
+
+      <div className="dw-new-template-grid grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {/* + Add-my-template card — always at position 0 */}
+        <button
+          type="button"
+          onClick={onCreate}
+          className="dw-new-template-card group flex aspect-[16/12] w-full flex-col items-center justify-center gap-2 border border-dashed border-[color:var(--ink)]/30 bg-white/40 px-4 py-3 text-center transition-all hover:-translate-y-[2px] hover:border-[color:var(--vermillion)] hover:bg-white"
+        >
+          <Plus
+            size={24}
+            strokeWidth={1.4}
+            className="text-[color:var(--ink-faint)] transition-colors group-hover:text-[color:var(--vermillion)]"
+          />
+          <span className="font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)] transition-colors group-hover:text-[color:var(--ink)]">
+            添加我的模板
+          </span>
+          <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            theme + brand
+          </span>
+        </button>
+
+        {loading && templates.length === 0
+          ? null
+          : templates.map((t) => (
+              <UserTemplateCard
+                key={t.id}
+                template={t}
+                selected={t.id === selectedID}
+                onClick={() => onPick(t)}
+                onDelete={() => onDelete(t)}
+              />
+            ))}
+      </div>
+
+      {!loading && templates.length === 0 ? (
+        <p className="mt-6 font-display text-[14px] italic text-[color:var(--ink-faint)]">
+          还没有保存的模板。点上方
+          <span className="not-italic text-[color:var(--ink)]"> 添加我的模板 </span>
+          开始 —— 几秒钟搞定。
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function UserTemplateCard({
+  template,
+  selected,
+  onClick,
+  onDelete,
+}: {
+  template: UserTemplate;
+  selected: boolean;
+  onClick: () => void;
+  onDelete: () => void;
+}) {
+  // Find the base theme so we can pull its thumbnail + label.
+  const base = findTemplate(template.theme);
+  const primary = template.brand_primary || base?.primary_color || "#1A1614";
+  const accent = template.brand_accent || base?.accent_color || "#B5371E";
+  return (
+    <div className="dw-new-template-card group relative">
+      <button
+        type="button"
+        onClick={onClick}
+        className={clsx(
+          "relative flex w-full flex-col overflow-hidden border bg-white text-left transition-all duration-200",
+          selected
+            ? "border-[color:var(--vermillion)] shadow-[0_0_0_3px_rgba(181,55,30,0.15),0_18px_36px_-22px_rgba(181,55,30,0.35)]"
+            : "border-[color:var(--rule)] shadow-[0_1px_0_rgba(26,22,20,0.04)] hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]",
+        )}
+      >
+        {/* Thumbnail — use base theme preview with the brand colours
+            painted as corner ribbons to communicate "branded variant". */}
+        <div className="relative">
+          {base ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={base.thumbnail}
+              alt={`${template.name} — ${base.label} base`}
+              loading="lazy"
+              draggable={false}
+              className="aspect-[16/9] w-full object-cover"
+            />
+          ) : (
+            <div className="aspect-[16/9] w-full bg-[color:var(--paper)]" />
+          )}
+          {/* Brand stripe — primary + accent slashes top-right corner */}
+          <div className="pointer-events-none absolute right-0 top-0 flex h-8 items-stretch overflow-hidden">
+            <span
+              className="block w-6 origin-top-right -skew-x-12"
+              style={{ backgroundColor: primary }}
+              aria-hidden
+            />
+            <span
+              className="block w-3 origin-top-right -skew-x-12"
+              style={{ backgroundColor: accent }}
+              aria-hidden
+            />
+          </div>
+        </div>
+
+        <div className="border-t border-[color:var(--rule)] px-3 py-2.5">
+          <p className="truncate font-display text-[15px] leading-tight text-[color:var(--ink)]">
+            {template.name}
+          </p>
+          <p className="mt-0.5 truncate font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            {base?.label ?? template.theme} · brand
+          </p>
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          onDelete();
+        }}
+        aria-label={`Delete template ${template.name}`}
+        className="absolute left-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--ink)]/15 bg-white/90 text-[color:var(--ink-faint)] opacity-0 shadow-sm transition-all hover:border-[color:var(--vermillion)] hover:text-[color:var(--vermillion)] group-hover:opacity-100"
+      >
+        <Trash2 size={13} strokeWidth={1.8} />
+      </button>
+    </div>
   );
 }
 
