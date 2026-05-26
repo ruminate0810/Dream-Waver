@@ -12,3 +12,18 @@ var Content string
 
 //go:embed slide_one.md
 var SlideOne string
+
+// Sprint O — critic prompts. Three flavours of the same shape: each
+// reviews a different surface (outline, content, finished deck) and
+// returns a JSON array of {slide, category, issue, fix} objects (or
+// `[]` if the surface is solid). See stages/critic.go for the call
+// sites.
+
+//go:embed critic_outline.md
+var CriticOutline string
+
+//go:embed critic_content.md
+var CriticContent string
+
+//go:embed critic_deck.md
+var CriticDeck string

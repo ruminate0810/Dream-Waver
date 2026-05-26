@@ -82,6 +82,12 @@ type OutlineParams struct {
 	SlideCount    int    `json:"slide_count,omitempty"`
 	Style         string `json:"style,omitempty"`
 	ReferenceText string `json:"reference_text,omitempty"`
+
+	// Sprint O — when non-empty, the critic's notes from a previous
+	// outline pass are appended to the user message as "Reviewer
+	// notes to address" so the revised outline addresses each one.
+	// Empty on the first pass; populated by the revise_outline tool.
+	CriticNotes []CriticNote `json:"critic_notes,omitempty"`
 }
 
 // OutlineSlide is one row in the deck's table of contents.
@@ -145,6 +151,9 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 		defaultStr(in.Style, "auto"),
 		in.ReferenceText,
 	)
+	if notes := formatCriticNotes(in.CriticNotes); notes != "" {
+		user += "\n\n" + notes
+	}
 	client := router.For("planner")
 	var out OutlineResult
 	resp, err := askWithRetry(ctx, client, "outline", llm.AskToolRequest{
@@ -222,6 +231,12 @@ type WriteOneParams struct {
 	Position       int // 1-based position the new slide will occupy
 	Instruction    string
 	NeighborTitles []string
+
+	// Sprint O — when non-empty, critic notes scoped to THIS slide
+	// (typically a single CriticNote from a critic_content pass) are
+	// appended to the user message. Used by the revise_slide tool
+	// when an initial Phase 3 critic flags a specific slide.
+	CriticNotes []CriticNote `json:"critic_notes,omitempty"`
 }
 
 // WriteOneSlide asks the worker LLM to produce a single slide's
@@ -237,6 +252,9 @@ func WriteOneSlide(ctx context.Context, router llm.Router, p WriteOneParams) (*s
 		strings.Join(p.NeighborTitles, " · "),
 		p.Instruction,
 	)
+	if notes := formatCriticNotes(p.CriticNotes); notes != "" {
+		user += "\n\n" + notes
+	}
 
 	client := router.For("worker")
 	var data schema.SlideData
