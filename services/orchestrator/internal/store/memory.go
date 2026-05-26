@@ -5,6 +5,7 @@ import "sync"
 // NewMemory builds an in-memory Store for tests and for local dev when
 // DATABASE_URL is empty. Phase 2a fills in all job/asset entities;
 // the in-memory backing keeps local dev working without docker.
+// Phase 3 (X3a) adds CreditLedger + ToolCalls.
 //
 // Memory store is NOT cross-process — each orchestrator instance has
 // its own. Fine for solo dev / unit tests; pgx is the real story.
@@ -17,6 +18,8 @@ func NewMemory() *Store {
 		VideoRuns:       newMemVideoRuns(),
 		DesignAssets:    newMemDesignAssets(),
 		IdempotencyKeys: newMemIdempotencyKeys(),
+		CreditLedger:    newMemCreditLedger(),
+		ToolCalls:       newMemToolCalls(),
 	}
 }
 

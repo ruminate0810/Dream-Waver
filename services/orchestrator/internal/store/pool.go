@@ -82,6 +82,8 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 		VideoRuns:       &pgxVideoRuns{pool: pool},
 		DesignAssets:    &pgxDesignAssets{pool: pool},
 		IdempotencyKeys: &pgxIdempotencyKeys{pool: pool},
+		CreditLedger:    &pgxCreditLedger{pool: pool},
+		ToolCalls:       &pgxToolCalls{pool: pool},
 		closer:          func() error { pool.Close(); return nil },
 	}, nil
 }

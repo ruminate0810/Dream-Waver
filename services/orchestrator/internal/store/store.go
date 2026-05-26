@@ -37,6 +37,10 @@ var (
 	// ErrConflict surfaces on uniqueness violations (e.g. inviting a
 	// user who's already a member).
 	ErrConflict = errors.New("store: conflict")
+	// ErrInsufficient is the billing-side equivalent of "not enough
+	// credit to perform this debit". Defined here (not in billing)
+	// so InsertDebit can return it without an import cycle.
+	ErrInsufficient = errors.New("store: insufficient credit")
 )
 
 // ─── Entity types ───────────────────────────────────────────────────
@@ -246,6 +250,72 @@ type DesignAssets interface {
 	Delete(ctx context.Context, workspaceID, assetID uuid.UUID) error
 }
 
+// ─── Billing (X3a) ─────────────────────────────────────────────────
+
+// CreditLedgerEntry is one row in credit_ledger. Append-only —
+// returned by Insert* methods so the caller (billing.Service) can
+// expose the resulting balance to its own caller.
+type CreditLedgerEntry struct {
+	ID            uuid.UUID
+	WorkspaceID   uuid.UUID
+	AmountMicro   int64 // positive = grant, negative = debit
+	Reason        string
+	Meta          json.RawMessage
+	CreatedAt     time.Time
+	// BalanceAfter is the result of `SUM(amount_micro)` taken
+	// inside the same SQL statement that wrote the row, so it's
+	// consistent with the row's view of the world even under
+	// concurrent writers.
+	BalanceAfter  int64
+}
+
+// CreditLedger is the persistence boundary for the per-workspace
+// credit pool. Balance is computed from the rows; no denormalised
+// counter column to lose-update.
+type CreditLedger interface {
+	// SumBalance returns SUM(amount_micro) for the workspace. Zero
+	// for new workspaces with no ledger entries.
+	SumBalance(ctx context.Context, workspaceID uuid.UUID) (int64, error)
+
+	// InsertDebit attempts to write a negative-amount row IFF the
+	// current balance covers it. Returns ErrInsufficient otherwise.
+	// `amount` is given as a POSITIVE number (the store negates
+	// before insert) so callers don't keep getting the sign wrong.
+	InsertDebit(ctx context.Context, workspaceID uuid.UUID, amount int64, reason string, meta map[string]any) (*CreditLedgerEntry, error)
+
+	// InsertCredit writes a positive-amount row unconditionally.
+	// Used for trial grants, top-ups, refunds.
+	InsertCredit(ctx context.Context, workspaceID uuid.UUID, amount int64, reason string, meta map[string]any) error
+
+	// List returns the most recent `limit` entries for the
+	// workspace, newest first. Drives the "billing history" pane.
+	List(ctx context.Context, workspaceID uuid.UUID, limit int) ([]*CreditLedgerEntry, error)
+}
+
+// ToolCall is one audit row (see migrations/0003_billing.sql for
+// column docs).
+type ToolCall struct {
+	ID               uuid.UUID
+	WorkspaceID      uuid.UUID
+	UserID           uuid.UUID // uuid.Nil for system flows
+	ToolName         string
+	ArgsHash         []byte
+	ResultSummary    string
+	DebitAmountMicro int64
+	DurationMS       int
+	Attempt          int
+	FallbackUsed     string
+	Error            string
+	CreatedAt        time.Time
+}
+
+// ToolCalls is the audit-trail persistence for every tool invocation
+// — fed by the X3b WrapWithBilling decorator. Insert-only.
+type ToolCalls interface {
+	Insert(ctx context.Context, call ToolCall) error
+	List(ctx context.Context, workspaceID uuid.UUID, limit int) ([]*ToolCall, error)
+}
+
 // ─── Idempotency ───────────────────────────────────────────────────
 
 // IdempotencyKeys backs the tool.WrapWithIdempotency decorator. The
@@ -275,6 +345,8 @@ type Store struct {
 	VideoRuns       VideoRuns
 	DesignAssets    DesignAssets
 	IdempotencyKeys IdempotencyKeys
+	CreditLedger    CreditLedger // X3a
+	ToolCalls       ToolCalls    // X3a
 
 	// closer is set by the constructor that owns external resources
 	// (e.g. the pgx pool). main.go defers Close on shutdown.

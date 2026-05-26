@@ -19,6 +19,7 @@ import (
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/api"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/auth"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/billing"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/config"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/image"
@@ -208,6 +209,14 @@ func main() {
 		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
 	}
 
+	// ─── Billing service (X3a) ────────────────────────────────────────
+	// Wraps the credit ledger + tool-call audit. X3b's tool decorator
+	// (WrapWithBilling) and the routes_design / routes_video billing
+	// hooks pull this from api.Dependencies. Free to construct
+	// unconditionally — the in-memory store fallback satisfies the
+	// interfaces just like Postgres does.
+	billingSvc := billing.New(dataStore.CreditLedger, dataStore.ToolCalls)
+
 	// ─── Auth middleware ──────────────────────────────────────────────
 	// Permissive at mount — populates ctx when auth headers are
 	// present, no-ops otherwise. Routes that require auth wrap with
@@ -243,6 +252,7 @@ func main() {
 		VideoBridge:    videoBridge,
 		DesignBridge:   designBridge,
 		Store:          dataStore,
+		Billing:        billingSvc,
 		AuthMiddleware: authMW,
 	}, ":"+cfg.HTTPPort)
 

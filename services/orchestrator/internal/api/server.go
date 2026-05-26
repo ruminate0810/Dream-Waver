@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/auth"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/billing"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
@@ -67,6 +68,12 @@ type Dependencies struct {
 	// VideoRuns / DesignAssets and migrates the in-memory
 	// SessionStores in slides / games over to it.
 	Store *store.Store
+
+	// Billing is the per-workspace credit pool + audit trail
+	// (Sprint X3a). X3b wraps each paid tool with the billing
+	// decorator and replaces the 11 TODO(billing) hooks in
+	// routes_design.go + routes_video.go with real Debit calls.
+	Billing billing.Service
 
 	// AuthMiddleware is mounted on the /api/v1 group. PERMISSIVE —
 	// it populates ctx with User/Workspace when auth headers are
