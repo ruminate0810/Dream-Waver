@@ -1,0 +1,15 @@
+{
+  "_comment": "Expectation shape for q4_review.spec.json. Per the diff.go contract: slide_count tolerates ±1 (LLM may compress or expand by one); requires at least one of each high-value layout; caps bullets at 4 of 8 (defends against the all-bullets collapse the planner has drifted into during Sprints G and L); requires every slide to carry a non-empty title.",
+  "slide_count": 8,
+  "slide_count_tolerance": 1,
+  "required_layouts": ["title", "metric", "closing"],
+  "min_per_layout": {
+    "title": 1,
+    "metric": 1,
+    "closing": 1
+  },
+  "max_per_layout": {
+    "bullets": 4
+  },
+  "required_title_non_empty": true
+}

@@ -1,0 +1,8 @@
+{
+  "_comment": "Seed fixture for the slides eval suite (Sprint X2c). Pair with q4_review.expected.json — the live-pipeline test (eval_live_test.go, Phase 4 follow-up) will use this spec as input and Diff the produced Deck against the expectation.",
+  "topic": "Q4 product review for an internal engineering audience",
+  "audience": "engineering leadership",
+  "slide_count": 8,
+  "style": "data-forward, clean, sparing on bullet lists",
+  "reference_text": "We shipped 4 major features (auth, billing, sandbox, video). Latency p95 dropped from 1.8s to 950ms. NPS up to 64. Two paying customers, $24k ARR. Next quarter focus: production reliability and onboarding."
+}

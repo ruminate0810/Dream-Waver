@@ -1,0 +1,123 @@
+# Dream-Waver CI — Sprint X2c
+#
+# Three independent jobs, all required for merge to main:
+#   - orchestrator-go   go vet + build + test (no external services yet;
+#                       postgres-backed integration tests land in a
+#                       follow-up that adds a `services:` postgres
+#                       container to this job).
+#   - web-typecheck     tsc --noEmit. No build (Vercel handles that on
+#                       deploy) and no lint (eslint is a separate run
+#                       we'll add when the team grows past one).
+#   - sandbox-rust      cargo check + cargo test. The wasmtime runtime
+#                       is still a stub so its tests are skipped via the
+#                       `feature = "wasm"` flag — we test the Echo
+#                       runtime and the gRPC server scaffolding only.
+#
+# Why no eval here?
+#   The slides Pipeline structural-diff eval (tests/eval/) costs real
+#   DeepSeek tokens. It runs nightly on a separate workflow when that
+#   ships; CI on every PR stays free.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-flight runs when a new commit lands on the same PR — saves
+# minutes when someone pushes fixups rapidly.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  orchestrator-go:
+    name: orchestrator (go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/orchestrator
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          # Match go.mod's `go 1.26`. setup-go honours the directive
+          # automatically when go-version-file is set.
+          go-version-file: services/orchestrator/go.mod
+          cache: true
+          cache-dependency-path: services/orchestrator/go.sum
+
+      - name: go mod download
+        run: go mod download
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        # Build the binary so missing imports / type errors surface
+        # before any test runs.
+        run: go build -o /tmp/orchestrator ./cmd/server
+
+      - name: go test
+        # `-race` catches the kind of locking bug that bit us pre-J in
+        # the slides session store. Worth the 2x runtime.
+        run: go test -race -timeout 5m ./...
+
+  web-typecheck:
+    name: web (typescript)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: npm ci
+        # ci installs from lockfile — faster + deterministic vs install.
+        # Falls back gracefully when the lockfile is fresh.
+        run: npm ci || npm install
+
+      - name: type-check
+        # `tsc --noEmit` via the package script we already have.
+        # Failing strict-mode errors block the merge.
+        run: npm run type-check
+
+  sandbox-rust:
+    name: sandbox (rust)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sandbox
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            services/sandbox/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('services/sandbox/Cargo.lock') }}
+
+      - name: cargo check
+        run: cargo check --all-targets
+
+      - name: cargo test
+        # Default features only — wasmtime runtime is feature-gated
+        # behind `wasm` and still a stub. Phase 5a flips that.
+        run: cargo test --no-fail-fast
