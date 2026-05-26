@@ -13,6 +13,9 @@ import {
   Search,
   Power,
   Wrench,
+  Scale,
+  RefreshCw,
+  Microscope,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -47,6 +50,13 @@ const ICON_FOR: Record<string, LucideIcon> = {
   code_execute: Wrench,
   write_game: Layers,
   terminate: Power,
+  // Sprint O — reflection tools
+  critic_outline: Scale,
+  critic_content: Scale,
+  critic_deck: Scale,
+  revise_outline: RefreshCw,
+  revise_slide: RefreshCw,
+  analyze_deck: Microscope,
 };
 
 const ZH_LABEL: Record<string, string> = {
@@ -59,7 +69,27 @@ const ZH_LABEL: Record<string, string> = {
   code_execute: "沙箱执行",
   write_game: "生成游戏",
   terminate: "收尾",
+  // Sprint O — reflection tools
+  critic_outline: "审阅大纲",
+  critic_content: "审阅内容",
+  critic_deck: "审阅整稿",
+  revise_outline: "修订大纲",
+  revise_slide: "修订单页",
+  analyze_deck: "通读分析",
 };
+
+// Sprint O — tool category groups for visual distinction. Critic tools
+// get a vermillion left-edge bar (they're "review" gestures, distinct
+// from "do something" tools); introspect tools (analyze_deck) get a
+// subtle ink bar so the user can tell at a glance that the agent is
+// reading rather than mutating.
+type ToolCategory = "action" | "critic" | "introspect";
+
+function categoryOf(name: string): ToolCategory {
+  if (name.startsWith("critic_")) return "critic";
+  if (name === "analyze_deck") return "introspect";
+  return "action";
+}
 
 export function ToolStrip({ calls }: { calls: ToolCallEntry[] }) {
   if (!calls.length) return null;
@@ -78,10 +108,21 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
   const [open, setOpen] = useState(false);
   const Icon = ICON_FOR[call.name] ?? Wrench;
   const zh = ZH_LABEL[call.name];
+  const category = categoryOf(call.name);
   const hasBody = Boolean(call.output || call.error || call.input);
 
   return (
-    <div className="py-4">
+    <div
+      className={clsx(
+        "relative py-4",
+        // Sprint O — category-specific left-edge bar so critic /
+        // introspect calls read as a different gesture than action
+        // tools. The bar is decorative; the icon already carries
+        // the canonical signal.
+        category === "critic" && "border-l-2 border-[color:var(--vermillion)] pl-3 -ml-3",
+        category === "introspect" && "border-l-2 border-[color:var(--ink-soft)]/40 pl-3 -ml-3",
+      )}
+    >
       <button
         type="button"
         onClick={() => hasBody && setOpen((v) => !v)}
