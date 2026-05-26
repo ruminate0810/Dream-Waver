@@ -7,7 +7,7 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
     {
       "index": 1,
       "template": "matches the deck theme",
-      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster",
+      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist",
       "data": {
         "title": "...",
         "subtitle": "optional",
@@ -80,6 +80,8 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - For layout=`before-after`, REQUIRED: `before_image_query` AND `after_image_query` (both 2-5 English words). Optional: `before_label` / `after_label` (defaults "Before" / "After" — override for non-English decks like "未改造" / "改造后"), `title` (above), `caption` (italic line below). Omit `bullets`/`body`.
 - For layout=`icon-grid`, REQUIRED: `features` (3, 4, or 6 items), each `{icon: "🚀", label: "≤ 4 words", description: "1-2 sentences, ≤ 25 words"}`. Icon must be a single emoji or short symbol — pick one that visually evokes the feature (🚀 for speed, 🔒 security, ⚡ performance, 🎯 precision, 📦 packaging, 💎 quality, 🧠 intelligence, 🌍 global, ⏱ time, ✨ magic). Optional `title` above. Omit `bullets`/`body`.
 - For layout=`team-roster`, REQUIRED: `team_members` (3-6 items), each `{name, role, ...}`. Optional per-member: `avatar_query` (for AI portrait — short prompt like "professional portrait of male engineer, neutral background"), `bio` (≤ 12 words). Optional slide-level: `title`. Omit `bullets`/`body`. Names should match the deck's language (中文 for Chinese decks).
+- For layout=`code`, REQUIRED: `title` (≤ 6 words; describes WHAT the snippet does) AND `code` (the snippet as a single string — USE REAL NEWLINES `\n`, not literal "\n" escapes; preserve indentation; cap ~25 lines / ~80 cols). Optional: `language` (one of `go|ts|py|sh|sql|json|yaml|rust|css|html|md`; renders as a pill next to the title), `body` (1-paragraph intro placed ABOVE the snippet; ≤ 40 words), `footer` (1-line citation below the snippet; ≤ 16 words). Omit `bullets`. Example title: "Register a tool with the SDK", "Curl the streaming endpoint", "PostgreSQL RLS policy for tenant rows". The snippet MUST be actually runnable / pasteable; pseudo-code is OK only if labelled as such in `body`.
+- For layout=`checklist`, REQUIRED: `title` (the list's heading; ≤ 6 words; e.g. "上线前检查", "本周行动项", "Launch checklist") AND `tasks` (3-7 imperative items; each ≤ 14 words; START WITH A VERB — "审核 X", "完成 Y", "Update Z"). Optional: `body` (1-line context above the list; ≤ 25 words). Omit `bullets`. Items should be DISCRETE ACTIONS, not facts or opinions. Bad: "团队效率很重要". Good: "为团队制定每周 1-on-1 模板". Mix Chinese and English freely if the deck does.
 
 # When to emit image_query
 

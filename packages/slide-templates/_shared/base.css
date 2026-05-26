@@ -988,6 +988,155 @@ body.layout-quote    .slide { justify-content: center; }
   margin-top: 4px;
 }
 
+/* ─── Sprint P1 layouts: code + checklist ─────────────────────────
+   Two diversification layouts that close major content-shape gaps:
+   code (for tutorials, API docs, snippet showcases) and checklist
+   (for action items, "next steps", launch readiness). Both inherit
+   the deck's theme via var(--accent) / var(--font-mono) / var(--fg) —
+   no per-theme overrides needed for the MVP.
+   ──────────────────────────────────────────────────────────────── */
+
+/* P1.a · code ─────────────────────────────────────────────── */
+.code-wrap {
+  display: flex; flex-direction: column;
+  gap: 24px;
+  padding-top: 24px;
+  width: 100%;
+}
+.code-header {
+  display: flex; align-items: baseline; gap: 16px;
+  flex-wrap: wrap;
+}
+.code-header .title {
+  margin: 0;
+  font-size: 56px;
+  line-height: 1.1;
+  font-weight: 600;
+}
+.code-lang {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  font-weight: 500;
+}
+.code-intro {
+  /* slightly smaller body so the snippet stays the focus */
+  font-size: 18px !important;
+  line-height: 1.55 !important;
+  color: var(--fg-muted);
+  max-width: 80ch;
+  margin: 0;
+}
+.code-block {
+  font-family: var(--font-mono, ui-monospace, "JetBrains Mono", Menlo, monospace);
+  font-size: 22px;
+  line-height: 1.55;
+  /* Preserve real newlines + author indentation. */
+  white-space: pre;
+  /* Horizontal scroll for too-wide lines instead of layout-breaking
+     wrap. Vertical overflow caps at ~25 lines visible. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-height: 640px;
+  margin: 0;
+  padding: 32px 40px;
+  background:
+    /* Subtle gradient frame: top hairline accent + soft surface */
+    linear-gradient(to bottom,
+      color-mix(in srgb, var(--accent) 12%, transparent) 0,
+      color-mix(in srgb, var(--accent) 12%, transparent) 2px,
+      transparent 2px),
+    color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg);
+  border-radius: 8px;
+  /* Soft inner shadow for depth — no harsh box outline. */
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fg) 8%, transparent),
+    0 8px 28px -16px color-mix(in srgb, var(--fg) 30%, transparent);
+  /* Subtle scroll affordance — only a thin scrollbar on hover. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
+}
+.code-caption {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+/* P1.b · checklist ────────────────────────────────────────── */
+.checklist-wrap {
+  display: flex; flex-direction: column;
+  gap: 32px;
+  padding-top: 24px;
+  width: 100%;
+}
+.checklist-wrap .title {
+  margin: 0;
+  font-size: 64px;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.checklist-wrap .body-text {
+  font-size: 22px;
+  line-height: 1.55;
+  color: var(--fg-muted);
+  max-width: 70ch;
+  margin: 0;
+}
+.checklist {
+  list-style: none;
+  padding: 0; margin: 0;
+  display: flex; flex-direction: column;
+  /* Generous row gap so checklist items read as discrete actions,
+     not the dense rhythm of bullets. */
+  gap: 22px;
+  counter-reset: chknum;
+  /* When task count is low (3) widen rows for breathing room; when
+     high (6-7) tighten so all fit without overflow. */
+}
+.checklist[data-count="3"] { gap: 36px; }
+.checklist[data-count="4"] { gap: 28px; }
+.checklist[data-count="7"] { gap: 16px; }
+.checklist-item {
+  display: flex; align-items: baseline; gap: 20px;
+  /* Subtle bottom rule per row, very faint — gives the checklist
+     a "form / spreadsheet" feel without looking like a table. */
+  padding-bottom: 22px;
+  border-bottom: 1px solid color-mix(in srgb, var(--fg) 7%, transparent);
+  counter-increment: chknum;
+}
+.checklist-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.checklist-box {
+  flex: 0 0 auto;
+  /* Render as a real square-with-thickness, not a glyph hairline. */
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px;
+  font-size: 0; /* hide the actual ☐ glyph; we draw the box via border */
+  border: 2px solid var(--accent);
+  border-radius: 6px;
+  /* Tiny inset highlight so it reads as 3D rather than flat. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, white 35%, transparent),
+    0 1px 0 color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.checklist-text {
+  flex: 1 1 auto;
+  font-family: var(--font-body);
+  font-size: 28px;
+  line-height: 1.4;
+  color: var(--fg);
+  /* Items often start with a verb — give them weight. */
+  font-weight: 500;
+}
+
 /* ─── Sprint M1: no-image fallback decorations ────────────────────
    When a slide's hero image fails to fetch (network / safety block /
    no provider configured), the title/section/closing/photo-essay

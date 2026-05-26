@@ -15,7 +15,7 @@ Adapt vocabulary, depth, and tone to the audience. Choose a single overarching t
   "slides": [
     {
       "index": 1,
-      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster",
+      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist",
       "headline": "≤ 12 words",
       "key_points": ["3–5 bullets, ≤ 20 words each"],
       "speaker_notes": "2–3 sentences the presenter would say"
@@ -179,11 +179,101 @@ For each slide, pick the `type` that best matches its content shape:
                    from the name's first letter. Triggered by:
                    团队介绍 / our team / 团队 / founders /
                    核心成员 / 演讲嘉宾 / meet the team.
+- `code`         — when this slide should display a CODE SNIPPET as
+                   the primary content (with optional 1-paragraph
+                   intro above and 1-line caption below). The slide
+                   carries: title, language ("go" / "ts" / "py" /
+                   "sh" / "sql" / "json" / "yaml" / "rust" / "css" /
+                   "html"), body (intro paragraph), code (the snippet
+                   as a single string with real newlines), footer
+                   (optional citation). Triggered by: API 示例 /
+                   代码示例 / 命令行 / 配置示例 / SDK 用法 / how to
+                   call X / 教程 / sample code / config snippet /
+                   shell command / SQL query / regex. Cap snippet
+                   to ~25 lines / ~80 cols; longer = split into 2
+                   code slides.
+- `checklist`    — when content is a list of 3-7 DISCRETE ACTION
+                   ITEMS framed as "things to do" rather than
+                   "things to know". Distinct from `bullets` — each
+                   item should be an imperative verb-phrase
+                   ("审核 Q1 预算", "联系合规团队", "Update README").
+                   The slide carries: title, body (optional 1-line
+                   context), tasks (the list as JSON array of
+                   strings). Triggered by: 行动项 / 下一步 / TODO /
+                   待办 / 上线清单 / 准备清单 / launch checklist /
+                   next steps / action items / readiness checklist
+                   / training takeaways. Use when the user wants
+                   the audience to LEAVE WITH SOMETHING TO DO.
 
 Prefer `bullets`/`content` when a slide doesn't strongly fit one of the
 specialised types. Specialised types make for stronger slides but only
 when the underlying content really is "a timeline", "a comparison", or
 "several KPIs".
+
+# Visual rhythm — HARD RULES for varied decks (Sprint P1)
+
+A 10-slide deck of `bullets / bullets / bullets / bullets …` is
+visually fatiguing even if every individual slide is well-written.
+Pick types so the deck FEELS varied across slides, not just within
+each one.
+
+  1. NEVER use the same `type` for 3 consecutive slides. If you
+     find yourself about to write `bullets` for slide N when N-1
+     and N-2 are also `bullets`, swap one for a more specialised
+     type that fits the content (most commonly: `content` with a
+     paragraph body, OR `data` if the slide really has a headline
+     number, OR `quote` if a sourced statement covers the point).
+
+  2. Within a 6+ slide deck, AIM FOR at least 4 DIFFERENT non-
+     opening / non-closing types. (`title` + `closing` always
+     count toward the deck; the middle should have diversity.)
+
+  3. PREFER the specialised types when triggered — they're
+     ALWAYS stronger than generic `bullets` when the content
+     actually fits. A deck where every middle slide is just
+     `bullets` indicates the planner gave up on type selection,
+     not that no specialised type fit.
+
+  4. Pace image-led slides through the deck. If you place 2+
+     `photo-essay` / `split-image` / `image-grid` / `before-after`
+     / `team-roster` slides, separate them with at least 1 non-
+     image slide between each so the deck has a reading rhythm
+     rather than a slideshow rhythm.
+
+# Per-audience layout palette (Sprint P1)
+
+When you've identified the audience from the user message, BIAS
+type selection toward this palette — these types match the
+expectations of that audience and produce more on-brand decks:
+
+- investors / 投资人 / VC pitch:
+  `multi-metric`, `comparison`, `timeline`, `pull-quote`,
+  `bento-grid`, `team-roster`, `data`. AVOID `code` / `checklist`
+  unless explicitly relevant.
+
+- engineers / 工程师 / developer audience:
+  `code` (USE FREELY — even 2-3 code slides in a 10-slide tech
+  deck), `process-flow`, `comparison-table`, `data`, `bullets`,
+  `swot`. AVOID `pull-quote` unless quoting a real person.
+
+- training / 培训学员 / classroom:
+  `process-flow`, `checklist` (one near the end as takeaways),
+  `code` (if the topic is technical), `icon-grid`, `comparison`,
+  `bullets`. ALWAYS end with `checklist` or `closing` carrying
+  a clear "what to do next".
+
+- executives / 高管 / 工作汇报:
+  `multi-metric`, `comparison-table`, `swot`, `timeline`,
+  `data`, `checklist` (action items), `quote`. AVOID image-led
+  layouts unless brand-marketing topic.
+
+- creative / 杂志 / 摄影集 / fashion:
+  `photo-essay`, `split-image`, `image-grid`, `before-after`,
+  `pull-quote`, `bento-grid`. USE image-led types liberally.
+
+- general business / no clear audience:
+  Mix freely — pick the 4-5 most varied types that fit your
+  content. Avoid the "all bullets" trap.
 
 # Image-led layout preference (when topic is visual)
 

@@ -426,6 +426,43 @@ __THEME_STYLE__
     </div>
   </div>
 
+{{else if eq .Layout "code"}}
+  {{/* P1 — Code layout. Title row + optional language pill + mono
+       block + optional caption underneath. No syntax-highlighter JS;
+       base.css applies subtle theme-coloured tints to comments + the
+       trailing prompt char only. Real newlines preserved via
+       white-space: pre. */}}
+  <div class="code-wrap">
+    <div class="pretitle" data-no-extract></div>
+    <div class="code-header">
+      <div class="title">{{.Data.Title}}</div>
+      {{with .Data.Language}}<span class="code-lang">{{.}}</span>{{end}}
+    </div>
+    {{with .Data.Body}}<div class="body-text code-intro">{{.}}</div>{{end}}
+    <pre class="code-block" data-language="{{.Data.Language}}">{{.Data.Code}}</pre>
+    {{with .Data.Footer}}<div class="code-caption">{{.}}</div>{{end}}
+  </div>
+
+{{else if eq .Layout "checklist"}}
+  {{/* P1 — Checklist layout. Title + optional intro paragraph + 3-7
+       task rows rendered as ☐ + action text. Distinct visual register
+       from bullets (uses checkboxes, larger row gap, action-item
+       framing). The empty checkbox is purely decorative — implies
+       "things to do", not "things you can tick". */}}
+  <div class="checklist-wrap">
+    <div class="pretitle" data-no-extract></div>
+    <div class="title">{{.Data.Title}}</div>
+    {{with .Data.Body}}<div class="body-text">{{.}}</div>{{end}}
+    <ol class="checklist" data-count="{{len .Data.Tasks}}">
+      {{range .Data.Tasks}}
+        <li class="checklist-item">
+          <span class="checklist-box" data-no-extract>☐</span>
+          <span class="checklist-text">{{.}}</span>
+        </li>
+      {{end}}
+    </ol>
+  </div>
+
 {{else}}
   <div class="pretitle" data-no-extract></div>
   <div class="title">{{.Data.Title}}</div>

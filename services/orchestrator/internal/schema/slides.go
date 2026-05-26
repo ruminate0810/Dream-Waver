@@ -36,6 +36,9 @@ const (
 	LayoutBeforeAfter SlideLayout = "before-after" // 50:50 image-vs-image with header labels — transformations / makeovers
 	LayoutIconGrid    SlideLayout = "icon-grid"    // 3-4 column grid of icon + label + description — feature / capability listings
 	LayoutTeamRoster  SlideLayout = "team-roster"  // horizontal row of avatar + name + role cards — team intros
+	// Sprint P1 — close two major content-shape gaps:
+	LayoutCode      SlideLayout = "code"      // title + language pill + mono code block + optional caption — for tech tutorials, API docs, snippet showcases
+	LayoutChecklist SlideLayout = "checklist" // title + 3-7 task-item rows with ☐ checkboxes — for action items, "next steps", launch checklists, training takeaways
 )
 
 // Theme picks a base template family. The renderer falls back to LayoutTitle
@@ -187,6 +190,28 @@ type SlideData struct {
 	// portrait). When the fetch fails, the card renders a monogram
 	// disc from the name's first letter.
 	TeamMembers []TeamMember `json:"team_members,omitempty"`
+
+	// ─── Sprint P1 layout-specific fields ────────────────────────────
+
+	// Code populates layout=code. Raw code as a single string with
+	// real newlines. No syntax highlighter dependency — base.css
+	// renders with mono font + theme-coloured comment/keyword hints
+	// per language. Caller-provided indentation is preserved (CSS
+	// uses white-space: pre). Cap ~25 lines / ~80 cols for readability;
+	// longer snippets read better as 2-3 code slides.
+	Code string `json:"code,omitempty"`
+	// Language hints the renderer's theming + populates a small mono
+	// pill next to the title. Common values: "go" / "ts" / "py" /
+	// "sh" / "sql" / "json" / "yaml" / "rust" / "css" / "html". Free
+	// text — renderer falls back to plain mono if unknown.
+	Language string `json:"language,omitempty"`
+
+	// Tasks populates layout=checklist — 3-7 action items rendered
+	// as ☐ rows. Distinct from Bullets so the writer LLM can
+	// produce a real "next steps / TODO" framing rather than
+	// generic bullets. Each item should be an imperative verb-
+	// phrase (e.g. "审核 Q1 预算", "联系合规团队", "Update README").
+	Tasks []string `json:"tasks,omitempty"`
 }
 
 // TableRow is one data row inside a comparison-table slide. Cells

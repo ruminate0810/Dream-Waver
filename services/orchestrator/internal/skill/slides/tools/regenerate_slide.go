@@ -57,7 +57,7 @@ You receive the slide's current state as JSON and a natural-language instruction
 {
   "index": <number>,
   "template": "<template name>",
-  "layout":  "title | section | bullets | content | quote | two-column | data | closing",
+  "layout":  "title | section | bullets | content | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist",
   "data": {
     "title": "...",
     "subtitle": "optional",
@@ -67,15 +67,35 @@ You receive the slide's current state as JSON and a natural-language instruction
     "attribution": "optional",
     "metric": "optional",
     "footer": "optional",
-    "image_query": "optional 2-5 English words"
+    "image_query": "optional 2-5 English words",
+    // Layout-specific fields — emit only the ones the chosen layout needs:
+    "events":              [{"date":"2024","label":"...","note":"..."}],     // for layout=timeline
+    "left_header":         "...", "right_header": "...",                       // for layout=comparison
+    "left_items":          ["..."], "right_items":  ["..."],                   // for layout=comparison
+    "metrics":             [{"value":"67%","label":"...","delta":"+12%"}],   // for layout=multi-metric
+    "table_headers":       ["..."], "table_rows":   [{"cells":[{"text":"..."}]}], // for layout=comparison-table
+    "sections":            [{"number":"01","title":"..."}],                    // for layout=toc
+    "swot_cells":          {"strengths":["..."],"weaknesses":["..."],"opportunities":["..."],"threats":["..."]}, // for layout=swot
+    "image_queries":       ["..."],                                            // for layout=image-grid (3-4 items)
+    "steps":               [{"label":"...","description":"..."}],              // for layout=process-flow (3-5 items)
+    "bento_cards":         [{"size":"large","title":"...","body":"..."}],     // for layout=bento-grid (1 large + 3-4 small)
+    "citation":            "...",                                              // for layout=pull-quote
+    "before_image_query":  "...", "after_image_query": "...",                 // for layout=before-after
+    "before_label":        "...", "after_label": "...",                       // for layout=before-after (optional)
+    "features":            [{"icon":"🚀","label":"...","description":"..."}],// for layout=icon-grid (3-6 items)
+    "team_members":        [{"name":"...","role":"...","avatar_query":"...","bio":"..."}], // for layout=team-roster
+    "code":                "raw code with real newlines",                      // for layout=code
+    "language":            "go|ts|py|sh|sql|json|yaml|rust|css|html",         // for layout=code
+    "tasks":               ["审核 X","完成 Y"]                                  // for layout=checklist (3-7 imperative items)
   },
   "speaker_notes": "..."
 }
 
 # Rules
-- Keep the same index, template, and (usually) layout unless the instruction asks for a layout change.
+- Keep the same index and template. CHANGE the layout when the instruction asks for it (e.g. "改成 code 布局", "用 checklist 显示", "换成 timeline").
 - Honour the instruction precisely. If the user says "in Chinese", reply in Chinese; if they say "shorter", make it shorter.
 - bullets: ≤ 5 items, each ≤ 18 words.
+- When changing layout, EMIT the new layout's required fields AND remove fields the new layout doesn't use (otherwise the renderer shows stale data alongside the new layout).
 - Output JSON only.`
 
 func (t *RegenerateSlide) Execute(ctx context.Context, args json.RawMessage) (schema.ToolResult, error) {
