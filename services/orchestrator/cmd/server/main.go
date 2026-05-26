@@ -230,6 +230,10 @@ func main() {
 	authMW := auth.Middleware(authCfg, auth.Deps{
 		Users:      dataStore.Users,
 		Workspaces: dataStore.Workspaces,
+		// X3b — seed $1 trial credit on first personal-workspace
+		// create. Pass nil here to disable the seed (e.g. for
+		// integration tests that want a clean ledger).
+		Billing: billingSvc,
 	})
 
 	// ─── HTTP server ──────────────────────────────────────────────────

@@ -27,11 +27,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/billing"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -114,10 +116,13 @@ type Config struct {
 // ─── Middleware ─────────────────────────────────────────────────────
 
 // Deps is the slice of store interfaces the middleware needs. Keeping
-// it narrow (just Users + Workspaces) makes the test fakes small.
+// it narrow makes the test fakes small. Billing is optional — when
+// nil, trial credit seeding is skipped (the rest of the middleware
+// keeps working).
 type Deps struct {
 	Users      store.Users
 	Workspaces store.Workspaces
+	Billing    billing.Service // X3b — seeds trial credit on first personal workspace create
 }
 
 // Middleware returns the chi-compatible HTTP middleware.
@@ -162,10 +167,24 @@ func Middleware(cfg Config, deps Deps) func(http.Handler) http.Handler {
 			}
 
 			// Ensure personal workspace. Same idempotency posture.
-			personal, err := deps.Workspaces.EnsurePersonal(ctx, user.ID)
+			personal, created, err := deps.Workspaces.EnsurePersonal(ctx, user.ID)
 			if err != nil {
 				writeAuthError(w, http.StatusInternalServerError, fmt.Sprintf("ensure personal workspace: %v", err))
 				return
+			}
+			// X3b — seed trial credit on the very first login. We
+			// fire this exactly once per workspace (created==true is
+			// the create-path signal from EnsurePersonal). Failure
+			// here doesn't fail the login — the user just enters with
+			// $0 and the first paid action surfaces a 402, which is a
+			// recoverable UX failure.
+			if created && deps.Billing != nil {
+				if err := deps.Billing.Credit(ctx, personal.ID, billing.TrialGrantMicro, "trial_grant",
+					map[string]any{"reason": "first_login"},
+				); err != nil {
+					slog.WarnContext(ctx, "trial credit grant failed (login continues)",
+						"user_id", user.ID, "workspace_id", personal.ID, "err", err)
+				}
 			}
 
 			// Resolve the active workspace. Header wins, cookie second,

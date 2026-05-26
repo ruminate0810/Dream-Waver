@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -23,9 +24,11 @@ import (
 //
 //   - The frontend has a single origin (`:8080/api/v1/...`) and the
 //     existing chi/cors layer applies.
-//   - Future auth + per-user billing hooks slot in at the top of each
-//     handler (search this file for TODO(billing)). The Python service
-//     stays oblivious — it trusts every request the Go side forwards.
+//   - Per-handler billing (Sprint X3b) sits at the chargeOrReject /
+//     refundOnFailure boundary near the top of each route. Anonymous
+//     workspaces pass through without debit so the existing non-auth
+//     flows keep working until X3b-follow-up flips the routes to
+//     auth.Required.
 //   - We rewrite Opendream's absolute artifact URLs onto our own prefix
 //     so a swap-out of the Python service doesn't break cached HTML.
 //
@@ -59,9 +62,6 @@ func (h *handlers) CreateVideoRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(billing): authenticate the request, debit the user's credit
-	// pool. Currently no-op — same posture as the slides + games skills.
-
 	var body createVideoRunBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -72,6 +72,23 @@ func (h *handlers) CreateVideoRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// X3b — pre-debit. video_create_run covers the orchestration
+	// + initial character-sheet generation; per-scene clip cost
+	// (~$0.075 each) is charged separately when Opendream's worker
+	// dispatches them (X3b-follow-up: hook Opendream's per-node
+	// status callback to debit video_clip on success).
+	//
+	// Dry-run is free — no provider calls happen, no real cost.
+	debited := int64(0)
+	if !body.DryRun {
+		d, ok := h.chargeOrReject(w, r.Context(), "video_create_run")
+		if !ok {
+			return
+		}
+		debited = d
+	}
+	start := time.Now()
+
 	resp, err := h.deps.VideoBridge.CreateRun(r.Context(), video.CreateRunRequest{
 		Spec:   body.Spec,
 		Title:  body.Title,
@@ -79,8 +96,13 @@ func (h *handlers) CreateVideoRun(w http.ResponseWriter, r *http.Request) {
 		Until:  body.Until,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "video_create_run", debited, err)
 		writeBridgeError(w, "create_run", err)
 		return
+	}
+	if debited > 0 {
+		h.recordSuccess(r.Context(), "video_create_run", debited,
+			"run:"+resp.RunID, time.Since(start))
 	}
 
 	// Persist the run → store.VideoRuns mapping so the workspace can
@@ -170,15 +192,27 @@ func (h *handlers) RegenVideoNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(billing): debit re-runs at a different rate from initial
-	// runs — most of the cost lives in scene_clip nodes (Seedance i2v
-	// is the dominant line item).
+	// X3b — regen pricing scales with the number of nodes the user
+	// asks to re-run, since each scene_clip costs ~$0.075 of Seedance
+	// time. Per-node billing waits on Opendream's per-node completion
+	// callback (X3b-follow-up); for now we charge a flat video_regen
+	// per request that covers ~1 scene's cost. Multi-scene regens
+	// effectively get a discount until that callback lands.
+	debited, ok := h.chargeOrReject(w, r.Context(), "video_regen")
+	if !ok {
+		return
+	}
+	start := time.Now()
 
 	resp, err := h.deps.VideoBridge.Regen(r.Context(), runID, body)
 	if err != nil {
+		h.refundOnFailure(r.Context(), "video_regen", debited, err)
 		writeBridgeError(w, "regen", err)
 		return
 	}
+	h.recordSuccess(r.Context(), "video_regen", debited,
+		fmt.Sprintf("regen run=%s nodes=%d", runID, len(body.NodeKeys)),
+		time.Since(start))
 	writeJSON(w, http.StatusAccepted, resp)
 }
 

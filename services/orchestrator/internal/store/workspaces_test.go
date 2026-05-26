@@ -21,9 +21,12 @@ func TestMemWorkspaces_EnsurePersonal_Idempotent(t *testing.T) {
 	// Foreign-key constraint is not enforced in memory — we don't
 	// need to pre-insert the user row for the in-memory contract.
 
-	first, err := ws.EnsurePersonal(ctx, user)
+	first, created, err := ws.EnsurePersonal(ctx, user)
 	if err != nil {
 		t.Fatalf("first EnsurePersonal: %v", err)
+	}
+	if !created {
+		t.Fatalf("first EnsurePersonal should report created=true")
 	}
 	if first.Kind != "personal" {
 		t.Fatalf("kind = %q, want personal", first.Kind)
@@ -32,12 +35,16 @@ func TestMemWorkspaces_EnsurePersonal_Idempotent(t *testing.T) {
 		t.Fatalf("owner_user_id mismatch")
 	}
 
-	// Second call must return the SAME workspace, not a fresh one.
-	// Auth middleware calls EnsurePersonal on every request — drift
-	// here would create a new workspace per request.
-	second, err := ws.EnsurePersonal(ctx, user)
+	// Second call must return the SAME workspace AND created=false —
+	// auth middleware calls EnsurePersonal on every request and the
+	// trial-grant hook keys off created==true; drift here would
+	// regrant credit forever.
+	second, created2, err := ws.EnsurePersonal(ctx, user)
 	if err != nil {
 		t.Fatalf("second EnsurePersonal: %v", err)
+	}
+	if created2 {
+		t.Fatalf("second EnsurePersonal should report created=false (would re-fire one-time hooks)")
 	}
 	if first.ID != second.ID {
 		t.Fatalf("EnsurePersonal not idempotent: got two workspaces %v and %v", first.ID, second.ID)
@@ -137,8 +144,8 @@ func TestMemWorkspaces_IsMember_IsolatesPerWorkspace(t *testing.T) {
 	alice := uuid.New()
 	bob := uuid.New()
 
-	aliceWS, _ := ws.EnsurePersonal(ctx, alice)
-	bobWS, _ := ws.EnsurePersonal(ctx, bob)
+	aliceWS, _, _ := ws.EnsurePersonal(ctx, alice)
+	bobWS, _, _ := ws.EnsurePersonal(ctx, bob)
 
 	// Alice ∈ alice's WS but NOT in bob's. This is the gate every
 	// job-table read/write checks; getting it wrong is a tenant leak.
@@ -175,9 +182,9 @@ func TestMemWorkspaces_ListForUser_OnlyMembershipMatters(t *testing.T) {
 
 	// alice has a personal + a team she created; bob has only a
 	// personal. After alice invites bob, bob's list grows.
-	aliceP, _ := ws.EnsurePersonal(ctx, alice)
+	aliceP, _, _ := ws.EnsurePersonal(ctx, alice)
 	team, _ := ws.CreateTeam(ctx, alice, "Engineering")
-	_, _ = ws.EnsurePersonal(ctx, bob)
+	_, _, _ = ws.EnsurePersonal(ctx, bob)
 
 	bobList, _ := ws.ListForUser(ctx, bob)
 	if len(bobList) != 1 {

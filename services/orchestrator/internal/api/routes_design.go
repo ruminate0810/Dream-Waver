@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -42,10 +43,6 @@ func (h *handlers) GenerateDesignImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO(billing): authenticate the request, debit the user's
-	// credit pool for one image generation. Sidecar doesn't know
-	// about users — pricing lives here.
-
 	var body generateImageBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -56,6 +53,13 @@ func (h *handlers) GenerateDesignImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// X3b — pre-debit. Anonymous workspace passes through free.
+	debited, ok := h.chargeOrReject(w, r.Context(), "generate_image")
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := h.deps.DesignBridge.GenerateImage(r.Context(), design.GenerateImageRequest{
 		Prompt: body.Prompt,
 		Width:  body.Width,
@@ -63,9 +67,11 @@ func (h *handlers) GenerateDesignImage(w http.ResponseWriter, r *http.Request) {
 		Seed:   body.Seed,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "generate_image", debited, err)
 		writeDesignBridgeError(w, "generate_image", err)
 		return
 	}
+	h.recordSuccess(r.Context(), "generate_image", debited, resp.URL, time.Since(start))
 	h.recordDesignAsset(r.Context(), "generate", resp.URL, resp.Width, resp.Height, resp.TaskID,
 		map[string]any{"prompt": body.Prompt, "seed": body.Seed})
 	writeJSON(w, http.StatusOK, resp)
@@ -85,9 +91,6 @@ func (h *handlers) GenerateDesignVariants(w http.ResponseWriter, r *http.Request
 		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
 		return
 	}
-	// TODO(billing): debit N units; variants are a single sidecar
-	// task but produce N images, so the price multiplier is non-trivial.
-
 	var body generateVariantsBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
@@ -98,6 +101,15 @@ func (h *handlers) GenerateDesignVariants(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// X3b — variants is priced as the bundle (18k micro = ~4× single).
+	// The price in billing.Prices already accounts for the multi-image
+	// output so no extra multiplication here.
+	debited, ok := h.chargeOrReject(w, r.Context(), "generate_variants")
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := h.deps.DesignBridge.GenerateVariants(r.Context(), design.GenerateVariantsRequest{
 		Prompt: body.Prompt,
 		Count:  body.Count,
@@ -105,9 +117,12 @@ func (h *handlers) GenerateDesignVariants(w http.ResponseWriter, r *http.Request
 		Height: body.Height,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "generate_variants", debited, err)
 		writeDesignBridgeError(w, "generate_variants", err)
 		return
 	}
+	h.recordSuccess(r.Context(), "generate_variants", debited,
+		fmt.Sprintf("%d variants", len(resp.Variants)), time.Since(start))
 	// Record one design_assets row per variant — each is an independent
 	// piece of work the user can navigate to from the workspace history.
 	for _, v := range resp.Variants {
@@ -155,8 +170,6 @@ func (h *handlers) editImageHandler(w http.ResponseWriter, r *http.Request, op s
 		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
 		return
 	}
-	// TODO(billing): edit ops have a different price tier than
-	// generation — same metering hook applies, separate price column.
 
 	var body editImageBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -168,11 +181,23 @@ func (h *handlers) editImageHandler(w http.ResponseWriter, r *http.Request, op s
 		return
 	}
 
+	// X3b — op is the price key. "remove_bg" → "edit_remove_bg",
+	// "enhance" → "edit_enhance". Map adds the prefix so the prices.go
+	// table stays uniform.
+	priceKey := "edit_" + op
+	debited, ok := h.chargeOrReject(w, r.Context(), priceKey)
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := call(r.Context(), design.EditImageRequest{ImageURL: body.ImageURL})
 	if err != nil {
+		h.refundOnFailure(r.Context(), priceKey, debited, err)
 		writeDesignBridgeError(w, op, err)
 		return
 	}
+	h.recordSuccess(r.Context(), priceKey, debited, resp.URL, time.Since(start))
 	// Edit ops have nullable width/height (DreamAPI sometimes omits).
 	// Coerce nil → 0 so the audit row at least carries the op + source URL.
 	w_, h_ := 0, 0
@@ -202,13 +227,19 @@ func (h *handlers) OutpaintDesignImage(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
 		return
 	}
-	// TODO(billing): outpaint pricing differs from enhance — same hook.
 
 	var body outpaintBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+
+	debited, ok := h.chargeOrReject(w, r.Context(), "edit_outpaint")
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := h.deps.DesignBridge.Outpaint(r.Context(), design.OutpaintRequest{
 		ImageURL: body.ImageURL,
 		Left:     body.Left,
@@ -217,9 +248,11 @@ func (h *handlers) OutpaintDesignImage(w http.ResponseWriter, r *http.Request) {
 		Bottom:   body.Bottom,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "edit_outpaint", debited, err)
 		writeDesignBridgeError(w, "outpaint", err)
 		return
 	}
+	h.recordSuccess(r.Context(), "edit_outpaint", debited, resp.URL, time.Since(start))
 	w_, h_ := 0, 0
 	if resp.Width != nil {
 		w_ = *resp.Width
@@ -253,13 +286,19 @@ func (h *handlers) Image2ImageDesignImage(w http.ResponseWriter, r *http.Request
 		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
 		return
 	}
-	// TODO(billing): same pricing tier as text2image.
 
 	var body image2imageBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
 		return
 	}
+
+	debited, ok := h.chargeOrReject(w, r.Context(), "edit_image2image")
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := h.deps.DesignBridge.Image2Image(r.Context(), design.Image2ImageRequest{
 		ImageURL: body.ImageURL,
 		Prompt:   body.Prompt,
@@ -267,9 +306,11 @@ func (h *handlers) Image2ImageDesignImage(w http.ResponseWriter, r *http.Request
 		Height:   body.Height,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "edit_image2image", debited, err)
 		writeDesignBridgeError(w, "image2image", err)
 		return
 	}
+	h.recordSuccess(r.Context(), "edit_image2image", debited, resp.URL, time.Since(start))
 	h.recordDesignAsset(r.Context(), "edit", resp.URL, resp.Width, resp.Height, resp.TaskID,
 		map[string]any{
 			"op":               "image2image",
@@ -286,8 +327,11 @@ func (h *handlers) SubmitDesignGenerate(w http.ResponseWriter, r *http.Request) 
 		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
 		return
 	}
-	// TODO(billing): debit on submit so a stuck task doesn't leak free
-	// generations — refund on terminal error (separate from this hook).
+	// X3b — submit-and-stream is priced like a synchronous generate.
+	// We pre-debit here; the SSE path doesn't issue its own debit so a
+	// disconnected stream still costs the same as a finished one
+	// (we can't refund partial work over the wire boundary). If the
+	// submit itself fails we refund inside the error branch.
 
 	var body generateImageBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -298,6 +342,13 @@ func (h *handlers) SubmitDesignGenerate(w http.ResponseWriter, r *http.Request) 
 		errorJSON(w, http.StatusBadRequest, "prompt is required")
 		return
 	}
+
+	debited, ok := h.chargeOrReject(w, r.Context(), "generate_image")
+	if !ok {
+		return
+	}
+	start := time.Now()
+
 	resp, err := h.deps.DesignBridge.SubmitGenerate(r.Context(), design.GenerateImageRequest{
 		Prompt: body.Prompt,
 		Width:  body.Width,
@@ -305,9 +356,16 @@ func (h *handlers) SubmitDesignGenerate(w http.ResponseWriter, r *http.Request) 
 		Seed:   body.Seed,
 	})
 	if err != nil {
+		h.refundOnFailure(r.Context(), "generate_image", debited, err)
 		writeDesignBridgeError(w, "submit_generate", err)
 		return
 	}
+	// Audit row written on submit success (not on stream done) so
+	// the row exists even if the user disconnects before the
+	// generation completes — the work was still paid for.
+	h.recordSuccess(r.Context(), "generate_image", debited,
+		"submit:"+resp.TaskID, time.Since(start))
+
 	// Stash the prompt against the task_id so the SSE-stream handler
 	// can pick it up when the "done" event arrives and write the
 	// asset row. submit + stream live in different requests, so the

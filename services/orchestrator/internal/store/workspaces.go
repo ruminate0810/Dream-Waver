@@ -22,8 +22,9 @@ type pgxWorkspaces struct {
 // EnsurePersonal looks up the user's personal workspace; creates it
 // (with a single owner member row) if not found. Idempotent — auth
 // middleware calls this on every request, the steady-state cost is
-// one SELECT.
-func (w *pgxWorkspaces) EnsurePersonal(ctx context.Context, userID uuid.UUID) (*Workspace, error) {
+// one SELECT. Returns `created=true` only on the actual insert path
+// so callers can fire one-time hooks (X3b trial credit grant).
+func (w *pgxWorkspaces) EnsurePersonal(ctx context.Context, userID uuid.UUID) (*Workspace, bool, error) {
 	// Fast path: hit a single index lookup.
 	row := w.pool.QueryRow(ctx, `
 		select id, name, owner_user_id, kind, created_at
@@ -34,17 +35,17 @@ func (w *pgxWorkspaces) EnsurePersonal(ctx context.Context, userID uuid.UUID) (*
 	out := &Workspace{}
 	err := row.Scan(&out.ID, &out.Name, &out.OwnerUserID, &out.Kind, &out.CreatedAt)
 	if err == nil {
-		return out, nil
+		return out, false, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return nil, err
+		return nil, false, err
 	}
 
 	// Slow path: create both workspace + membership in one txn so we
 	// never end up with an orphan workspace.
 	tx, err := w.pool.Begin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
@@ -54,18 +55,18 @@ func (w *pgxWorkspaces) EnsurePersonal(ctx context.Context, userID uuid.UUID) (*
 		returning id, name, owner_user_id, kind, created_at
 	`, userID)
 	if err := row.Scan(&out.ID, &out.Name, &out.OwnerUserID, &out.Kind, &out.CreatedAt); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if _, err := tx.Exec(ctx, `
 		insert into workspace_members (workspace_id, user_id, role)
 		values ($1, $2, 'owner')
 	`, out.ID, userID); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return out, nil
+	return out, true, nil
 }
 
 func (w *pgxWorkspaces) CreateTeam(ctx context.Context, ownerID uuid.UUID, name string) (*Workspace, error) {
@@ -233,12 +234,12 @@ func newMemWorkspaces() *memWorkspaces {
 	}
 }
 
-func (m *memWorkspaces) EnsurePersonal(_ context.Context, userID uuid.UUID) (*Workspace, error) {
+func (m *memWorkspaces) EnsurePersonal(_ context.Context, userID uuid.UUID) (*Workspace, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, w := range m.byID {
 		if w.OwnerUserID == userID && w.Kind == "personal" {
-			return w, nil
+			return w, false, nil
 		}
 	}
 	w := &Workspace{
@@ -255,7 +256,7 @@ func (m *memWorkspaces) EnsurePersonal(_ context.Context, userID uuid.UUID) (*Wo
 	m.members[w.ID][userID] = &WorkspaceMember{
 		WorkspaceID: w.ID, UserID: userID, Role: "owner", CreatedAt: time.Now().UTC(),
 	}
-	return w, nil
+	return w, true, nil
 }
 
 func (m *memWorkspaces) CreateTeam(_ context.Context, ownerID uuid.UUID, name string) (*Workspace, error) {

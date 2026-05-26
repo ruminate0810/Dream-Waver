@@ -83,9 +83,12 @@ type Users interface {
 // Workspaces handles workspace CRUD + membership.
 type Workspaces interface {
 	// EnsurePersonal creates the user's personal workspace if it
-	// doesn't exist; returns the existing or new workspace either way.
-	// Idempotent — safe to call on every login.
-	EnsurePersonal(ctx context.Context, userID uuid.UUID) (*Workspace, error)
+	// doesn't exist; returns the existing or new workspace either
+	// way. Idempotent — safe to call on every login. The boolean
+	// `created` distinguishes "I just made this" from "already
+	// existed" so callers can fire one-time hooks (X3b's trial
+	// credit grant uses this).
+	EnsurePersonal(ctx context.Context, userID uuid.UUID) (workspace *Workspace, created bool, err error)
 	// CreateTeam creates a team workspace owned by the caller; the
 	// owner is auto-inserted into workspace_members with role "owner".
 	CreateTeam(ctx context.Context, ownerID uuid.UUID, name string) (*Workspace, error)
