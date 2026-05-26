@@ -378,6 +378,21 @@ func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides
 	jobsMu.Lock()
 	defer jobsMu.Unlock()
 	if err != nil {
+		// Sprint Q.5 (duplicate-click resilience): a fast user can click
+		// 完成 / 下一步 multiple times before the first goroutine flips
+		// the job out of awaiting_*. The 2nd-onwards goroutines see the
+		// gate cleared and return "not awaiting" / "no session for job"
+		// errors. Those are BENIGN — the first goroutine is doing the
+		// real work fine. Don't poison the job's status with the dupe
+		// error; just log and return. (Pure no-op: job.Status stays
+		// whatever the in-flight first goroutine set it to.)
+		msg := err.Error()
+		if strings.Contains(msg, "is not awaiting") ||
+			strings.Contains(msg, "no session for job") ||
+			strings.Contains(msg, "is not paused on") {
+			slog.WarnContext(ctx, opLabel+" superseded (likely double-click)", "job", job.ID, "err", err)
+			return
+		}
 		job.FinishedAt = time.Now().UTC()
 		slog.ErrorContext(ctx, opLabel+" failed", "job", job.ID, "err", err)
 		job.Status = "error"

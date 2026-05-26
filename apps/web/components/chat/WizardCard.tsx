@@ -89,6 +89,16 @@ export function WizardCard({
     return (k && view.previous_answers?.[k]) ?? "";
   });
 
+  // Sprint Q.5 — local submit lock that flips true the instant the
+  // user clicks any submit button. Released when a NEW view arrives
+  // (different step → fresh form). Without this, a fast user can
+  // click 下一步 / 完成 multiple times before the server's busy state
+  // propagates back through the WS stream; the duplicate clicks fire
+  // POSTs that error out on the backend (the gate is already cleared).
+  // The backend now ignores those benign errors, but this stops them
+  // at the source — cleaner UX (button visibly disables on tap).
+  const [submitting, setSubmitting] = useState(false);
+
   useEffect(() => {
     setScenarioPick(view.suggested_value ?? "");
     if (view.kind === "free-text") {
@@ -98,6 +108,9 @@ export function WizardCard({
     } else {
       setFreeText("");
     }
+    // Reset the lock on every fresh step view — the user can submit
+    // the NEW step.
+    setSubmitting(false);
   }, [view.step, view.suggested_value, view.kind, view.previous_answers]);
 
   const progressPct = Math.round(((view.step - 1) / view.total) * 100);
@@ -110,20 +123,27 @@ export function WizardCard({
     ? scenarioPick !== ""
     : freeText.trim().length > 0;
 
+  // `locked` covers either signal: server-busy OR local submit lock
+  // engaged. Buttons + form-submit all read this.
+  const locked = busy || submitting;
+
   const submitNext = (e?: FormEvent) => {
     e?.preventDefault();
-    if (busy || !canNext) return;
+    if (locked || !canNext) return;
+    setSubmitting(true);
     const answer = isScenario ? scenarioPick : freeText.trim();
     onSubmit(view.step, answer, false);
   };
 
   const submitSkip = () => {
-    if (busy) return;
+    if (locked) return;
+    setSubmitting(true);
     onSubmit(view.step, "", true);
   };
 
   const submitBack = () => {
-    if (busy || !view.can_go_back) return;
+    if (locked || !view.can_go_back) return;
+    setSubmitting(true);
     // Go back to step N-1; backend re-emits that step's view with
     // prior answer pre-filled (via suggested_value / previous_answers).
     onSubmit(view.step - 1, "", false, true);
@@ -205,14 +225,14 @@ export function WizardCard({
             value={scenarioPick}
             suggested={view.suggested_value}
             onChange={setScenarioPick}
-            disabled={busy}
+            disabled={locked}
           />
         ) : (
           <FreeTextField
             value={freeText}
             onChange={setFreeText}
             placeholder={view.placeholder ?? ""}
-            disabled={busy}
+            disabled={locked}
           />
         )}
 
@@ -222,11 +242,11 @@ export function WizardCard({
             <button
               type="button"
               onClick={submitBack}
-              disabled={busy || !view.can_go_back}
+              disabled={locked || !view.can_go_back}
               title={view.can_go_back ? "返回上一步" : "已经是第一步"}
               className={clsx(
                 "inline-flex h-7 w-7 items-center justify-center border transition-colors",
-                view.can_go_back && !busy
+                view.can_go_back && !locked
                   ? "border-[color:var(--ink)]/25 text-[color:var(--ink-soft)] hover:border-[color:var(--vermillion)] hover:text-[color:var(--vermillion)]"
                   : "cursor-not-allowed border-[color:var(--ink)]/15 text-[color:var(--ink-faint)]/50",
               )}
@@ -237,7 +257,7 @@ export function WizardCard({
               <button
                 type="button"
                 onClick={submitSkip}
-                disabled={busy}
+                disabled={locked}
                 className="font-mono-jb text-[11px] uppercase tracking-[0.22em] text-[color:var(--ink-soft)] underline-offset-4 transition-colors hover:text-[color:var(--vermillion)] hover:underline disabled:opacity-40"
               >
                 跳过
@@ -246,7 +266,7 @@ export function WizardCard({
           </div>
           <button
             type="submit"
-            disabled={!canNext || busy}
+            disabled={!canNext || locked}
             className={clsx(
               "group inline-flex items-center gap-2 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
               !canNext || busy
