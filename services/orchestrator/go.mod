@@ -18,9 +18,8 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/sashabaranov/go-openai v1.36.0
 	// Sprint X2a — pgx v5 default codec doesn't recognise google/uuid.
-	// This 50-LOC helper registers the missing TypeMap entry on every
-	// new pool connection (via cfg.AfterConnect in store/pool.go).
-	github.com/vgarvardt/pgx-google-uuid/v5 v0.6.1
+	// Sprint O hotfix temporarily removed the broken dep — see
+	// store/pool.go TODO(X2a-1-redux) for the resolution checklist.
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 )
