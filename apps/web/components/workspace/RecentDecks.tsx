@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, X } from "lucide-react";
+import { ImageOff, X } from "lucide-react";
 
 import { forgetDeck, listRecentDecks, type RecentDeck } from "@/lib/recentDecks";
 
@@ -21,11 +21,32 @@ export function RecentDecks() {
   const [decks, setDecks] = useState<RecentDeck[] | null>(null);
 
   useEffect(() => {
-    setDecks(listRecentDecks());
+    const initial = listRecentDecks();
+    setDecks(initial);
     // Also refresh when the page is shown after a back-nav (Safari
     // / Chrome bfcache) so a deck the user just generated appears.
     const onShow = () => setDecks(listRecentDecks());
     window.addEventListener("pageshow", onShow);
+
+    // Background self-clean — probe each remembered deck with a
+    // GET /slides/{id}. Anything 404 means the backend forgot it
+    // (typically: orchestrator restart with in-memory store), so we
+    // prune the localStorage entry. Done in parallel; failures
+    // silently drop. We don't await — render the cached list
+    // immediately; pruned entries vanish on the next state update.
+    initial.forEach(async (d) => {
+      try {
+        const res = await fetch(`/api/v1/slides/${d.jobId}`, { method: "GET" });
+        if (res.status === 404) {
+          forgetDeck(d.jobId);
+          setDecks((prev) => (prev ?? []).filter((x) => x.jobId !== d.jobId));
+        }
+      } catch {
+        // Network error — leave the entry alone; the user can × it
+        // manually if needed.
+      }
+    });
+
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
@@ -70,8 +91,17 @@ function DeckRow({ deck, onForget }: { deck: RecentDeck; onForget: () => void })
       >
         <div className="relative aspect-[16/9] w-[140px] shrink-0 overflow-hidden border border-zinc-100 bg-zinc-50">
           {thumbBroken ? (
-            <div className="flex h-full w-full items-center justify-center text-zinc-300">
-              <Loader2 size={14} strokeWidth={1.6} className="animate-spin" />
+            // Either the deck is still rendering (slide 1 PNG not
+            // written yet) OR the backend forgot it (in-memory store
+            // restart). The auto-prune effect upstairs handles the
+            // forgotten case; this placeholder covers both with a
+            // neutral hairline icon + no spinner (a spinner here was
+            // misleading — looked like loading when really it's gone).
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-300">
+              <ImageOff size={14} strokeWidth={1.4} />
+              <span className="font-mono-jb text-[8px] uppercase tracking-[0.22em]">
+                no preview
+              </span>
             </div>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
