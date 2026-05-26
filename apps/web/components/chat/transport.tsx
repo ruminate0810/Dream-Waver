@@ -158,13 +158,38 @@ export function useAgentEventStream(): AgentEventStream {
   return ctx;
 }
 
+// Backend signals "this deck's session is gone" by responding to a
+// resume / edit POST with HTTP 410 Gone (apps/web/lib/api throws
+// ApiError with status 410). Without a typed signal upward, the
+// session reducer would lite up the active turn with an opaque error
+// string. Instead, session.ts catches 410/404 from dispatch* and
+// calls this notifier; the slides page reacts by flipping into the
+// DeckNotFound view (same surface as the polling-404 path).
+//
+// Default is a no-op so the hook works in test harnesses or any
+// future caller that hasn't lifted the callback through props.
+const DeckGoneCtx = createContext<() => void>(() => {});
+
+export function useNotifyDeckGone(): () => void {
+  return useContext(DeckGoneCtx);
+}
+
 // ─── Provider implementation ─────────────────────────────────────────
 
 export function AgentSessionProvider({
   sessionId,
+  onDeckGone,
   children,
 }: {
   sessionId: string;
+  /**
+   * Called from session.ts when a resume / edit POST returns 410 (or
+   * 404). The slides page passes `() => setNotFound(true)` so the
+   * surface flips to its DeckNotFound view — same terminal state the
+   * polling effect already lands on. Optional; defaults to a no-op
+   * so tests and non-page consumers keep working.
+   */
+  onDeckGone?: () => void;
   children: ReactNode;
 }) {
   // Listener registry — mutated outside React's render cycle so adding
@@ -274,5 +299,18 @@ export function AgentSessionProvider({
     [subscribe, status],
   );
 
-  return <StreamCtx.Provider value={value}>{children}</StreamCtx.Provider>;
+  // Stable identity for the deck-gone notifier so consumers don't
+  // re-bind effects every render. Falls back to a no-op when the
+  // page didn't supply one.
+  const deckGoneRef = useRef(onDeckGone);
+  deckGoneRef.current = onDeckGone;
+  const notifyDeckGone = useCallback(() => {
+    deckGoneRef.current?.();
+  }, []);
+
+  return (
+    <DeckGoneCtx.Provider value={notifyDeckGone}>
+      <StreamCtx.Provider value={value}>{children}</StreamCtx.Provider>
+    </DeckGoneCtx.Provider>
+  );
 }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 import {
+  ApiError,
   postSlideClarification,
   postSlideMessage,
   postSlideOutlineApproval,
@@ -11,11 +12,27 @@ import {
 } from "@/lib/api";
 import {
   useAgentEventStream,
+  useNotifyDeckGone,
   type AgentEvent,
   type EventKind,
   type Tokens,
   type WizardStepView,
 } from "./transport";
+
+// A POST that returns 404 or 410 means the deck's in-memory session is
+// gone — typically after an orchestrator restart wiped the in-memory
+// store, or when the user races a session eviction. Both surfaces
+// should land the user on the DeckNotFound view (same UX the polling-
+// 404 path already produces), not on an opaque error string lit up on
+// the active turn. Returns true when handled so the dispatcher can
+// skip the normal post_error path.
+function handleDeckGone(err: unknown, notify: () => void): boolean {
+  if (err instanceof ApiError && (err.status === 410 || err.status === 404)) {
+    notify();
+    return true;
+  }
+  return false;
+}
 
 // session.ts is the SINGLE place reducer logic lives.
 //
@@ -521,6 +538,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
  */
 export function useAgentSession(job: SlideJob): AgentSession {
   const stream = useAgentEventStream();
+  const notifyDeckGone = useNotifyDeckGone();
   const [state, dispatch] = useReducer(reduce, initialState);
 
   // Subscribe to the shared stream on mount.
@@ -649,6 +667,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
     try {
       await postSlideMessage(job.job_id, text);
     } catch (err) {
+      if (handleDeckGone(err, notifyDeckGone)) return;
       const msg = err instanceof Error ? err.message : String(err);
       dispatch({ type: "post_error", turnId: id, err: msg });
     }
@@ -697,11 +716,12 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideClarification(job.job_id, answers);
       } catch (err) {
+        if (handleDeckGone(err, notifyDeckGone)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
     },
-    [state.turns, job.job_id, job.session_id],
+    [state.turns, job.job_id, job.session_id, notifyDeckGone],
   );
 
   const dispatchOutlineApproval = useCallback(
@@ -724,11 +744,12 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideOutlineApproval(job.job_id, edits);
       } catch (err) {
+        if (handleDeckGone(err, notifyDeckGone)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
     },
-    [state.turns, job.job_id, job.session_id],
+    [state.turns, job.job_id, job.session_id, notifyDeckGone],
   );
 
   // Sprint N1 — wizard step dispatcher. Posts {action:"wizard_step",
@@ -767,11 +788,12 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideWizardStep(job.job_id, step, answer, skip, back);
       } catch (err) {
+        if (handleDeckGone(err, notifyDeckGone)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
     },
-    [state.turns, job.job_id, job.session_id],
+    [state.turns, job.job_id, job.session_id, notifyDeckGone],
   );
 
   // Drain on busy → !busy. When the current turn closes (agent.finish

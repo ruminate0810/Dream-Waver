@@ -57,11 +57,13 @@ export default function SlideJobPage() {
         }
       } catch (err) {
         if (cancelled) return;
-        // 404 is terminal — the backend doesn't know this job. Stop
+        // 404 / 410 are terminal — the backend doesn't know this job
+        // (404), or the in-memory session that drove it was wiped
+        // (410, typically after an orchestrator restart). Stop
         // polling, flip to the dead-link view, and prune the entry
         // from the user's local recent-decks list so the homepage
         // doesn't keep offering it.
-        if (err instanceof ApiError && err.status === 404) {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 410)) {
           forgetDeck(jobId);
           setNotFound(true);
           return;
@@ -129,7 +131,15 @@ export default function SlideJobPage() {
         {notFound ? (
           <DeckNotFound jobId={jobId} />
         ) : job ? (
-          <Workspace job={job} sessionId={sessionId} uiVariant={uiVariant} />
+          <Workspace
+            job={job}
+            sessionId={sessionId}
+            uiVariant={uiVariant}
+            onDeckGone={() => {
+              forgetDeck(jobId);
+              setNotFound(true);
+            }}
+          />
         ) : (
           <div className="px-2 py-20">
             <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
@@ -160,13 +170,24 @@ function Workspace({
   job,
   sessionId,
   uiVariant,
+  onDeckGone,
 }: {
   job: SlideJob;
   sessionId: string;
   uiVariant: "log" | "thread";
+  /**
+   * Called when a resume / edit POST returns 410 or 404 — same
+   * terminal-state signal the polling effect uses to flip into
+   * DeckNotFound. Threading it through the provider lets the chat
+   * dispatchers in session.ts trigger it without prop-drilling.
+   */
+  onDeckGone: () => void;
 }) {
   return (
-    <AgentSessionProvider sessionId={sessionId || job.session_id}>
+    <AgentSessionProvider
+      sessionId={sessionId || job.session_id}
+      onDeckGone={onDeckGone}
+    >
       {/* Sprint I0.6 — surfaces WebSocket disconnection during a session
           so the user knows the live event stream is reconnecting instead
           of silently watching a frozen UI. Auto-dismisses on reconnect. */}

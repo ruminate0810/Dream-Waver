@@ -3,6 +3,7 @@ package slides
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -45,6 +46,15 @@ type AgentRunner struct {
 	// optional; existing deployments without a sandbox service keep working.
 	SandboxClient pb.SandboxClient
 }
+
+// ErrSessionGone is returned by the Resume* and Continue methods when
+// the in-memory session state needed to drive the next agent turn is
+// no longer available — either the session was never registered (e.g.
+// orchestrator restart with an empty in-memory store) or it isn't in
+// the pending kind the caller expected. The API layer maps this to
+// HTTP 410 Gone so the frontend can flip to the "deck no longer
+// exists" view instead of swallowing the message as a generic error.
+var ErrSessionGone = errors.New("slides session unavailable")
 
 // systemPromptInitial teaches the LLM the slides domain for an initial
 // generation. The order constraint is enforced by description text alone
@@ -413,11 +423,11 @@ func (r *AgentRunner) runFromOutline(ctx context.Context, state *SessionState) (
 func (r *AgentRunner) ResumeFromClarification(ctx context.Context, jobID string, answers []string) (*Output, error) {
 	state, ok := r.Sessions.Get(jobID)
 	if !ok {
-		return nil, fmt.Errorf("no session for job %s", jobID)
+		return nil, fmt.Errorf("%w: no session for job %s", ErrSessionGone, jobID)
 	}
 	pending := state.GetPending()
 	if pending == nil || pending.Kind != PendingClarification {
-		return nil, fmt.Errorf("job %s is not awaiting clarification", jobID)
+		return nil, fmt.Errorf("%w: job %s is not awaiting clarification", ErrSessionGone, jobID)
 	}
 
 	// Append the Q/A pairs to ReferenceText so the planner sees them
@@ -461,11 +471,11 @@ func (r *AgentRunner) ResumeFromWizardStep(
 ) (*Output, error) {
 	state, ok := r.Sessions.Get(jobID)
 	if !ok {
-		return nil, fmt.Errorf("no session for job %s", jobID)
+		return nil, fmt.Errorf("%w: no session for job %s", ErrSessionGone, jobID)
 	}
 	pending := state.GetPending()
 	if pending == nil || pending.Kind != PendingWizard {
-		return nil, fmt.Errorf("job %s is not awaiting wizard step", jobID)
+		return nil, fmt.Errorf("%w: job %s is not awaiting wizard step", ErrSessionGone, jobID)
 	}
 	script := pending.WizardScript
 	answers := pending.WizardAnswers
@@ -608,11 +618,11 @@ func mergeWizardAnswersIntoInput(in *Input, script []stages.ClarificationQuestio
 func (r *AgentRunner) ResumeFromOutlineApproval(ctx context.Context, jobID string, edits *OutlineEdits) (*Output, error) {
 	state, ok := r.Sessions.Get(jobID)
 	if !ok {
-		return nil, fmt.Errorf("no session for job %s", jobID)
+		return nil, fmt.Errorf("%w: no session for job %s", ErrSessionGone, jobID)
 	}
 	pending := state.GetPending()
 	if pending == nil || pending.Kind != PendingOutlineReview {
-		return nil, fmt.Errorf("job %s is not awaiting outline approval", jobID)
+		return nil, fmt.Errorf("%w: job %s is not awaiting outline approval", ErrSessionGone, jobID)
 	}
 	if edits != nil {
 		state.MergeOutlineEdits(*edits)
@@ -712,7 +722,7 @@ func (r *AgentRunner) emit(ctx context.Context, ev event.Event) {
 func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (*Output, error) {
 	state, ok := r.Sessions.Get(jobID)
 	if !ok {
-		return nil, fmt.Errorf("no session for job %s — was it generated through the agent path?", jobID)
+		return nil, fmt.Errorf("%w: no session for job %s — was it generated through the agent path?", ErrSessionGone, jobID)
 	}
 
 	rendererAdapter := &sessionRenderer{Renderer: r.Renderer, State: state}

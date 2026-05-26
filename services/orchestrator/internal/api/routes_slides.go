@@ -303,6 +303,18 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pre-flight: the actual resume / Continue work runs in a goroutine
+	// (response goes out as 202 first), so a session-state mismatch
+	// would otherwise surface as a polled `status:"error"` string with
+	// no typed signal for the frontend. Validate synchronously here
+	// and return 410 Gone so apps/web's ApiError.status===410 branch
+	// can flip to the DeckNotFound view. The goroutines still
+	// re-validate via AgentRunner.ErrSessionGone as defense in depth.
+	if status, msg, ok := h.checkResumeReady(req.Action, job.ID); !ok {
+		errorJSON(w, status, msg)
+		return
+	}
+
 	// Flip status back to running so the front-end polling switches into
 	// "live" mode again and listens for new agent events. Reset error.
 	jobsMu.Lock()
@@ -370,6 +382,50 @@ func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdi
 
 	out, err := h.deps.AgentRunner.ResumeFromOutlineApproval(ctx, job.ID, edits)
 	h.finishOrPause(job, ctx, out, err, "outline approval resume")
+}
+
+// checkResumeReady is the synchronous pre-flight for POST /messages.
+// Returns (status, message, ok=false) when the requested action can't
+// run because the in-memory session state is missing or in the wrong
+// pending kind — typically after an orchestrator restart wipes the
+// in-memory store. The frontend maps the 410 to its DeckNotFound
+// view; without this check, the failure would surface only as a
+// polled `status:"error"` string with no typed signal.
+//
+// The match between req.Action and the expected slides.PendingKind
+// mirrors the resume dispatch in PostSlideMessage above. The default
+// (free-text Continue) action only needs the session to exist; the
+// three HILT actions also need the session paused on the matching
+// kind.
+func (h *handlers) checkResumeReady(action, jobID string) (int, string, bool) {
+	if h.deps.Sessions == nil {
+		return 0, "", true
+	}
+	var expected slides.PendingKind
+	switch action {
+	case "wizard_step":
+		expected = slides.PendingWizard
+	case "clarify":
+		expected = slides.PendingClarification
+	case "approve_outline":
+		expected = slides.PendingOutlineReview
+	case "":
+		// Continue / free-text edit — no pending requirement.
+	default:
+		return 0, "", true
+	}
+	state, ok := h.deps.Sessions.Get(jobID)
+	if !ok {
+		return http.StatusGone, "deck session is no longer available; please refresh", false
+	}
+	if expected == "" {
+		return 0, "", true
+	}
+	p := state.GetPending()
+	if p == nil || p.Kind != expected {
+		return http.StatusGone, "deck is no longer awaiting this action; please refresh", false
+	}
+	return 0, "", true
 }
 
 // finishOrPause centralises the post-run bookkeeping so the three
