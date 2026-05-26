@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ImageOff, X } from "lucide-react";
 
 import { forgetDeck, listRecentDecks, type RecentDeck } from "@/lib/recentDecks";
+import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
 
 // RecentDecks — client-only list of the user's most recent decks,
 // read from localStorage. Renders nothing on the server (Next.js
@@ -19,6 +25,47 @@ import { forgetDeck, listRecentDecks, type RecentDeck } from "@/lib/recentDecks"
 
 export function RecentDecks() {
   const [decks, setDecks] = useState<RecentDeck[] | null>(null);
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  // Sprint Y1 — ScrollTrigger reveal. Cards stagger-in when they
+  // first scroll into view (start: "top 90%" — fires when the card's
+  // top reaches the bottom 10% of the viewport). once:true means
+  // we don't re-animate on scroll back, which would feel showy.
+  useGSAP(
+    () => {
+      if (!decks || decks.length === 0) return;
+      const mm = gsap.matchMedia();
+
+      mm.add(PREFERS_FULL_MOTION, () => {
+        gsap.from(".dw-recent-card", {
+          y: 18,
+          opacity: 0,
+          stagger: STAGGER.card,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: "top 85%",
+            once: true,
+          },
+        });
+      });
+
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(".dw-recent-card", {
+          opacity: 0,
+          duration: 0.2,
+          stagger: 0.03,
+          scrollTrigger: {
+            trigger: sectionRef.current,
+            start: "top 95%",
+            once: true,
+          },
+        });
+      });
+    },
+    { scope: sectionRef, dependencies: [decks?.length ?? 0] },
+  );
 
   useEffect(() => {
     const initial = listRecentDecks();
@@ -55,7 +102,7 @@ export function RecentDecks() {
   if (decks === null || decks.length === 0) return null;
 
   return (
-    <section className="px-10 py-10">
+    <section ref={sectionRef} className="px-10 py-10">
       <div className="mb-5 flex items-baseline justify-between border-b border-zinc-200 pb-3">
         <h2 className="font-display text-[22px] tracking-tight text-zinc-900">
           最近的 deck <span className="ml-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-zinc-400">· Recent</span>
@@ -84,7 +131,7 @@ function DeckRow({ deck, onForget }: { deck: RecentDeck; onForget: () => void })
   const display = deck.title?.trim() || deck.topic || "Untitled deck";
 
   return (
-    <li className="group relative">
+    <li className="dw-recent-card group relative">
       <Link
         href={href}
         className="flex items-stretch gap-3 border border-zinc-200 bg-white p-2.5 transition-all duration-200 hover:-translate-y-[1px] hover:border-zinc-400 hover:shadow-[0_18px_36px_-22px_rgba(0,0,0,0.15)]"

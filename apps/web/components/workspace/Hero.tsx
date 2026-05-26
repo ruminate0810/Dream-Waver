@@ -1,31 +1,69 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 import { Paperclip, Mic, Dumbbell, AudioLines, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 import { createSlides } from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
+import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
+
+gsap.registerPlugin(useGSAP);
 
 // Hero is the workspace's primary entrance — a single big input. Type
 // a sentence, hit Enter, and you're dropped into the live chat surface
 // (/slides/{id}) on the very next paint. No middle form.
 //
-// Two design choices worth flagging:
-//   1. Plain Enter submits; Shift+Enter inserts a newline. Genspark /
-//      ChatGPT muscle memory wins over textarea-default semantics.
-//   2. We POST createSlides here directly and router.push to the
-//      created job — bypassing /slides/new entirely. /slides/new still
-//      exists as a fine-tune entrance (reached from the AI 幻灯片 card
-//      or the sidebar "新建" button) where the user can pick page count
-//      and style before kicking off. Two intentional doors: quick
-//      (Hero) and intentional (form).
+// Sprint Y1 — GSAP entrance: editorial settle. Title fades + rises;
+// form slides up shortly after; helper text resolves last. The whole
+// sequence respects prefers-reduced-motion via gsap.matchMedia —
+// reduced users get the same end state with opacity-only transitions.
+
 export function Hero() {
   const router = useRouter();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [topic, setTopic] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // useGSAP scopes selectors to containerRef so .dw-hero-* doesn't
+  // accidentally match anything outside this section. Cleanup is
+  // automatic on unmount per the gsap-react skill.
+  useGSAP(
+    () => {
+      const mm = gsap.matchMedia();
+      // Full motion: y-rise + fade in a coordinated cascade.
+      mm.add(PREFERS_FULL_MOTION, () => {
+        const tl = gsap.timeline({
+          defaults: { ease: EASE.entrance, duration: DUR.entrance },
+        });
+        tl.from(".dw-hero-title", { y: 24, opacity: 0 })
+          .from(
+            ".dw-hero-form",
+            { y: 18, opacity: 0, duration: DUR.secondary },
+            `-=${DUR.entrance - STAGGER.hero * 2}`,
+          )
+          .from(
+            ".dw-hero-hint",
+            { y: 8, opacity: 0, duration: DUR.micro },
+            `-=${DUR.secondary - STAGGER.hero}`,
+          );
+      });
+      // Reduced motion: opacity-only, faster, no transforms.
+      mm.add("(prefers-reduced-motion: reduce)", () => {
+        gsap.from(".dw-hero-title, .dw-hero-form, .dw-hero-hint", {
+          opacity: 0,
+          duration: 0.2,
+          stagger: 0.05,
+          ease: "none",
+        });
+      });
+    },
+    { scope: containerRef },
+  );
 
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -50,8 +88,11 @@ export function Hero() {
   };
 
   return (
-    <section className="flex flex-col items-center px-6 pt-24">
-      <h1 className="font-serif text-5xl md:text-6xl tracking-tight text-ink">
+    <section
+      ref={containerRef}
+      className="flex flex-col items-center px-6 pt-24"
+    >
+      <h1 className="dw-hero-title font-serif text-5xl md:text-6xl tracking-tight text-ink">
         Dream-Waver AI 工作空间
         <span className="ml-3 align-middle text-2xl font-sans font-light text-zinc-400">
           0.1
@@ -60,7 +101,7 @@ export function Hero() {
 
       <form
         onSubmit={submit}
-        className="mt-12 w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)]"
+        className="dw-hero-form mt-12 w-full max-w-3xl rounded-3xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.04)]"
       >
         <textarea
           value={topic}
@@ -93,7 +134,7 @@ export function Hero() {
 
             <button
               type="button"
-              className="flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50"
+              className="flex items-center gap-1.5 rounded-full border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 transition-all hover:border-zinc-300 hover:bg-zinc-50 active:scale-[0.97]"
               title="DeepSeek v4-pro (planner) · v4-flash (worker)"
             >
               <Dumbbell size={15} strokeWidth={1.8} />
@@ -115,7 +156,7 @@ export function Hero() {
               type="submit"
               disabled={!topic.trim() || submitting}
               className={clsx(
-                "flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-colors",
+                "flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium transition-all active:scale-[0.97]",
                 topic.trim() && !submitting
                   ? "bg-ink text-white hover:bg-zinc-800"
                   : "bg-zinc-100 text-zinc-400",
@@ -132,7 +173,7 @@ export function Hero() {
         </div>
       </form>
 
-      <p className="mt-4 text-[12px] text-zinc-400">
+      <p className="dw-hero-hint mt-4 text-[12px] text-zinc-400">
         Enter 直接对话 · Shift+Enter 换行 · 进入对话后可继续微调
       </p>
     </section>
