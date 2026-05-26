@@ -3,6 +3,7 @@
 import {
   Suspense,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -11,38 +12,48 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { ArrowLeft, ArrowUpRight, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 import { createSlides } from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
 import { rememberDeck } from "@/lib/recentDecks";
-import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
+import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
+import {
+  LAYOUT_EXAMPLES,
+  TEMPLATES,
+  findTemplate,
+  type Template,
+} from "@/lib/templates";
+import {
+  FeaturedTemplateCard,
+  TemplateCard,
+} from "@/components/slides/TemplateCard";
+import { LayoutExampleCard } from "@/components/slides/LayoutExampleCard";
 
 gsap.registerPlugin(useGSAP);
 
-// /slides/new — Sprint R: gutted from 1052 LOC to ~250.
+// /slides/new — Sprint T1: galleries restored on top of Sprint R's
+// chat-first hero.
 //
-// Pre-R the page front-loaded everything: theme gallery (§ 02), layout
-// schematic gallery (§ 03), 3-step pipeline strip — about a thousand
-// lines of marketing the user had to scroll past before hitting Begin.
+// Layout:
+//   § 01 Brief        — textarea + Begin (Sprint R kept)
+//   § 02 Style Atlas  — 11-theme picker (featured card + grid) [Sprint T1]
+//   § 03 Composition  — 9 image-led / IA layout examples (read-only) [T1]
 //
-// Now that Sprint Q makes the wizard agent-driven (the LLM asks
-// whatever it needs to know per topic) and Sprint O's critic loop
-// picks layouts dynamically, all of that pre-flight chrome was
-// duplicating decisions the agent will make better.
+// Pipeline strip (§ between Brief and Style) is NOT restored — agent
+// flow is already self-explanatory via wizard + outline review gate.
 //
-// This page is now:  hero text → one textarea → Begin → starter chips.
-// Everything else (theme, layout, audience refinement) happens inside
-// the agent's chat-driven execution. User can change_theme / regenerate /
-// apply_brand mid-conversation if they don't like the agent's picks.
+// Picking a template sets `style` state. Submit then passes
+// `force_theme: style` to createSlides so the planner honours the
+// user's pick. Default is "minimalist" so first-load Begin has a
+// known theme without any clicking required.
 //
-// Page count remains a tiny opt-in fine-tune since the planner needs
-// SOME hint (defaults to 8 if not specified).
+// Sprint T4 will add tab bar (探索 / 我的模板) on § 02 — placeholder
+// state goes in here so Sprint T1 visually matches the eventual UI.
 
 // Starter prompts — six worked examples that double as a topology
 // hint (pitch / technical / retro / lesson / launch / photo-essay).
-// Click → fills the textarea so the user can tweak before sending.
 const STARTER_PROMPTS = [
   "做一份 10 页的 Series A 投资路演 PPT，介绍 DeepSeek V4，目标听众是 USV / a16z",
   "8 页技术分享：transformer attention 是什么 + 为什么 KV cache 改变游戏规则",
@@ -57,6 +68,7 @@ function NewSlidesChat() {
   const search = useSearchParams();
   const [topic, setTopic] = useState("");
   const [slideCount, setSlideCount] = useState(8);
+  const [style, setStyle] = useState("minimalist");
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -74,11 +86,14 @@ function NewSlidesChat() {
     textareaRef.current?.focus();
   }, []);
 
-  // Lightweight entrance — header settles, then brief, then form, then
-  // starters. No scroll-triggered gallery reveals (no gallery any more).
+  // Entrance choreography. Header settles first, then the brief settles,
+  // then the form, then the helper. Style Atlas + Composition galleries
+  // reveal via ScrollTrigger when they approach the viewport — first-fold
+  // visitors see the brief settle, scrolling reveals the galleries.
   useGSAP(
     () => {
       const mm = gsap.matchMedia();
+
       mm.add(PREFERS_FULL_MOTION, () => {
         const tl = gsap.timeline({
           defaults: { ease: EASE.entrance, duration: DUR.entrance },
@@ -90,12 +105,74 @@ function NewSlidesChat() {
           .from(".dw-new-form", { y: 18, opacity: 0, duration: DUR.secondary }, "-=0.35")
           .from(".dw-new-helper", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.25")
           .from(".dw-new-starters", { y: 12, opacity: 0, duration: DUR.secondary }, "-=0.15");
+
+        // Style Atlas — section header settles first, cards stagger up.
+        gsap.from(".dw-new-template-head", {
+          y: 12,
+          opacity: 0,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-template-head",
+            start: "top 90%",
+            once: true,
+          },
+        });
+        gsap.from(".dw-new-template-card", {
+          y: 16,
+          opacity: 0,
+          stagger: STAGGER.card,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-template-grid",
+            start: "top 88%",
+            once: true,
+          },
+        });
+
+        // Composition — separate trigger so the two galleries don't share
+        // a fate; user can scroll past one and the other still animates.
+        gsap.from(".dw-new-layout-head", {
+          y: 12,
+          opacity: 0,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-layout-head",
+            start: "top 90%",
+            once: true,
+          },
+        });
+        gsap.from(".dw-new-layout-card", {
+          y: 16,
+          opacity: 0,
+          stagger: STAGGER.card,
+          duration: DUR.reveal,
+          ease: EASE.entrance,
+          scrollTrigger: {
+            trigger: ".dw-new-layout-grid",
+            start: "top 88%",
+            once: true,
+          },
+        });
       });
+
       mm.add("(prefers-reduced-motion: reduce)", () => {
         gsap.from(
           ".dw-new-header, .dw-new-caption, .dw-new-title, .dw-new-dek, .dw-new-form, .dw-new-helper, .dw-new-starters",
           { opacity: 0, duration: 0.2, stagger: 0.04 },
         );
+        gsap.from(".dw-new-template-card, .dw-new-layout-card", {
+          opacity: 0,
+          duration: 0.2,
+          stagger: 0.02,
+          scrollTrigger: {
+            trigger: ".dw-new-template-grid",
+            start: "top 95%",
+            once: true,
+          },
+        });
       });
     },
     { scope: mainRef },
@@ -108,25 +185,22 @@ function NewSlidesChat() {
     setSubmitting(true);
     setErr(null);
     try {
-      // Honour "10 页" / "10 pages" in topic text — extract slide_count
-      // hint, strip the fragment, so the planner sees the cleaner request.
       const { cleanTopic, hints } = parseTopic(t);
       const finalCount =
         hints.slideCount && slideCount === 8 ? hints.slideCount : slideCount;
       const res = await createSlides({
         topic: cleanTopic,
         slide_count: finalCount,
-        // Sprint R — no force_theme; the planner picks theme from the
-        // topic + audience signals. User can change_theme mid-chat.
+        // Sprint T1 — force_theme is back. User picks via Style Atlas
+        // gallery (default "minimalist"). Agent honours it verbatim;
+        // the user can still change_theme mid-chat.
+        force_theme: style,
       });
-      // Sprint I0.5 — remember the deck so it appears in the
-      // "Recent decks" list on the home page. Title gets backfilled
-      // from /slides/{id} once the job finishes.
       rememberDeck({
         jobId: res.job_id,
         sessionId: res.session_id,
         topic: cleanTopic.slice(0, 80),
-        theme: "auto", // agent picks
+        theme: style,
       });
       router.push(`/slides/${res.job_id}?session=${res.session_id}`);
     } catch (e) {
@@ -134,6 +208,16 @@ function NewSlidesChat() {
       setSubmitting(false);
     }
   }
+
+  const selectedTemplate: Template =
+    findTemplate(style) ?? TEMPLATES[0];
+
+  // Hide the featured card from the grid (it lives separately above) so
+  // the user doesn't see it twice.
+  const galleryTemplates = useMemo(
+    () => TEMPLATES.filter((t) => t.name !== selectedTemplate.name),
+    [selectedTemplate],
+  );
 
   return (
     <main
@@ -157,13 +241,15 @@ function NewSlidesChat() {
         </div>
       </header>
 
-      {/* Single-column, centred — the page IS the brief. No marketing,
-          no gallery, no pipeline diagram. Type and go. */}
-      <div className="relative z-10 mx-auto flex min-h-[calc(100dvh-57px)] max-w-3xl flex-col justify-center px-6 py-16 md:px-12">
-        <section className="max-w-4xl">
+      <div className="relative z-10 mx-auto max-w-6xl px-6 pt-20 md:px-12 md:pt-24">
+        {/* ── § 01 — Brief / hero ───────────────────────────────────
+            Editorial hero: chapter mark + oversized title + italic
+            dek. Sprint T1 keeps Sprint R's minimal hero — gallery
+            sections sit below, scroll-triggered. */}
+        <section className="mb-24 max-w-4xl">
           <div className="dw-new-caption mb-10 flex items-baseline gap-4">
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
-              §
+              § 01
             </span>
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
               Brief · 一句话开始
@@ -171,19 +257,22 @@ function NewSlidesChat() {
             <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
           </div>
 
-          <h1 className="dw-new-title font-display text-[48px] leading-[0.98] tracking-tight text-[color:var(--ink)] md:text-[72px]">
+          <h1 className="dw-new-title font-display text-[56px] leading-[0.98] tracking-tight text-[color:var(--ink)] md:text-[88px]">
             想做<span className="italic text-[color:var(--vermillion)]">什么样</span>
             <br className="hidden md:inline" />
             的演讲？
           </h1>
 
-          <p className="dw-new-dek mt-6 max-w-[640px] font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)] md:text-[18px]">
-            写一句话给 agent ——
-            <span className="not-italic text-[color:var(--ink)]"> 它会自己判断要问你什么 </span>
-            （受众、风格、关键点都由 agent 决定），然后规划、写、画图、渲染。中途任何一页都能改。
+          <p className="dw-new-dek mt-8 max-w-[640px] font-display text-[17px] italic leading-relaxed text-[color:var(--ink-soft)] md:text-[19px]">
+            写一句话给 agent —— 它会先
+            <span className="not-italic text-[color:var(--ink)]"> 规划大纲 </span>
+            让你审阅，再
+            <span className="not-italic text-[color:var(--ink)]"> 写完每张幻灯片 </span>
+            ，最后
+            <span className="not-italic text-[color:var(--ink)]"> 渲染成 .pptx </span>
+            。下面挑一个风格或者直接 Begin。
           </p>
 
-          {/* Sprint I0.4 — error banner with explicit 重试 button. */}
           {err && !submitting ? (
             <div
               role="alert"
@@ -209,7 +298,7 @@ function NewSlidesChat() {
             </div>
           ) : null}
 
-          <form onSubmit={submit} className="dw-new-form mt-10 flex flex-col gap-5">
+          <form onSubmit={submit} className="dw-new-form mt-12 flex flex-col gap-6">
             <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
               <textarea
                 ref={textareaRef}
@@ -221,7 +310,7 @@ function NewSlidesChat() {
                 rows={3}
                 disabled={submitting}
                 placeholder='例: "做一份介绍 DeepSeek V4 的 10 页投资路演 PPT，目标是 Series A 投资人"'
-                className="w-full resize-none bg-transparent font-display text-[20px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:text-[18px] placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+                className="w-full resize-none bg-transparent font-display text-[22px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:text-[20px] placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
               />
             </div>
 
@@ -231,9 +320,19 @@ function NewSlidesChat() {
                 onClick={() => setShowOptions((v) => !v)}
                 className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
               >
+                <ChevronDown
+                  size={11}
+                  strokeWidth={1.6}
+                  className={clsx(
+                    "translate-y-[1px] transition-transform",
+                    showOptions && "rotate-180",
+                  )}
+                />
+                <span>Fine-tune</span>
+                <span className="text-[color:var(--ink-faint)]">·</span>
                 <span className="tabular-nums">{slideCount} pages</span>
                 <span className="text-[color:var(--ink-faint)]">·</span>
-                <span>fine-tune</span>
+                <span>{selectedTemplate.label}</span>
               </button>
 
               <button
@@ -266,8 +365,6 @@ function NewSlidesChat() {
             </p>
           </form>
 
-          {/* Starter prompts — small chips below the form, only thing
-              between the brief and the bottom of the viewport. */}
           <div className="dw-new-starters mt-10">
             <p className="mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
               没灵感？从这些开始
@@ -287,6 +384,70 @@ function NewSlidesChat() {
                 </button>
               ))}
             </div>
+          </div>
+        </section>
+
+        {/* ── § 02 — Style Atlas (theme picker) ───────────────────── */}
+        <section className="mb-24">
+          <div className="dw-new-template-head mb-8 flex items-baseline gap-4">
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+              § 02
+            </span>
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+              Style Atlas · 选风格
+            </span>
+            <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+              {TEMPLATES.length} 个
+            </span>
+          </div>
+
+          <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+            点任一卡片切换风格。当前选中
+            <span className="not-italic text-[color:var(--ink)]"> {selectedTemplate.label} </span>
+            —— Begin 时 agent 按这套色板和字体写所有幻灯片。
+          </p>
+
+          <FeaturedTemplateCard template={selectedTemplate} />
+
+          <div className="dw-new-template-grid mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {galleryTemplates.map((t) => (
+              <TemplateCard
+                key={t.name}
+                template={t}
+                selected={false}
+                onClick={() => setStyle(t.name)}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ── § 03 — Composition (image-led / IA layouts, read-only) */}
+        <section className="mb-32">
+          <div className="dw-new-layout-head mb-8 flex items-baseline gap-4">
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+              § 03
+            </span>
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+              Composition · 图像化版式
+            </span>
+            <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+              AI 配图 · {LAYOUT_EXAMPLES.length} 种
+            </span>
+          </div>
+
+          <p className="mb-10 max-w-2xl font-display text-[17px] italic leading-relaxed text-[color:var(--ink-soft)] md:text-[19px]">
+            主题涉及摄影、旅行、时尚、美食、产品等视觉内容时，planner
+            自动挑下面这几种构图，
+            <span className="not-italic text-[color:var(--ink)]"> nano-banana </span>
+            直接生成贴合主题的 16:9 配图。你不用挑 —— 选好风格就放手。
+          </p>
+
+          <div className="dw-new-layout-grid grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {LAYOUT_EXAMPLES.map((l, i) => (
+              <LayoutExampleCard key={l.key} example={l} index={i} />
+            ))}
           </div>
         </section>
       </div>
@@ -323,8 +484,6 @@ function PagesPicker({
   );
 }
 
-// Page-level paper grain — fixed, pointer-events-none so it never
-// re-paints during scroll.
 function Grain() {
   return (
     <div
@@ -339,9 +498,6 @@ function Grain() {
   );
 }
 
-// Suspense wrapper required by Next.js for useSearchParams in client
-// components. Renders nothing during SSR; the page hydrates on the
-// client and the GSAP timeline reveals the hero.
 export default function Page() {
   return (
     <Suspense>
