@@ -142,7 +142,38 @@ type Envelope<T> =
   | { ok: false; error: string | Record<string, unknown> };
 
 async function unwrap<T>(res: Response): Promise<T> {
-  const json = (await res.json()) as Envelope<T>;
+  // Try JSON first. If the body isn't JSON (Next.js dev proxy returns
+  // plain-text "Internal Server Error" when the orchestrator is down;
+  // a misrouted request can land on chi's "404 page not found\n"; a
+  // panic mid-handler can leave a half-written response) we fall back
+  // to surfacing the raw body inside an ApiError instead of crashing
+  // the caller with `Unexpected token 'I'...`. Better message, same
+  // throw-on-error contract.
+  const text = await res.text();
+  let json: Envelope<T> | null = null;
+  try {
+    json = text ? (JSON.parse(text) as Envelope<T>) : null;
+  } catch {
+    json = null;
+  }
+  if (json === null) {
+    // Synthesise a useful error string for the user.
+    const snippet = text.trim().slice(0, 140) || "(empty response)";
+    let msg: string;
+    if (res.status === 0) {
+      msg = "网络错误 — 后台服务无法连接";
+    } else if (res.status >= 500) {
+      // 502 from Next.js rewrite when orchestrator is unreachable;
+      // 500 from chi panic / handler error. Both mean "the backend
+      // is unhappy"; the body text we DO have helps debugging.
+      msg = `后台服务暂时不可用 (HTTP ${res.status}): ${snippet}`;
+    } else if (res.status === 404) {
+      msg = `请求的资源不存在 (HTTP 404): ${snippet}`;
+    } else {
+      msg = `请求失败 (HTTP ${res.status}): ${snippet}`;
+    }
+    throw new ApiError(msg, res.status);
+  }
   if (!json.ok) throw new ApiError(json.error, res.status);
   return json.data;
 }
