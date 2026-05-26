@@ -56,6 +56,19 @@ type createSlidesRequest struct {
 	// emits llm.thought / tool.* events; default) or "pipeline"
 	// (deterministic Outline → Content → Render, lower cost, fewer events).
 	Mode string `json:"mode,omitempty"`
+	// Sprint T2 — optional brand overlay, applied once the deck is
+	// assembled so a "我的模板" pick carries through end-to-end without
+	// a separate apply_brand turn. nil = inherit theme defaults.
+	Brand *brandInput `json:"brand,omitempty"`
+}
+
+// brandInput mirrors schema.Brand on the wire. Lives here (not in
+// schema) so the API package can attach JSON tags without leaking
+// schema-package field decisions to other call sites.
+type brandInput struct {
+	PrimaryColor string `json:"primary_color,omitempty"`
+	AccentColor  string `json:"accent_color,omitempty"`
+	FontFamily   string `json:"font_family,omitempty"`
 }
 
 type createSlidesResponse struct {
@@ -86,6 +99,17 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 		Style:         req.Style,
 		ReferenceText: req.ReferenceText,
 		ForceTheme:    req.ForceTheme,
+	}
+	if req.Brand != nil {
+		// Drop empty brand payloads (all-blank object) — a no-op brand
+		// would still trigger the post-render re-render. Cheap guard.
+		if req.Brand.PrimaryColor != "" || req.Brand.AccentColor != "" || req.Brand.FontFamily != "" {
+			in.Brand = &schema.Brand{
+				PrimaryColor: req.Brand.PrimaryColor,
+				AccentColor:  req.Brand.AccentColor,
+				FontFamily:   req.Brand.FontFamily,
+			}
+		}
 	}
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))
 	if mode != "pipeline" {

@@ -9,25 +9,28 @@
 // the workspace context cleanly.
 
 import { getActiveWorkspaceID } from "@/lib/workspace";
+import { getDevUserID } from "@/lib/devAuth";
 
 /**
  * apiFetch is the thin wrapper around fetch() that:
  *   - Prepends nothing — caller passes the full /api/v1/... path.
  *   - Injects the X-Workspace-ID header from the workspace cookie
  *     when one is set. Skipped when not (so anonymous calls still go).
+ *   - Sprint T3 — injects X-Dev-User-Id (a stable per-device UUID)
+ *     so the orchestrator's dev-mode auth can synthesise a user and
+ *     workspace. In production-auth mode the header is ignored.
  *   - Defaults Content-Type to application/json when the caller
  *     passes a body but no header.
- *
- * Future Phase 2 migration: every existing `fetch("/api/v1/…")` call
- * below swaps to apiFetch(…) so workspace context is uniform. For
- * now we leave the existing call sites alone to keep the Sprint X1
- * diff focused.
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
   const wsID = getActiveWorkspaceID();
   if (wsID && !headers.has("X-Workspace-ID")) {
     headers.set("X-Workspace-ID", wsID);
+  }
+  const devUser = getDevUserID();
+  if (devUser && !headers.has("X-Dev-User-Id")) {
+    headers.set("X-Dev-User-Id", devUser);
   }
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -49,6 +52,17 @@ export type CreateSlidesRequest = {
    * chat surface stays opaque.
    */
   mode?: "agent" | "pipeline";
+  /**
+   * Sprint T2 — optional brand overlay. When set, the orchestrator
+   * applies the brand once the deck is assembled so a saved "我的模板"
+   * pick carries colour + font through end-to-end without a separate
+   * apply_brand turn.
+   */
+  brand?: {
+    primary_color?: string;
+    accent_color?: string;
+    font_family?: string;
+  };
 };
 
 export type CreateSlidesResponse = {
@@ -796,5 +810,48 @@ export async function removeWorkspaceMember(
     `/api/v1/workspaces/${workspaceID}/members/${userID}`,
     { method: "DELETE" },
   );
+  await unwrap<{ status: string }>(res);
+}
+
+// ─── User templates (Sprint T2 — "我的模板" tab) ──────────────────
+
+export type UserTemplate = {
+  id: string;
+  name: string;
+  /** schema.Theme key — one of the 11 known themes. */
+  theme: string;
+  /** Optional brand overlay. Hex strings; empty = inherit theme defaults. */
+  brand_primary?: string;
+  brand_accent?: string;
+  font_family?: string;
+  created_at: string;
+};
+
+export type CreateUserTemplateBody = {
+  name: string;
+  theme: string;
+  brand_primary?: string;
+  brand_accent?: string;
+  font_family?: string;
+};
+
+export async function listUserTemplates(): Promise<UserTemplate[]> {
+  const res = await apiFetch("/api/v1/templates");
+  const out = await unwrap<{ templates: UserTemplate[] }>(res);
+  return out.templates;
+}
+
+export async function createUserTemplate(
+  body: CreateUserTemplateBody,
+): Promise<UserTemplate> {
+  const res = await apiFetch("/api/v1/templates", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return unwrap<UserTemplate>(res);
+}
+
+export async function deleteUserTemplate(id: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/templates/${id}`, { method: "DELETE" });
   await unwrap<{ status: string }>(res);
 }

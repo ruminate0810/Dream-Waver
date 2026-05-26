@@ -57,14 +57,17 @@ type Pipeline struct {
 // Input is the request shape both Pipeline.Run and AgentRunner.Run accept.
 // ForceTheme overrides whatever theme the planner picked; ReferenceText is
 // fed into the outline prompt as supplementary material the LLM should
-// quote from.
+// quote from. Sprint T2 — Brand is optional brand-colour overrides applied
+// to the deck before content writing, so a user-template's brand carries
+// through end-to-end without a separate apply_brand turn.
 type Input struct {
-	Topic         string `json:"topic"`
-	Audience      string `json:"audience,omitempty"`
-	SlideCount    int    `json:"slide_count,omitempty"`
-	Style         string `json:"style,omitempty"`
-	ReferenceText string `json:"reference_text,omitempty"`
-	ForceTheme    string `json:"force_theme,omitempty"`
+	Topic         string        `json:"topic"`
+	Audience      string        `json:"audience,omitempty"`
+	SlideCount    int           `json:"slide_count,omitempty"`
+	Style         string        `json:"style,omitempty"`
+	ReferenceText string        `json:"reference_text,omitempty"`
+	ForceTheme    string        `json:"force_theme,omitempty"`
+	Brand         *schema.Brand `json:"brand,omitempty"`
 }
 
 // Output is the shared result envelope. Both runners write the same shape

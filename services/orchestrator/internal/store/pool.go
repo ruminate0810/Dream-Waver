@@ -84,6 +84,7 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 		IdempotencyKeys: &pgxIdempotencyKeys{pool: pool},
 		CreditLedger:    &pgxCreditLedger{pool: pool},
 		ToolCalls:       &pgxToolCalls{pool: pool},
+		UserTemplates:   &pgxUserTemplates{pool: pool},
 		closer:          func() error { pool.Close(); return nil },
 	}, nil
 }

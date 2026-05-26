@@ -20,6 +20,7 @@ func NewMemory() *Store {
 		IdempotencyKeys: newMemIdempotencyKeys(),
 		CreditLedger:    newMemCreditLedger(),
 		ToolCalls:       newMemToolCalls(),
+		UserTemplates:   newMemUserTemplates(),
 	}
 }
 

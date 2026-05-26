@@ -714,6 +714,35 @@ func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (
 	if state.PptxPath == "" {
 		return nil, fmt.Errorf("content phase finished without rendering a deck")
 	}
+
+	// Sprint T2 — if the request carried a Brand (typically because
+	// the user picked a saved "我的模板"), apply it now and re-render
+	// the whole deck so the brand colour + font land in both the live
+	// preview and the on-disk PPTX. Cheap follow-up: ~1 extra render
+	// pass; no LLM calls. Uses the same sessionRenderer adapter the
+	// edit tools use so the asset cache is updated coherently.
+	if state.Input.Brand != nil {
+		state.SetBrand(state.Input.Brand)
+		updatedDeck, count := state.Snapshot()
+		if updatedDeck != nil && count > 0 {
+			dirty := make([]int, count)
+			for i := range dirty {
+				dirty[i] = i
+			}
+			adapter := &sessionRenderer{Renderer: r.Renderer, State: state}
+			pptxPath, err := adapter.RenderIncremental(ctx, *updatedDeck, dirty)
+			if err != nil {
+				// Don't fail the whole job — the deck without brand is
+				// still useful. Log and proceed.
+				r.emit(ctx, event.NewError("apply_brand", err))
+			} else if pptxPath != "" {
+				for i := 1; i <= count; i++ {
+					r.emit(ctx, event.NewSlideUpdated(i))
+				}
+			}
+		}
+	}
+
 	deck, count := state.Snapshot()
 	title := outline.Title
 	if deck != nil && deck.Title != "" {

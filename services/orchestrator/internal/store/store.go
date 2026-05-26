@@ -350,6 +350,7 @@ type Store struct {
 	IdempotencyKeys IdempotencyKeys
 	CreditLedger    CreditLedger // X3a
 	ToolCalls       ToolCalls    // X3a
+	UserTemplates   UserTemplates // T2 — user-saved theme/brand presets
 
 	// closer is set by the constructor that owns external resources
 	// (e.g. the pgx pool). main.go defers Close on shutdown.

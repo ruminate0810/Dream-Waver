@@ -132,6 +132,12 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 			r.Get("/workspaces/{id}/members", h.ListWorkspaceMembers)
 			r.Post("/workspaces/{id}/members", h.AddWorkspaceMember)
 			r.Delete("/workspaces/{id}/members/{user_id}", h.RemoveWorkspaceMember)
+
+			// Sprint T2 — user-saved templates ("我的模板" tab on
+			// /slides/new). Workspace-scoped via auth.MustWorkspace.
+			r.Get("/templates", h.ListUserTemplates)
+			r.Post("/templates", h.CreateUserTemplate)
+			r.Delete("/templates/{id}", h.DeleteUserTemplate)
 		})
 
 		r.Post("/slides", h.CreateSlides)
