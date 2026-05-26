@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -41,19 +42,14 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 	cfg.MaxConnLifetime = 30 * time.Minute
 	cfg.MaxConnIdleTime = 5 * time.Minute
 
-	// TODO(X2a-1-redux): re-wire google/uuid codec registration here.
-	// The original Sprint X2a-1 commit imported
-	// `github.com/vgarvardt/pgx-google-uuid/v5 v0.6.1` which fails
-	// Go's module versioning rule (a /vN path suffix requires vN.x.x
-	// tags; v0.6.1 doesn't satisfy /v5). The no-suffix path also
-	// 404s at v0.6.1 (the package may have moved or never tagged).
-	// As a Sprint O hotfix the registration is temporarily disabled
-	// so all builds work again; production deployments hitting a
-	// uuid column will fail until the right import path + version is
-	// figured out. Resolution candidates: (a) find the package's
-	// current canonical path, (b) inline the ~50 LOC of codec code
-	// the package contained, (c) drop google/uuid in favour of
-	// pgx-native uuid types.
+	// Register google/uuid ↔ pgx codec on every new connection.
+	// pgx v5 doesn't auto-recognise google/uuid, so without this
+	// every SELECT on a uuid column blows up with "cannot decode …
+	// into *uuid.UUID". Codec impl lives in uuid_codec.go.
+	cfg.AfterConnect = func(_ context.Context, conn *pgx.Conn) error {
+		registerUUIDCodec(conn.TypeMap())
+		return nil
+	}
 
 	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

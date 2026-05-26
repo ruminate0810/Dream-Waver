@@ -17,9 +17,9 @@ require (
 	github.com/jackc/pgx/v5 v5.7.1
 	github.com/joho/godotenv v1.5.1
 	github.com/sashabaranov/go-openai v1.36.0
-	// Sprint X2a — pgx v5 default codec doesn't recognise google/uuid.
-	// Sprint O hotfix temporarily removed the broken dep — see
-	// store/pool.go TODO(X2a-1-redux) for the resolution checklist.
+	// pgx v5 default codec doesn't recognise google/uuid; the bridge
+	// lives in-tree at internal/store/uuid_codec.go (no external dep —
+	// the vgarvardt package's /v5 path was never tagged).
 	google.golang.org/grpc v1.81.1
 	google.golang.org/protobuf v1.36.11
 )
