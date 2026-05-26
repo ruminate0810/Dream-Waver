@@ -69,7 +69,10 @@ export function WizardCard({
   ) => void | Promise<void>;
   busy?: boolean;
 }) {
-  const isScenario = view.kind === "scenario";
+  // Sprint Q — `kind` is now usually "select" (LLM-generated dynamic
+  // question). The legacy "scenario" value from the N1 hardcoded wizard
+  // is kept as an alias so any in-flight pre-Q job still renders.
+  const isScenario = view.kind === "scenario" || view.kind === "select";
 
   // Local state per step view. Resets whenever a new step arrives
   // (view identity changes) — guarded by useEffect on view.step +

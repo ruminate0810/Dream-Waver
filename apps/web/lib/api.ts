@@ -106,7 +106,7 @@ export type SlidePendingAction =
 export type SlideWizardStepView = {
   step: number;
   total: number;
-  kind: "scenario" | "free-text";
+  kind: "scenario" | "select" | "free-text";
   question: string;
   placeholder?: string;
   options?: Array<{ value: string; label: string; icon: string }>;

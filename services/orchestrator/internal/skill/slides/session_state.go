@@ -97,15 +97,22 @@ type PendingUserAction struct {
 	// can round-trip the exact same shape back when submitting.
 	OutlineJSON string `json:"outline_json,omitempty"`
 
-	// For Kind == PendingWizard (Sprint N1): the current step's view
-	// envelope (step #, total, body kind, options, etc.). The frontend
-	// reads this directly and renders the appropriate WizardCard body.
-	// Step + scenario are also tracked separately at top-level so we
-	// can resume mid-wizard after a server restart (when SessionState
-	// becomes Postgres-backed).
-	Wizard         *WizardStepView   `json:"wizard,omitempty"`
-	WizardScenario SlideScenario     `json:"wizard_scenario,omitempty"`
-	WizardAnswers  map[string]string `json:"wizard_answers,omitempty"`
+	// For Kind == PendingWizard: the current step's view envelope
+	// (step #, total, kind, options, etc.) that the frontend
+	// WizardCard renders.
+	//
+	// Sprint Q reshaped wizard state from "fixed 3-step script with
+	// scenario + audience + extra answers" to "dynamic LLM-generated
+	// script with N questions and N answers":
+	//   - WizardScript carries the planner-LLM-generated question
+	//     list for THIS turn (length 1-3, decided per-topic)
+	//   - WizardAnswers is index-aligned with the script — answers[i]
+	//     is the user's answer to script[i]; "" = skipped or pending
+	//   - WizardScenario is gone (Sprint Q removed the hardcoded
+	//     scenario enum — there's no fixed "first step")
+	Wizard        *WizardStepView              `json:"wizard,omitempty"`
+	WizardScript  []stages.ClarificationQuestion `json:"wizard_script,omitempty"`
+	WizardAnswers []string                       `json:"wizard_answers,omitempty"`
 }
 
 // PendingKind enumerates the L1+N1 pause points. Closed set; adding a

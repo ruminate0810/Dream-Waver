@@ -27,3 +27,10 @@ var CriticContent string
 
 //go:embed critic_deck.md
 var CriticDeck string
+
+// Sprint Q — the planner reads the topic and decides 0–3 dynamic
+// clarifying questions to ask before drafting. Replaces the Sprint
+// N1 hardcoded 3-step wizard.
+
+//go:embed clarify.md
+var Clarify string

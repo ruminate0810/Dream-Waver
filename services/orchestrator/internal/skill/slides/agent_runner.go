@@ -12,6 +12,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/tools"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
@@ -307,19 +308,40 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 		r.Sessions.Put(state)
 	}
 
-	// Phase 0 — wizard gate (Sprint N1).  Always fires now, replacing
-	// the L1 vague-topic heuristic. The wizard is 3 steps; only step 1
-	// (scenario picker) is required. Step 2/3 can be skipped.
+	// Phase 0 — agent-driven clarification gate (Sprint Q). The
+	// planner LLM reads the topic and decides 0-3 tailored questions.
+	// Empty → no wizard, go straight to outline. Non-empty →
+	// emit the first question's view, pause.
 	//
-	// The first step is served unconditionally on Run() entry. The user
-	// answers (or skips) via ResumeFromWizardStep, which either emits
-	// the next step's view OR — when the wizard is done — falls through
-	// to runFromOutline with the answers merged into Input.
-	view := wizardStepView(1, "", in.Topic, nil)
+	// The wizard is ADVISORY: if the LLM call fails or returns
+	// malformed JSON, we treat it as empty and skip the gate. We
+	// never want a clarifier hiccup to block the user from getting
+	// a deck.
+	script, _, err := stages.PlanClarification(ctx, r.Router, stages.OutlineParams{
+		Topic:         in.Topic,
+		Audience:      in.Audience,
+		SlideCount:    in.SlideCount,
+		Style:         in.Style,
+		ReferenceText: in.ReferenceText,
+	})
+	if err != nil {
+		// Log and proceed — clarification is advisory.
+		r.emit(ctx, event.NewError("clarify", err))
+		script = nil
+	}
+	if len(script) == 0 {
+		// No clarification needed — go straight to outline planning.
+		return r.runFromOutline(ctx, state)
+	}
+
+	// Stash the script so ResumeFromWizardStep can walk it. Emit
+	// question 1.
+	view := buildWizardStepView(1, len(script), script[0], nil)
 	state.SetPending(&PendingUserAction{
 		Kind:          PendingWizard,
 		Wizard:        &view,
-		WizardAnswers: map[string]string{},
+		WizardScript:  script,
+		WizardAnswers: make([]string, len(script)),
 	})
 	r.emit(ctx, event.NewWizardStep(view))
 	return &Output{Status: "awaiting_wizard"}, nil
@@ -419,22 +441,16 @@ func (r *AgentRunner) ResumeFromClarification(ctx context.Context, jobID string,
 	return r.runFromOutline(ctx, state)
 }
 
-// ResumeFromWizardStep is the resume entry for the Sprint N1 wizard
-// gate. The user answered (or skipped) the current step; we record
-// the answer, then either emit the next step's view OR — when the
-// wizard is done — call runFromOutline with the answers merged into
-// Input.Audience / Input.ReferenceText so the outline prompt sees
-// them as planning signals.
+// ResumeFromWizardStep is the resume entry for the Sprint Q
+// dynamic wizard. The user answered (or skipped, or went back on)
+// the current question; we record/clear, then either emit the next
+// question OR — when the LLM's script is exhausted — call
+// runFromOutline with all the Q&A pairs merged into Input.
 //
-// `skip` true means the user pressed 跳过 — we don't store an answer
-// for this step and just advance. The required step-1 (scenario) does
-// NOT accept skip; the API validates that before calling here.
-//
-// `back` true (Sprint N1.i) means the user pressed ← — instead of
-// advancing, we re-emit the PREVIOUS step's view (with the user's
-// prior pick pre-filled as SuggestedValue). `step` in this case is
-// the step they're going BACK to (typically Wizard.Step - 1). The
-// answer parameter is ignored when back is true.
+// step is 1-based, matching the WizardStepView.Step the FE sees.
+// `skip` true on an optional question advances without recording.
+// `back` true re-emits the previous question's view (preserving
+// the user's prior answer in the breadcrumb).
 func (r *AgentRunner) ResumeFromWizardStep(
 	ctx context.Context,
 	jobID string,
@@ -451,145 +467,139 @@ func (r *AgentRunner) ResumeFromWizardStep(
 	if pending == nil || pending.Kind != PendingWizard {
 		return nil, fmt.Errorf("job %s is not awaiting wizard step", jobID)
 	}
+	script := pending.WizardScript
+	answers := pending.WizardAnswers
+	if len(answers) != len(script) {
+		// Defensive: keep slices length-aligned (e.g. after a
+		// session hydrate from disk).
+		newAns := make([]string, len(script))
+		copy(newAns, answers)
+		answers = newAns
+	}
+	total := len(script)
 
-	// Sprint N1.i back-step branch — re-emit the requested step's
-	// view with prior answers preserved as defaults. We don't
-	// validate that step is the current minus 1: the frontend may
-	// want to jump back several steps in a future revision, and
-	// step bounds are enforced by wizardStepView (returns zero
-	// for out-of-range).
+	// Back-step: re-emit the requested question, preserving answers
+	// already collected for earlier questions in the breadcrumb.
 	if back {
 		if step < 1 || step >= pending.Wizard.Step {
-			return nil, fmt.Errorf("invalid back target step=%d (currently on step %d)", step, pending.Wizard.Step)
+			return nil, fmt.Errorf("invalid back target step=%d (current step %d)", step, pending.Wizard.Step)
 		}
-		// Clear the answer(s) for any step >= the target so the
-		// user gets a clean slate ahead. Keeps state consistent if
-		// they then forward through different choices.
-		answers := pending.WizardAnswers
-		if answers == nil {
-			answers = map[string]string{}
+		// Clear answers for questions at or after the target so the
+		// user gets a clean slate going forward.
+		for i := step - 1; i < len(answers); i++ {
+			answers[i] = ""
 		}
-		// Step keys, in order: 1=scenario, 2=audience, 3=extra.
-		for s := step; s <= WizardTotalSteps; s++ {
-			switch s {
-			case 1:
-				// Keep scenario in answers as the SUGGESTED default,
-				// but the user is free to override; don't reset.
-			case 2:
-				delete(answers, "audience")
-			case 3:
-				delete(answers, "extra")
-			}
-		}
-		scenario := pending.WizardScenario
-		if step == 1 {
-			// Going back to step 1 — keep the prior scenario so it
-			// pre-fills the radio. wizardStepView reads it via the
-			// scenario arg → SuggestedValue override.
-		}
-		view := wizardStepView(step, scenario, state.Input.Topic, answers)
+		view := buildWizardStepView(step, total, script[step-1], answersToBreadcrumb(script, answers))
 		state.SetPending(&PendingUserAction{
-			Kind:           PendingWizard,
-			Wizard:         &view,
-			WizardScenario: scenario,
-			WizardAnswers:  answers,
+			Kind:          PendingWizard,
+			Wizard:        &view,
+			WizardScript:  script,
+			WizardAnswers: answers,
 		})
 		r.emit(ctx, event.NewWizardStep(view))
 		return &Output{Status: "awaiting_wizard"}, nil
 	}
 
 	if pending.Wizard == nil || pending.Wizard.Step != step {
-		// Stale submission (probably a race with a fast-clicking user).
-		// Re-emit the current step so the frontend can resync.
+		// Stale submission (fast-clicking race). Re-emit current.
 		if pending.Wizard != nil {
 			r.emit(ctx, event.NewWizardStep(*pending.Wizard))
 		}
 		return &Output{Status: "awaiting_wizard"}, nil
 	}
-
-	// Record the answer unless skipped. Scenario is also captured at
-	// top-level so step 2's question copy can specialise on it.
-	answers := pending.WizardAnswers
-	if answers == nil {
-		answers = map[string]string{}
+	if step < 1 || step > total {
+		return nil, fmt.Errorf("step %d out of range (script length %d)", step, total)
 	}
-	scenario := pending.WizardScenario
+
+	// Record the answer unless skipped. Required-question validation
+	// (no skipping a non-optional question) happens here.
 	if !skip {
 		trimmed := strings.TrimSpace(answer)
-		if step == 1 {
-			if !isValidScenario(trimmed) {
-				return nil, fmt.Errorf("step 1 requires a valid scenario; got %q", trimmed)
-			}
-			scenario = SlideScenario(trimmed)
-			answers["scenario"] = trimmed
-		} else if trimmed != "" {
-			switch step {
-			case 2:
-				answers["audience"] = trimmed
-			case 3:
-				answers["extra"] = trimmed
-			}
+		if trimmed == "" && !script[step-1].Optional {
+			return nil, fmt.Errorf("step %d requires an answer", step)
 		}
+		answers[step-1] = trimmed
+	} else if !script[step-1].Optional {
+		return nil, fmt.Errorf("step %d is required; cannot skip", step)
 	}
 
-	// Advance. If there's a next step in the script, emit it and
-	// stay paused. Otherwise the wizard is done — fold answers into
-	// Input and fall through to Phase 1 (outline planning).
+	// Advance. If there's a next question, emit it.
 	nextStep := step + 1
-	if nextStep <= WizardTotalSteps {
-		nextView := wizardStepView(nextStep, scenario, state.Input.Topic, answers)
+	if nextStep <= total {
+		nextView := buildWizardStepView(nextStep, total, script[nextStep-1], answersToBreadcrumb(script, answers))
 		state.SetPending(&PendingUserAction{
-			Kind:           PendingWizard,
-			Wizard:         &nextView,
-			WizardScenario: scenario,
-			WizardAnswers:  answers,
+			Kind:          PendingWizard,
+			Wizard:        &nextView,
+			WizardScript:  script,
+			WizardAnswers: answers,
 		})
 		r.emit(ctx, event.NewWizardStep(nextView))
 		return &Output{Status: "awaiting_wizard"}, nil
 	}
 
-	// Wizard complete — merge answers into Input and run outline.
-	mergeWizardAnswersIntoInput(&state.Input, scenario, answers)
+	// Wizard complete — fold all Q&A pairs into Input and run outline.
+	mergeWizardAnswersIntoInput(&state.Input, script, answers)
 	state.ClearPending()
 	return r.runFromOutline(ctx, state)
 }
 
-// mergeWizardAnswersIntoInput folds the wizard's collected answers
-// back into the typed Input the planner sees. The mapping favours
-// surfacing the most useful signal at the most useful slot:
-//
-//   - scenario → prepended as "[场景] xxx" line on ReferenceText so
-//                the outline prompt sees the high-level domain
-//   - audience → Input.Audience (where the prompt actually reads it)
-//   - extra    → appended to ReferenceText verbatim
-//
-// We don't touch Style — it's a deck-level visual choice the user
-// already made (via force_theme or the picker) before the wizard ran.
-func mergeWizardAnswersIntoInput(in *Input, scenario SlideScenario, ans map[string]string) {
-	if audience := strings.TrimSpace(ans["audience"]); audience != "" && in.Audience == "" {
-		in.Audience = audience
+// answersToBreadcrumb turns the parallel (script, answers) slices
+// into a {question: answer} map for the WizardStepView's
+// PreviousAnswers breadcrumb. Only includes entries where the user
+// actually answered (skipped/blank entries omitted).
+func answersToBreadcrumb(script []stages.ClarificationQuestion, answers []string) map[string]string {
+	out := map[string]string{}
+	for i, a := range answers {
+		if i >= len(script) || a == "" {
+			continue
+		}
+		out[script[i].Question] = a
 	}
+	return out
+}
+
+// mergeWizardAnswersIntoInput folds every collected Q&A pair into
+// the planner's Input. Two surfaces are populated:
+//
+//   - Input.Audience — set to the first non-blank answer to a
+//     question whose text mentions "受众" / "audience" / "听众" /
+//     "学员" / "汇报对象" (these are the high-leverage answers the
+//     outline prompt's Audience parameter actually reads). Only
+//     set when Input.Audience is currently empty (don't clobber an
+//     explicit caller-provided audience).
+//
+//   - Input.ReferenceText — every answered question appended as a
+//     "Q: ...\nA: ..." block. The outline planner reads this as
+//     supplementary context and folds it into its plan.
+func mergeWizardAnswersIntoInput(in *Input, script []stages.ClarificationQuestion, answers []string) {
 	var b strings.Builder
 	b.WriteString(in.ReferenceText)
 	if b.Len() > 0 {
 		b.WriteString("\n\n")
 	}
-	if scenario != "" {
-		// Translate the enum value back to its Chinese label for the
-		// planner — the LLM works better with the human-readable form.
-		label := string(scenario)
-		for _, opt := range ScenarioOptions {
-			if opt.Value == scenario {
-				label = opt.Label
-				break
+	b.WriteString("Clarification answers:\n")
+	wrote := false
+	for i, a := range answers {
+		if i >= len(script) || a == "" {
+			continue
+		}
+		q := script[i].Question
+		fmt.Fprintf(&b, "Q: %s\nA: %s\n", q, a)
+		wrote = true
+		// Audience heuristic — surface to Input.Audience if blank.
+		if in.Audience == "" {
+			ql := strings.ToLower(q)
+			for _, marker := range []string{"受众", "audience", "听众", "学员", "汇报对象", "面向"} {
+				if strings.Contains(ql, marker) {
+					in.Audience = a
+					break
+				}
 			}
 		}
-		fmt.Fprintf(&b, "[场景] %s\n", label)
 	}
-	if extra := strings.TrimSpace(ans["extra"]); extra != "" {
-		fmt.Fprintf(&b, "[补充] %s\n", extra)
+	if wrote {
+		in.ReferenceText = b.String()
 	}
-	in.ReferenceText = b.String()
 }
 
 // ResumeFromOutlineApproval is the resume entry for the H1 gate. The

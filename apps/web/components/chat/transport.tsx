@@ -106,7 +106,10 @@ export type WizardScenarioOption = {
 export type WizardStepView = {
   step: number;             // 1-based
   total: number;            // total step count
-  kind: "scenario" | "free-text";
+  // Sprint Q — "select" is the new value the LLM-driven wizard emits.
+  // "scenario" is the legacy hardcoded-step kind, kept as alias for any
+  // in-flight pre-Q session.
+  kind: "scenario" | "select" | "free-text";
   question: string;
   placeholder?: string;
   options?: WizardScenarioOption[];
