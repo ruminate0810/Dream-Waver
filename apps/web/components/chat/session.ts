@@ -238,6 +238,16 @@ function lastOpenTurnIdx(turns: Turn[]): number {
   return -1;
 }
 
+// latestTurnIdx returns the most recent turn regardless of status. Used
+// exclusively by Sprint L1/N1 pause-gate handlers (outline.review,
+// clarification, wizard.step) because those events legitimately
+// re-open a turn that the Sprint O agent loop already closed via
+// agent.finish (terminate inside the outline/content sub-phase emits
+// agent.finish before the gate fires).
+function latestTurnIdx(turns: Turn[]): number {
+  return turns.length - 1;
+}
+
 // Mutate a single turn at idx by applying fn; returns a new turns array.
 function patchTurn(turns: Turn[], idx: number, fn: (t: Turn) => Turn): Turn[] {
   const next = turns.slice();
@@ -543,13 +553,20 @@ function reduceWS(state: State, ev: AgentEvent): State {
     }
 
     // ─── Sprint L1: HILT pause gates ───────────────────────────────
+    //
+    // Pause events use latestTurnIdx (not lastOpenTurnIdx) because the
+    // Sprint O agent loop emits agent.finish (status: "done") from the
+    // outline / content sub-phase before the L1 gate fires. Sticking
+    // to lastOpenTurnIdx would drop the pending payload — symptom:
+    // user sees "terminate · 完成" then nothing, no review card, deck
+    // never appears. The pause RE-OPENS the closed turn into
+    // awaiting_user, which is the correct end state.
     case "outline.clarification_required": {
-      // Attach the questions to the active turn AND flip its status
-      // to "awaiting_user" so the UI knows to render the gate card.
-      if (lastIdx < 0 || !data.clarification_questions) return state;
+      const target = latestTurnIdx(state.turns);
+      if (target < 0 || !data.clarification_questions) return state;
       return {
         ...state,
-        turns: patchTurn(state.turns, lastIdx, (t) => ({
+        turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "clarification", questions: data.clarification_questions! },
           status: "awaiting_user" as TurnStatus,
@@ -557,7 +574,8 @@ function reduceWS(state: State, ev: AgentEvent): State {
       };
     }
     case "outline.review_required": {
-      if (lastIdx < 0 || !data.review_outline_json) return state;
+      const target = latestTurnIdx(state.turns);
+      if (target < 0 || !data.review_outline_json) return state;
       let outline: OutlineForReview;
       try {
         outline = JSON.parse(data.review_outline_json) as OutlineForReview;
@@ -570,7 +588,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
       }
       return {
         ...state,
-        turns: patchTurn(state.turns, lastIdx, (t) => ({
+        turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "outline_review", outline },
           status: "awaiting_user" as TurnStatus,
@@ -592,7 +610,8 @@ function reduceWS(state: State, ev: AgentEvent): State {
       // The wizard fires on Turn 0 (initial generation). If no turn
       // exists yet — the wizard event arrived before any step.start —
       // synthesise a Turn 0 here so the card can attach to it.
-      if (lastIdx < 0) {
+      const target = latestTurnIdx(state.turns);
+      if (target < 0) {
         const t: Turn = {
           id: "t0",
           kind: "initial",
@@ -606,7 +625,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
       }
       return {
         ...state,
-        turns: patchTurn(state.turns, lastIdx, (t) => ({
+        turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "wizard", view },
           status: "awaiting_user" as TurnStatus,
