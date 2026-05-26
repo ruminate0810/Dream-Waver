@@ -129,7 +129,7 @@ type Envelope<T> =
 
 async function unwrap<T>(res: Response): Promise<T> {
   const json = (await res.json()) as Envelope<T>;
-  if (!json.ok) throw new ApiError(json.error);
+  if (!json.ok) throw new ApiError(json.error, res.status);
   return json.data;
 }
 
@@ -138,16 +138,20 @@ async function unwrap<T>(res: Response): Promise<T> {
  * to render per-field hints (e.g. /video/new) can do so without
  * re-parsing strings. `.message` is always a human-readable string;
  * `.fieldErrors` is populated when the upstream surface provided one.
+ * `.status` is the HTTP status code, useful for distinguishing
+ * 404 (resource gone) from 500 (transient).
  */
 export class ApiError extends Error {
   readonly fieldErrors: string[];
   readonly raw: string | Record<string, unknown>;
+  readonly status: number;
 
-  constructor(payload: string | Record<string, unknown>) {
+  constructor(payload: string | Record<string, unknown>, status = 0) {
     super(messageFromPayload(payload));
     this.name = "ApiError";
     this.raw = payload;
     this.fieldErrors = fieldErrorsFromPayload(payload);
+    this.status = status;
   }
 }
 

@@ -1,16 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileQuestion, Plus } from "lucide-react";
 
-import { getSlideJob, type SlideJob } from "@/lib/api";
+import { ApiError, getSlideJob, type SlideJob } from "@/lib/api";
 import { Chat } from "@/components/chat/Chat";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { AgentSessionProvider } from "@/components/chat/transport";
 import { ConnectionToast } from "@/components/chat/ConnectionToast";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
-import { updateDeckTitle } from "@/lib/recentDecks";
+import { forgetDeck, updateDeckTitle } from "@/lib/recentDecks";
 
 // The slides workspace is a two-column manuscript:
 //   left  — chat-style generation timeline (the editor's running notes)
@@ -33,6 +34,12 @@ export default function SlideJobPage() {
   // to the editorial composition log if the user explicitly asks for it.
   const uiVariant = search.get("ui") === "log" ? "log" : "thread";
   const [job, setJob] = useState<SlideJob | null>(null);
+  // Sprint O.4 polish — distinguish "deck no longer exists on server"
+  // (terminal: 404, typical after in-memory store restart) from
+  // "transient network blip" (re-poll). Without this, the page sits
+  // on "Loading session…" forever and the iframes / WS keep firing
+  // failed requests in the background.
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,8 +55,19 @@ export default function SlideJobPage() {
         if (j.status === "running") {
           timer = setTimeout(poll, 2000);
         }
-      } catch {
-        if (!cancelled) timer = setTimeout(poll, 5000);
+      } catch (err) {
+        if (cancelled) return;
+        // 404 is terminal — the backend doesn't know this job. Stop
+        // polling, flip to the dead-link view, and prune the entry
+        // from the user's local recent-decks list so the homepage
+        // doesn't keep offering it.
+        if (err instanceof ApiError && err.status === 404) {
+          forgetDeck(jobId);
+          setNotFound(true);
+          return;
+        }
+        // Other errors (network blip, 500) — keep re-polling.
+        timer = setTimeout(poll, 5000);
       }
     }
     poll();
@@ -108,7 +126,9 @@ export default function SlideJobPage() {
 
       {/* Body */}
       <div className="relative z-10 mx-auto max-w-[1480px] px-4 md:px-10">
-        {job ? (
+        {notFound ? (
+          <DeckNotFound jobId={jobId} />
+        ) : job ? (
           <Workspace job={job} sessionId={sessionId} uiVariant={uiVariant} />
         ) : (
           <div className="px-2 py-20">
@@ -208,5 +228,61 @@ function TabLink({
     >
       {label}
     </a>
+  );
+}
+
+// DeckNotFound — terminal state shown when GET /slides/{id} returns
+// 404. Typically happens after an orchestrator restart with the
+// in-memory store (data lost on restart) or if the user opened a
+// deep-link to a deck someone else generated. The polling effect has
+// already pruned this deck from localStorage by the time we render.
+function DeckNotFound({ jobId }: { jobId: string }) {
+  return (
+    <div className="mx-auto max-w-2xl px-2 py-24">
+      <div
+        className="relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] p-10 text-center"
+        style={{
+          boxShadow:
+            "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32)",
+        }}
+      >
+        <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center border border-[color:var(--ink)]/20 bg-white">
+          <FileQuestion
+            size={22}
+            strokeWidth={1.4}
+            className="text-[color:var(--ink-soft)]"
+          />
+        </div>
+        <p className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--vermillion)]">
+          § Deck No Longer Available
+        </p>
+        <h3 className="mt-4 font-display text-[26px] leading-tight text-[color:var(--ink)]">
+          这个 deck 已经不在服务器上了
+        </h3>
+        <p className="mx-auto mt-3 max-w-md font-display text-[15px] italic leading-relaxed text-[color:var(--ink-soft)]">
+          可能是后端重启后 in-memory 状态丢失了，或者这是别人生成的
+          deck 链接。我们已经把它从你本机的「最近 decks」列表里清理掉。
+        </p>
+        <p className="mt-2 font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          Job ID · {jobId.slice(0, 8)}…
+        </p>
+        <div className="mt-7 flex items-center justify-center gap-3">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 border border-[color:var(--ink)]/25 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:border-[color:var(--ink)] hover:text-[color:var(--ink)]"
+          >
+            <ArrowLeft size={11} strokeWidth={1.8} />
+            返回首页
+          </Link>
+          <Link
+            href="/slides/new"
+            className="group inline-flex items-center gap-2 bg-[color:var(--ink)] px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-colors hover:bg-[color:var(--vermillion)]"
+          >
+            <Plus size={11} strokeWidth={1.8} />
+            新建 deck
+          </Link>
+        </div>
+      </div>
+    </div>
   );
 }
