@@ -50,6 +50,27 @@ const (
 	// decodes it back into a typed WizardStepView and renders the
 	// matching body in WizardCard.
 	KindWizardStep Kind = "wizard.step"
+
+	// Sprint O.5 — plan-execute visibility.
+	//
+	// KindSlidesComposeStart fires right before Phase 3's agent loop
+	// kicks off, carrying the full list of slide titles + layouts the
+	// agent is about to write. The frontend renders this as a
+	// check-list strip; each KindContent that follows marks the
+	// matching slide as rendered. Solves the "Phase 3 is a black box"
+	// complaint without refactoring the batched write_content stage.
+	KindSlidesComposeStart Kind = "slides.compose.start"
+	// KindSlidesComposeEnd fires after Phase 3 completes (render
+	// included), so the checklist can collapse/fade out.
+	KindSlidesComposeEnd Kind = "slides.compose.end"
+
+	// KindGamePlan fires before games' Pipeline.generate runs the
+	// HTML-writing LLM call. Payload is a JSON-serialised GamePlanView
+	// (mechanics / controls / win_condition / art_direction / genre).
+	// MVP has NO approval gate — emission is informational; generation
+	// continues straight after. Adding a gate would mean copying
+	// slides' PendingUserAction machinery into games (separate sprint).
+	KindGamePlan Kind = "game.plan"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -105,6 +126,19 @@ type EventData struct {
 	// WizardCard body. We marshal it as a string to keep this event
 	// package free of any slides-package import.
 	WizardStepJSON string `json:"wizard_step_json,omitempty"`
+
+	// Sprint O.5 — compose-phase visibility (slides). Populated on
+	// KindSlidesComposeStart. SlideTitles and SlideLayouts are
+	// parallel arrays — index i refers to the same slide. The
+	// frontend ticks off entries as KindContent (slides.content)
+	// events arrive with the matching SlideIndex.
+	SlideTitles  []string `json:"slide_titles,omitempty"`
+	SlideLayouts []string `json:"slide_layouts,omitempty"`
+
+	// Sprint O.5 — games plan payload. JSON-serialised GamePlanView
+	// from skill/games/plan.go. Same string-marshal trick as the
+	// wizard payload — keeps event package free of skill imports.
+	GamePlanJSON string `json:"game_plan_json,omitempty"`
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -267,6 +301,49 @@ func NewWizardStep(view any) Event {
 func NewOutlineReviewRequired(outlineJSON string) Event {
 	return Event{Kind: KindOutlineReviewRequired, Data: EventData{
 		ReviewOutlineJSON: outlineJSON,
+	}}
+}
+
+// NewSlidesComposeStart fires before Phase 3 content writing begins.
+// titles + layouts come from the just-approved outline; the frontend
+// uses them to render a checklist of every slide the agent is about
+// to compose. As individual slides finish rendering (KindContent),
+// the checklist ticks them off — gives the user per-slide visibility
+// without requiring the batched write_content stage to actually loop.
+func NewSlidesComposeStart(outlineTitle string, titles, layouts []string) Event {
+	return Event{Kind: KindSlidesComposeStart, Data: EventData{
+		OutlineTitle: outlineTitle,
+		SlideCount:   len(titles),
+		SlideTitles:  titles,
+		SlideLayouts: layouts,
+	}}
+}
+
+// NewSlidesComposeEnd marks Phase 3 done. Carries duration so the
+// frontend can show "Composed 8 slides in 32.4s".
+func NewSlidesComposeEnd(slideCount int, durationMs int64) Event {
+	return Event{Kind: KindSlidesComposeEnd, Data: EventData{
+		SlideCount: slideCount,
+		DurationMs: durationMs,
+	}}
+}
+
+// NewGamePlan fires before the games skill calls the worker LLM to
+// write HTML. The view parameter is a JSON-marshallable plan struct
+// (defined in skill/games/plan.go) — accepted as `any` here for the
+// same reason as NewWizardStep: keeps this package import-free of
+// the games package.
+//
+// MVP emits informationally — generation continues immediately. A
+// future "approve plan" gate would add a HILT state machine to the
+// games skill (mirroring slides' PendingUserAction).
+func NewGamePlan(view any) Event {
+	b, err := json.Marshal(view)
+	if err != nil {
+		b = []byte("{}")
+	}
+	return Event{Kind: KindGamePlan, Data: EventData{
+		GamePlanJSON: string(b),
 	}}
 }
 

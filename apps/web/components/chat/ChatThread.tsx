@@ -32,6 +32,8 @@ import clsx from "clsx";
 import type { SlideJob } from "@/lib/api";
 import { useAgentSession, type Step, type ToolCallEntry, type Turn } from "./session";
 import { ClarificationCard } from "./ClarificationCard";
+import { ComposeStrip } from "./ComposeStrip";
+import { GamePlanCard } from "./GamePlanCard";
 import { OutlineReviewCard } from "./OutlineReviewCard";
 import { WizardCard } from "./WizardCard";
 
@@ -98,6 +100,22 @@ export function ChatThread({
           {session.pendingMessage ? (
             <PendingRow text={session.pendingMessage} onCancel={session.cancelPending} />
           ) : null}
+
+          {/* Sprint O.5 — plan-execute visibility. Render the active
+              turn's compose checklist (slides Phase 3) and the games
+              plan card (informational, pre-HTML-generation). Both
+              are non-blocking — they coexist with the agent still
+              streaming tokens / calling tools. */}
+          {(() => {
+            const lastTurn = session.turns[session.turns.length - 1];
+            if (!lastTurn) return null;
+            return (
+              <>
+                {lastTurn.gamePlan ? <GamePlanCard plan={lastTurn.gamePlan} /> : null}
+                {lastTurn.compose ? <ComposeStrip compose={lastTurn.compose} /> : null}
+              </>
+            );
+          })()}
 
           {/* Sprint L1 — HILT pause gates. Render the active turn's
               `pending` payload as the matching interactive card. The

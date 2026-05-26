@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/agent"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
@@ -681,9 +682,29 @@ func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (
 		userMsg += "\n\nPass force_theme=" + state.Input.ForceTheme + " to render_deck."
 	}
 
+	// Sprint O.5 — compose-phase visibility. Emit a one-shot event up
+	// front carrying every slide's headline + layout so the frontend
+	// can paint a check-list of what's about to happen. The existing
+	// per-slide KindContent events (NewSlideRendered) tick the
+	// check-list off as render progresses — gives users a "8 slides:
+	// 1. Title (cover) · 2. Intro (split-image) · ..." surface
+	// without refactoring the batched write_content stage.
+	titles := make([]string, len(outline.Slides))
+	layouts := make([]string, len(outline.Slides))
+	for i, s := range outline.Slides {
+		titles[i] = s.Headline
+		layouts[i] = s.Type
+	}
+	composeStart := time.Now()
+	r.emit(ctx, event.NewSlidesComposeStart(outline.Title, titles, layouts))
+
 	if _, err := agent.Run(ctx, a, userMsg); err != nil {
+		// Even on error we close the compose strip — otherwise the
+		// frontend leaves an in-progress checklist dangling.
+		r.emit(ctx, event.NewSlidesComposeEnd(len(outline.Slides), time.Since(composeStart).Milliseconds()))
 		return nil, fmt.Errorf("content phase: %w", err)
 	}
+	r.emit(ctx, event.NewSlidesComposeEnd(len(outline.Slides), time.Since(composeStart).Milliseconds()))
 
 	// Save augmented memory so follow-up edit turns see the conversation.
 	state.SetMemory(a.Memory.Snapshot())

@@ -15,6 +15,7 @@ import {
   useNotifyDeckGone,
   type AgentEvent,
   type EventKind,
+  type GamePlanView,
   type Tokens,
   type WizardStepView,
 } from "./transport";
@@ -106,6 +107,21 @@ export type OutlineForReview = {
   }>;
 };
 
+// Sprint O.5 — compose-phase checklist. Populated on
+// slides.compose.start; titles + layouts are parallel arrays. As
+// slides.content events arrive (per-slide render), the matching
+// index is appended to `rendered`. `done` flips at
+// slides.compose.end so the strip can fade / collapse.
+export type ComposeProgress = {
+  titles: string[];
+  layouts: string[];
+  /** 1-based indices of slides whose render has fired. */
+  rendered: number[];
+  done: boolean;
+  /** Wall-clock ms from slides.compose.end. */
+  durationMs?: number;
+};
+
 export type Turn = {
   id: string;
   kind: TurnKind;
@@ -123,6 +139,13 @@ export type Turn = {
   // input; reducer sets it from outline.review_required /
   // outline.clarification_required events.
   pending?: PendingGate;
+  // Sprint O.5 — Phase 3 compose visibility (slides only). Solves
+  // the "write_content is a black box" complaint without refactoring
+  // the batched content stage.
+  compose?: ComposeProgress;
+  // Sprint O.5 — games plan (informational; no approval gate in MVP).
+  // Renders as a structured card before HTML generation completes.
+  gamePlan?: GamePlanView;
 };
 
 export type AgentSession = {
@@ -415,11 +438,24 @@ function reduceWS(state: State, ev: AgentEvent): State {
     }
     case "slides.content": {
       if (lastIdx < 0) return state;
+      const idx = data.slide_index ?? 0;
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) => ({
           ...t,
-          slidesRendered: Math.max(t.slidesRendered, data.slide_index ?? 0),
+          slidesRendered: Math.max(t.slidesRendered, idx),
+          // Sprint O.5 — tick off the compose checklist as render
+          // events arrive. Compose strip uses this to flip the per-
+          // slide indicator from "queued" → "done".
+          compose: t.compose
+            ? {
+                ...t.compose,
+                rendered:
+                  idx > 0 && !t.compose.rendered.includes(idx)
+                    ? [...t.compose.rendered, idx]
+                    : t.compose.rendered,
+              }
+            : t.compose,
         })),
       };
     }
@@ -429,6 +465,57 @@ function reduceWS(state: State, ev: AgentEvent): State {
       // session fold ignores it. render.end is implicit in agent.finish
       // for the chat surface.
       return state;
+
+    // ─── Sprint O.5: compose-phase visibility ─────────────────────
+    case "slides.compose.start": {
+      if (lastIdx < 0) return state;
+      const titles = data.slide_titles ?? [];
+      const layouts = data.slide_layouts ?? [];
+      if (titles.length === 0) return state;
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          compose: {
+            titles,
+            layouts,
+            rendered: [],
+            done: false,
+          },
+        })),
+      };
+    }
+    case "slides.compose.end": {
+      if (lastIdx < 0) return state;
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) =>
+          t.compose
+            ? {
+                ...t,
+                compose: { ...t.compose, done: true, durationMs: data.duration_ms },
+              }
+            : t,
+        ),
+      };
+    }
+
+    // ─── Sprint O.5: games plan card ──────────────────────────────
+    case "game.plan": {
+      if (lastIdx < 0 || !data.game_plan_json) return state;
+      let view: GamePlanView;
+      try {
+        view = JSON.parse(data.game_plan_json) as GamePlanView;
+      } catch {
+        // eslint-disable-next-line no-console
+        console.warn("[O.5] failed to parse game_plan_json", data.game_plan_json);
+        return state;
+      }
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({ ...t, gamePlan: view })),
+      };
+    }
 
     case "agent.finish": {
       if (lastIdx < 0) return state;

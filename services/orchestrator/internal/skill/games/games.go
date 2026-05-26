@@ -228,6 +228,24 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 
 	toolInputPreview := fmt.Sprintf(`{"prompt":%q,"genre":%q,"aesthetic":%q}`,
 		truncateForEvent(lastUser, 120), genre, aesthetic)
+
+	// Sprint O.5 — emit plan_game BEFORE the long-running HTML
+	// generation. Only on cold-start (len(Revisions) == 0); follow-up
+	// edits already have full conversational context and a re-plan
+	// would just confuse the chat surface. Plan call is non-blocking
+	// — on error it logs and continues, so a planner blip never
+	// stalls generation. Difficulty isn't currently persisted on
+	// Session (only Genre + Aesthetic are) — empty here means the
+	// planner LLM picks a reasonable default.
+	sess.mu.RLock()
+	isColdStart := len(sess.Revisions) == 0
+	sess.mu.RUnlock()
+	if isColdStart {
+		if plan := p.planGame(ctx, history, genre, aesthetic, ""); plan != nil {
+			p.emitPlan(ctx, plan)
+		}
+	}
+
 	p.emit(ctx, event.NewToolStart("write_game", jobID, toolInputPreview))
 	toolStart := time.Now()
 

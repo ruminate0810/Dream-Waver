@@ -49,7 +49,11 @@ export type EventKind =
   | "outline.clarification_required"
   | "outline.review_required"
   // Sprint N1 — multi-step wizard
-  | "wizard.step";
+  | "wizard.step"
+  // Sprint O.5 — plan-execute visibility
+  | "slides.compose.start"
+  | "slides.compose.end"
+  | "game.plan";
 
 export type Tokens = {
   input: number;
@@ -92,6 +96,37 @@ export type EventData = {
   // Sprint N1 — wizard step payload. JSON-serialised WizardStepView
   // from the backend; session.ts decodes it into the typed shape.
   wizard_step_json?: string;
+
+  // Sprint O.5 — slides compose checklist (titles + layouts come on
+  // slides.compose.start, populated from the just-approved outline).
+  // Parallel arrays; index i refers to the same slide.
+  slide_titles?: string[];
+  slide_layouts?: string[];
+
+  // Sprint O.5 — games plan payload. JSON-serialised GamePlanView
+  // from skill/games/plan.go. session.ts parses into a typed shape.
+  game_plan_json?: string;
+};
+
+// ─── Sprint O.5 — games plan typed envelope ──────────────────────────
+// Mirror of skill/games/plan.go's GamePlanView. The reducer parses
+// the JSON string off game_plan_json into one of these.
+export type GamePlanView = {
+  /** One-line statement of what the game IS — e.g. "snake with
+   *  speed-ramping segments and edge wraparound". */
+  pitch: string;
+  /** Core mechanics — bullet-style strings rendered as a list. */
+  mechanics: string[];
+  /** Controls (keyboard / touch) — short imperative phrases. */
+  controls: string[];
+  /** Win + loss conditions, separated so the frontend can label them. */
+  win_condition?: string;
+  loss_condition?: string;
+  /** Art direction — palette / mood / visual references. */
+  art_direction?: string;
+  /** Genre + difficulty the planner committed to (or "auto"). */
+  genre?: string;
+  difficulty?: string;
 };
 
 // ─── Sprint N1 — wizard step typed envelope ──────────────────────────
