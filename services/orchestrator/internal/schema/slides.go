@@ -41,6 +41,38 @@ const (
 	LayoutChecklist SlideLayout = "checklist" // title + 3-7 task-item rows with ☐ checkboxes — for action items, "next steps", launch checklists, training takeaways
 )
 
+// AllSlideLayouts returns every templated layout the renderer knows
+// about. Used by the API handler to validate user-supplied layout
+// overrides (Sprint S — outline review relayouts) and as the single
+// source of truth for surfacing the layout enum to the frontend.
+//
+// Order is roughly "ship date" — primitives first, then specialty
+// layouts. The frontend may regroup for picker UX; the wire enum is
+// flat.
+func AllSlideLayouts() []SlideLayout {
+	return []SlideLayout{
+		LayoutTitle, LayoutSection, LayoutBullets, LayoutContent,
+		LayoutQuote, LayoutTwoCol, LayoutData, LayoutClosing,
+		LayoutTimeline, LayoutComparison, LayoutMultiMetric,
+		LayoutComparisonTable, LayoutTOC, LayoutSWOT,
+		LayoutPhotoEssay, LayoutSplitImage, LayoutImageGrid,
+		LayoutProcessFlow, LayoutBentoGrid, LayoutPullQuote,
+		LayoutBeforeAfter, LayoutIconGrid, LayoutTeamRoster,
+		LayoutCode, LayoutChecklist,
+	}
+}
+
+// IsValidSlideLayout reports whether the given string matches one of
+// the SlideLayout consts. Cheap linear scan over ~25 entries.
+func IsValidSlideLayout(s string) bool {
+	for _, l := range AllSlideLayouts() {
+		if string(l) == s {
+			return true
+		}
+	}
+	return false
+}
+
 // Theme picks a base template family. The renderer falls back to LayoutTitle
 // content if a slide doesn't specify a known layout.
 type Theme string

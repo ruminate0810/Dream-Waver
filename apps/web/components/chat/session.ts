@@ -152,9 +152,12 @@ export type AgentSession = {
 
 // OutlineEditsPayload mirrors the Go-side slides.OutlineEdits struct
 // — the shape POST /messages accepts under the `edits` key.
+// Sprint S — added relayouts so the user can force a per-slide layout
+// from the review card before content writing.
 export type OutlineEditsPayload = {
   theme?: string;
   renames?: Array<{ index: number; title: string }>;
+  relayouts?: Array<{ index: number; layout: string }>;
   delete_indices?: number[];
 };
 
@@ -523,6 +526,14 @@ function reduceWS(state: State, ev: AgentEvent): State {
         })),
       };
     }
+
+    // Defensive default — unknown / future event kinds (e.g. Sprint
+    // O.5 compose/games events being added incrementally in
+    // transport.tsx) are ignored rather than crashing the fold. The
+    // ChatThread surface only knows how to render the kinds it has
+    // explicit cases for.
+    default:
+      return state;
   }
 }
 

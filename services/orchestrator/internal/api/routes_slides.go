@@ -375,7 +375,24 @@ func (h *handlers) resumeClarification(job *slideJob, answers []string) {
 
 // resumeOutlineApproval drives Phase 3 — content writing + render —
 // after the H1 gate. Edits is optional; nil means "approve as-is".
+//
+// Sprint S — when the user submitted per-slide Relayouts via the
+// outline review card, we trust-but-verify here: each Layout string
+// must match a schema.SlideLayout const. Anything else is silently
+// dropped (the slide keeps its agent-picked layout) — better to
+// gracefully degrade than to 4xx-fail the whole approval flow over
+// one bad picker entry.
 func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdits) {
+	if edits != nil && len(edits.Relayouts) > 0 {
+		kept := edits.Relayouts[:0]
+		for _, rl := range edits.Relayouts {
+			if schema.IsValidSlideLayout(rl.Layout) {
+				kept = append(kept, rl)
+			}
+		}
+		edits.Relayouts = kept
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)

@@ -535,15 +535,17 @@ func statusForPending(p *PendingUserAction) string {
 }
 
 // MergeOutlineEdits applies a user's outline-review edits onto the
-// stored Outline in place. Three operations supported (matches the
-// MVP scope locked at planning):
+// stored Outline in place. Four operations supported (Sprint S
+// widened from three):
 //   - rename a slide (by index) → updates outline.Slides[i].Headline
+//   - relayout a slide (by index) → overrides outline.Slides[i].Type with
+//     the user's pick BEFORE content writing, so the LLM is forced to
+//     hit the layout the user wants
 //   - delete a slide (by index) → splices it out
 //   - change deck-wide theme → updates outline.Theme
 //
-// Edits is a small typed shape (defined in api/routes_slides.go) to
-// keep the wire contract close to the HTTP boundary. The state side
-// only sees the already-validated values.
+// Edits is a small typed shape; the api package just decodes the
+// JSON and calls MergeOutlineEdits.
 func (s *SessionState) MergeOutlineEdits(edits OutlineEdits) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -554,11 +556,21 @@ func (s *SessionState) MergeOutlineEdits(edits OutlineEdits) {
 	if edits.Theme != "" {
 		s.Outline.Theme = schema.Theme(edits.Theme)
 	}
-	// Apply rename / delete to slides. Deletes have to walk in reverse
-	// order so we don't shift indices the user referenced.
+	// Apply rename + relayout to slides. Both are by-index mutations
+	// that don't shift positions, so order doesn't matter.
 	for _, r := range edits.Renames {
 		if r.Index >= 0 && r.Index < len(s.Outline.Slides) {
 			s.Outline.Slides[r.Index].Headline = r.Title
+		}
+	}
+	for _, rl := range edits.Relayouts {
+		if rl.Index >= 0 && rl.Index < len(s.Outline.Slides) && rl.Layout != "" {
+			// stages.OutlineSlide.Type is a free-form string in the
+			// outline JSON contract (the LLM later coerces to a
+			// schema.SlideLayout when generating content). We store
+			// the user's pick verbatim — the content prompt sees it
+			// as a non-negotiable layout hint.
+			s.Outline.Slides[rl.Index].Type = rl.Layout
 		}
 	}
 	if len(edits.DeleteIndices) > 0 {
@@ -584,15 +596,24 @@ func (s *SessionState) MergeOutlineEdits(edits OutlineEdits) {
 // owns the mutation logic; the api package just decodes the JSON and
 // calls MergeOutlineEdits.
 type OutlineEdits struct {
-	Theme         string         `json:"theme,omitempty"`
-	Renames       []SlideRename  `json:"renames,omitempty"`
-	DeleteIndices []int          `json:"delete_indices,omitempty"`
+	Theme         string          `json:"theme,omitempty"`
+	Renames       []SlideRename   `json:"renames,omitempty"`
+	Relayouts     []SlideRelayout `json:"relayouts,omitempty"`
+	DeleteIndices []int           `json:"delete_indices,omitempty"`
 }
 
 // SlideRename targets one outline slide for a title rewrite.
 type SlideRename struct {
 	Index int    `json:"index"`
 	Title string `json:"title"`
+}
+
+// SlideRelayout targets one outline slide for a forced layout pick.
+// The Layout string must match one of schema.SlideLayout's consts —
+// the api handler validates before forwarding to MergeOutlineEdits.
+type SlideRelayout struct {
+	Index  int    `json:"index"`
+	Layout string `json:"layout"`
 }
 
 // SessionStore is the per-process registry keyed by job ID. Concurrent

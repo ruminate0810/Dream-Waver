@@ -227,6 +227,10 @@ export async function postSlideClarification(
 export type SlideOutlineEdits = {
   theme?: string;
   renames?: Array<{ index: number; title: string }>;
+  // Sprint S — per-slide forced layout override from the outline
+  // review card. Each `layout` must match a schema.SlideLayout const
+  // (backend silently drops unknown values).
+  relayouts?: Array<{ index: number; layout: string }>;
   delete_indices?: number[];
 };
 
