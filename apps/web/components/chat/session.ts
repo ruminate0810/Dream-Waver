@@ -34,12 +34,27 @@ import {
 //
 // Returns true when the error was handled (caller should skip the
 // normal post_error path).
-function handleDeckGone(err: unknown, notify: () => void): boolean {
+//
+// `onGateAdvanced` (optional) fires for the 409 case — when the gate
+// is already past, we let the caller synthesise an agent.finish so
+// the spinner / card clear immediately. Without this callback, the
+// session would have to wait for the next polling tick to notice
+// status=finished and run the session.ts:710 fallback path.
+function handleDeckGone(
+  err: unknown,
+  notify: () => void,
+  onGateAdvanced?: () => void,
+): boolean {
   if (!(err instanceof ApiError)) return false;
   if (err.status === 409) {
-    // Superseded duplicate / late-fire. Drop quietly.
+    // Superseded duplicate / late-fire. The deck IS still here, the
+    // gate just advanced (e.g. another tab submitted, or the user is
+    // clicking a stale tab whose React state lags the backend). The
+    // spinner / card needs to clear; agent.finish in the reducer
+    // resets both status=done and pending=undefined.
     // eslint-disable-next-line no-console
     console.debug("[session] superseded gate POST ignored:", err.message);
+    onGateAdvanced?.();
     return true;
   }
   if (err.status === 410 || err.status === 404) {
@@ -546,6 +561,15 @@ function reduceWS(state: State, ev: AgentEvent): State {
       const closed = patchTurn(state.turns, lastIdx, (t) => ({
         ...t,
         status: "done" as TurnStatus,
+        // Once the turn is done, any pending HILT gate is moot.
+        // Clearing it here makes the wizard / outline review / clarify
+        // cards disappear even when the FE first learns about the
+        // close via polling fallback (session.ts:710 path) — important
+        // when the user is on a stale tab where the WS dropped and
+        // they keep clicking the gate button getting 409s. Without
+        // this clear, the card would linger forever even after Turn 0
+        // closed.
+        pending: undefined,
       }));
       // Bump preview version on every close — initial gen *and* every
       // follow-up edit. The live preview's per-slide version bumping
@@ -562,6 +586,9 @@ function reduceWS(state: State, ev: AgentEvent): State {
           ...t,
           status: "error" as TurnStatus,
           errorMsg: data.error,
+          // Same as agent.finish — clear the gate so the user isn't
+          // stuck clicking a card that posts to a dead session.
+          pending: undefined,
         })),
       };
     }
@@ -785,6 +812,26 @@ export function useAgentSession(job: SlideJob): AgentSession {
     state.turns.length > 0 &&
     state.turns[state.turns.length - 1].status === "running";
 
+  // Synthesise an agent.finish event for the current turn — used by
+  // the 409 handler to clear the stale gate card + spinner when the
+  // backend reports the gate already advanced. Reducer's agent.finish
+  // case clears t.status (→ done) + t.pending (→ undefined), so the
+  // OutlineReviewCard / WizardCard disappear and busy flips false.
+  // Cheap fallback: if polling is alive it would do the same within
+  // ~2s, but firing immediately removes the "rapid 409 spam" feel
+  // when the user clicks a stale button several times.
+  const synthFinish = () => {
+    dispatch({
+      type: "ws",
+      event: {
+        session_id: job.session_id,
+        kind: "agent.finish",
+        at: new Date().toISOString(),
+        data: { agent: "slides" },
+      },
+    });
+  };
+
   // The actual send — opens a new turn + POSTs. Wrapped in a ref so
   // the busy-drain effect below can call it without ending up as a
   // useEffect dep that re-fires on every render.
@@ -798,7 +845,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
     try {
       await postSlideMessage(job.job_id, text);
     } catch (err) {
-      if (handleDeckGone(err, notifyDeckGone)) return;
+      if (handleDeckGone(err, notifyDeckGone, synthFinish)) return;
       const msg = err instanceof Error ? err.message : String(err);
       dispatch({ type: "post_error", turnId: id, err: msg });
     }
@@ -847,7 +894,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideClarification(job.job_id, answers);
       } catch (err) {
-        if (handleDeckGone(err, notifyDeckGone)) return;
+        if (handleDeckGone(err, notifyDeckGone, synthFinish)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
@@ -875,7 +922,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideOutlineApproval(job.job_id, edits);
       } catch (err) {
-        if (handleDeckGone(err, notifyDeckGone)) return;
+        if (handleDeckGone(err, notifyDeckGone, synthFinish)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
@@ -919,7 +966,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
       try {
         await postSlideWizardStep(job.job_id, step, answer, skip, back);
       } catch (err) {
-        if (handleDeckGone(err, notifyDeckGone)) return;
+        if (handleDeckGone(err, notifyDeckGone, synthFinish)) return;
         const msg = err instanceof Error ? err.message : String(err);
         dispatch({ type: "post_error", turnId: lastTurn.id, err: msg });
       }
