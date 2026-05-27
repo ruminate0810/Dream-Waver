@@ -3,6 +3,7 @@
 import { ArrowDownToLine, ArrowUpRight, RotateCcw } from "lucide-react";
 
 import type { SlideJob } from "@/lib/api";
+import { BusyHint } from "./BusyHint";
 import { Phase, PressTicker, type SectionStatus } from "./Bubble";
 import { PreviewGrid } from "../slides-preview/PreviewGrid";
 import { ThoughtCollapse } from "./ThoughtCollapse";
@@ -37,6 +38,13 @@ export function SlidesOpening({
   compact?: boolean;
 }) {
   const phases = derivePhaseStates(turn);
+  // Pick the first phase still pending — that's where the busyHint
+  // belongs. Without this, both `prose` and `press` would each
+  // render the chip during the post-outline-approval gap.
+  const firstPendingKey =
+    turn?.busyHint
+      ? phases.find((p) => p.status === "pending" && p.key !== "issue")?.key
+      : undefined;
 
   return (
     <>
@@ -61,6 +69,7 @@ export function SlidesOpening({
               job={job}
               previewVersion={previewVersion}
               compact={compact}
+              showBusy={phase.key === firstPendingKey}
             />
             <ToolStrip calls={phase.toolCalls} />
             <ThoughtCollapse thoughts={phase.thoughts} />
@@ -79,12 +88,14 @@ function PhaseBody({
   job,
   previewVersion,
   compact,
+  showBusy,
 }: {
   phase: PhaseState;
   turn: Turn | undefined;
   job: SlideJob;
   previewVersion: number;
   compact: boolean;
+  showBusy: boolean;
 }) {
   if (phase.status === "error") {
     const msg = turn?.errorMsg ?? job.error ?? "Unknown failure.";
@@ -121,7 +132,7 @@ function PhaseBody({
     );
   }
 
-  return renderForPhase(phase.key, phase.status, turn, job, previewVersion, compact);
+  return renderForPhase(phase.key, phase.status, turn, job, previewVersion, compact, showBusy);
 }
 
 function renderForPhase(
@@ -131,6 +142,7 @@ function renderForPhase(
   job: SlideJob,
   previewVersion: number,
   compact: boolean,
+  showBusy: boolean,
 ) {
   switch (key) {
     case "composition":
@@ -159,7 +171,17 @@ function renderForPhase(
       );
 
     case "prose":
-      if (status === "pending") return null;
+      if (status === "pending") {
+        // Phase is still pending (no write_content tool.start yet) but
+        // a gate was just submitted — surface the busy chip so the
+        // user immediately sees "正在准备" instead of a frozen strip
+        // for the 1-3s before Phase 3 actually fires. Only the first
+        // pending phase shows it (outer loop computes `showBusy`).
+        if (showBusy && turn?.busyHint) {
+          return <BusyHint kind={turn.busyHint.kind} />;
+        }
+        return null;
+      }
       if (status === "running") {
         return (
           <p className="font-display italic">
@@ -174,7 +196,12 @@ function renderForPhase(
       );
 
     case "press":
-      if (status === "pending") return null;
+      if (status === "pending") {
+        if (showBusy && turn?.busyHint) {
+          return <BusyHint kind={turn.busyHint.kind} />;
+        }
+        return null;
+      }
       return (
         <PressTicker
           now={turn?.slidesRendered ?? 0}

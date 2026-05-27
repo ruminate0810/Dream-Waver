@@ -175,6 +175,16 @@ export type Turn = {
   // Sprint O.5 — games plan (informational; no approval gate in MVP).
   // Renders as a structured card before HTML generation completes.
   gamePlan?: GamePlanView;
+  // Bridges the silent gap between a user action (chat message OR
+  // gate submission) and the first real backend event. Set
+  // optimistically by the dispatcher / `user_message` reducer, cleared
+  // the moment any real progress event lands (tool.start, llm.thought,
+  // llm.token, slides.outline, slides.compose.start, agent.finish,
+  // agent.error). Renders as a vermillion busy chip so the user knows
+  // the agent took the action and is working — instead of staring at
+  // a frozen UI for the 1-3s the resume goroutine + first LLM round
+  // trip takes.
+  busyHint?: { kind: "preparing" | "editing"; at: number };
 };
 
 export type AgentSession = {
@@ -305,13 +315,31 @@ function patchLastStep(turn: Turn, fn: (s: Step) => Step): Turn {
   return { ...turn, steps };
 }
 
+// clearBusyHint drops Turn.busyHint once a real progress signal lands.
+// The hint is a placeholder for the silent gap between a user action
+// (chat send / gate submit) and the first backend event; the moment
+// any meaningful event arrives, the placeholder gives way to the real
+// ToolStrip / phase body.
+function clearBusyHint(t: Turn): Turn {
+  if (!t.busyHint) return t;
+  return { ...t, busyHint: undefined };
+}
+
 function reduce(state: State, action: Action): State {
   switch (action.type) {
     case "user_message": {
       // Optimistically open a new turn for the user's typed instruction.
       // The backend will emit step.start shortly; if it doesn't, the
       // turn still shows the user's text so they get feedback.
-      const t = emptyTurn(action.id, "edit", action.text);
+      const t: Turn = {
+        ...emptyTurn(action.id, "edit", action.text),
+        // Surface a "正在编辑" busy chip until the first real backend
+        // event (tool.start / llm.thought) lands. Without this the
+        // turn renders just the user's italic quote for the 1-3s
+        // before the agent's first LLM round-trip completes — looks
+        // dead.
+        busyHint: { kind: "editing", at: Date.now() },
+      };
       // Sending a message always clears any pending slot — either it
       // was the queued message being drained, or the user typed
       // something new while busy=false.
@@ -346,6 +374,19 @@ function reduce(state: State, action: Action): State {
       // or slow. If the next backend event is wizard.step (multi-
       // step wizard continuing), the reducer's wizard.step case
       // re-sets pending in the same render tick — no visible flicker.
+      //
+      // CRITICAL: status flips from "awaiting_user" back to "running".
+      // Without this, the turn stays "awaiting_user" → lastOpenTurnIdx
+      // returns -1 → every subsequent backend event (step.start, tool.
+      // start, agent.finish from Phase 3) is silently dropped on the
+      // floor. Right-pane LivePreviewStack still works because it reads
+      // job.slide_count separately, but the chat thread stalls on the
+      // last Phase-1 tool card forever. Discovered after Sprint AC
+      // shipped — symptom was "I clicked 保存并继续 and chat never
+      // moved past terminate".
+      //
+      // ALSO sets busyHint so the ChatThread can render a "正在准备"
+      // hint until the first real backend event lands.
       const lastIdx = state.turns.length - 1;
       if (lastIdx < 0) return state;
       return {
@@ -353,6 +394,8 @@ function reduce(state: State, action: Action): State {
         turns: patchTurn(state.turns, lastIdx, (t) => ({
           ...t,
           pending: undefined,
+          status: "running" as TurnStatus,
+          busyHint: { kind: "preparing", at: Date.now() },
         })),
       };
     }
@@ -398,13 +441,15 @@ function reduceWS(state: State, ev: AgentEvent): State {
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) =>
-          patchLastStep(t, (s) => {
-            const cur = s.thought;
-            const nextThought: Thought = cur
-              ? { ...cur, text: cur.text + delta }
-              : { step: s.index, text: delta };
-            return { ...s, thought: nextThought };
-          }),
+          clearBusyHint(
+            patchLastStep(t, (s) => {
+              const cur = s.thought;
+              const nextThought: Thought = cur
+                ? { ...cur, text: cur.text + delta }
+                : { step: s.index, text: delta };
+              return { ...s, thought: nextThought };
+            }),
+          ),
         ),
       };
     }
@@ -423,7 +468,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) =>
-          patchLastStep(t, (s) => ({ ...s, thought })),
+          clearBusyHint(patchLastStep(t, (s) => ({ ...s, thought }))),
         ),
       };
     }
@@ -440,10 +485,12 @@ function reduceWS(state: State, ev: AgentEvent): State {
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) =>
-          patchLastStep(t, (s) => ({
-            ...s,
-            toolCalls: [...s.toolCalls, entry],
-          })),
+          clearBusyHint(
+            patchLastStep(t, (s) => ({
+              ...s,
+              toolCalls: [...s.toolCalls, entry],
+            })),
+          ),
         ),
       };
     }
@@ -485,7 +532,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) => ({
-          ...t,
+          ...clearBusyHint(t),
           outlineTitle: data.outline_title,
           outlineSlideCount: data.slide_count,
         })),
@@ -541,7 +588,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
       return {
         ...state,
         turns: patchTurn(state.turns, lastIdx, (t) => ({
-          ...t,
+          ...clearBusyHint(t),
           compose: {
             titles,
             layouts,
@@ -597,6 +644,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
         // this clear, the card would linger forever even after Turn 0
         // closed.
         pending: undefined,
+        busyHint: undefined,
       }));
       // Bump preview version on every close — initial gen *and* every
       // follow-up edit. The live preview's per-slide version bumping
@@ -616,6 +664,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
           // Same as agent.finish — clear the gate so the user isn't
           // stuck clicking a card that posts to a dead session.
           pending: undefined,
+          busyHint: undefined,
         })),
       };
     }
@@ -637,6 +686,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
         turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "clarification", questions: data.clarification_questions! },
+          busyHint: undefined,
           status: "awaiting_user" as TurnStatus,
         })),
       };
@@ -659,6 +709,7 @@ function reduceWS(state: State, ev: AgentEvent): State {
         turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "outline_review", outline },
+          busyHint: undefined,
           status: "awaiting_user" as TurnStatus,
         })),
       };
@@ -696,6 +747,9 @@ function reduceWS(state: State, ev: AgentEvent): State {
         turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "wizard", view },
+          // A new wizard step replaces the busy chip — the card itself
+          // is the in-flight UI now.
+          busyHint: undefined,
           status: "awaiting_user" as TurnStatus,
         })),
       };

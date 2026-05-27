@@ -2,6 +2,7 @@
 
 import { ArrowUpRight, Loader2 } from "lucide-react";
 
+import { BusyHint } from "./BusyHint";
 import { Phase, type SectionStatus } from "./Bubble";
 import { ThoughtCollapse } from "./ThoughtCollapse";
 import { ToolStrip } from "./ToolStrip";
@@ -70,6 +71,11 @@ export function EditTurnTrace({
           retrying={retrying}
         />
       ) : null}
+
+      {/* Bridge the silent gap between dispatchUserMessage and the
+          first backend event. Reducer drops busyHint the moment any
+          real progress lands, so this is single-shot per turn. */}
+      {turn.busyHint ? <BusyHint kind={turn.busyHint.kind} /> : null}
 
       <ToolStrip calls={toolCalls} />
       <ThoughtCollapse thoughts={thoughts} />

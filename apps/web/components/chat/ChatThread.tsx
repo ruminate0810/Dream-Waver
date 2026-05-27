@@ -95,7 +95,13 @@ export function ChatThread({
             <MessageRow key={m.id} msg={m} isLast={i === messages.length - 1} />
           ))}
 
-          {session.busy ? <ThinkingRow /> : null}
+          {session.busy ? (
+            <ThinkingRow
+              hint={
+                session.turns[session.turns.length - 1]?.busyHint?.kind
+              }
+            />
+          ) : null}
 
           {session.pendingMessage ? (
             <PendingRow text={session.pendingMessage} onCancel={session.cancelPending} />
@@ -290,7 +296,17 @@ function ErrorRow({ text }: { text: string }) {
   );
 }
 
-function ThinkingRow() {
+function ThinkingRow({ hint }: { hint?: "preparing" | "editing" }) {
+  // Sprint AC.3 — `hint` carries Turn.busyHint.kind when the user just
+  // submitted a gate ("preparing") or sent a chat message ("editing").
+  // Without it, the generic "thinking…" is fine (mid-agent-loop pause).
+  // With it, the copy is concrete so the user knows the action landed.
+  const label =
+    hint === "editing"
+      ? "正在编辑当前页面…"
+      : hint === "preparing"
+      ? "正在准备工具…"
+      : "thinking…";
   return (
     <div className="space-y-1.5">
       <Label kind="ai" />
@@ -300,7 +316,7 @@ function ThinkingRow() {
           <Dot delay={150} />
           <Dot delay={300} />
         </span>
-        <span className="italic">thinking…</span>
+        <span className="italic">{label}</span>
       </div>
     </div>
   );

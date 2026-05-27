@@ -113,11 +113,16 @@ func Load() (*Config, error) {
 		NanoBananaSecret:  os.Getenv("DF_SECRET_KEY"),
 		NanoBananaModel:   os.Getenv("DF_MODEL"),
 		PrimaryProvider: envOr("LLM_PRIMARY_PROVIDER", "deepseek"),
-		// Planner / Critic — quality. Worker — volume; v4-flash is 3× cheaper
-		// on output and "deepseek-chat" alias deprecates 2026/07/24.
+		// Planner — quality (outline needs reasoning about structure).
+		// Worker / Critic — volume + speed (v4-flash is 3-5× faster on
+		// output and 3× cheaper). Critic was on v4-pro until Sprint AD
+		// — its job is structural compliance checking against a fixed
+		// JSON schema, which v4-flash handles fine. Single-deck wall
+		// time win: ~30s (2-3 critic calls × ~10s saved each).
+		// "deepseek-chat" alias deprecates 2026/07/24.
 		ModelPlanner: envOr("LLM_MODEL_PLANNER", "deepseek-v4-pro"),
 		ModelWorker:  envOr("LLM_MODEL_WORKER", "deepseek-v4-flash"),
-		ModelCritic:  envOr("LLM_MODEL_CRITIC", "deepseek-v4-pro"),
+		ModelCritic:  envOr("LLM_MODEL_CRITIC", "deepseek-v4-flash"),
 		SandboxGRPCAddr: envOr("SANDBOX_GRPC_ADDR", "localhost:50051"),
 		TemplateDir:     resolveTemplateDir(),
 		OutDir:          envOr("SLIDE_OUT_DIR", "/tmp/dreamwaver-out"),
