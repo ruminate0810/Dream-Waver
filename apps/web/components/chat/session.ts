@@ -20,15 +20,29 @@ import {
   type WizardStepView,
 } from "./transport";
 
-// A POST that returns 404 or 410 means the deck's in-memory session is
-// gone — typically after an orchestrator restart wiped the in-memory
-// store, or when the user races a session eviction. Both surfaces
-// should land the user on the DeckNotFound view (same UX the polling-
-// 404 path already produces), not on an opaque error string lit up on
-// the active turn. Returns true when handled so the dispatcher can
-// skip the normal post_error path.
+// 404 / 410 from a POST to /messages mean the deck truly isn't on the
+// server any more (orchestrator restart wiped state AND Postgres also
+// doesn't have it, or it's someone else's deck link). Bouncing to
+// DeckNotFound is the correct UX for these.
+//
+// 409 Conflict, on the other hand, means "the deck IS still here, but
+// you sent an action that doesn't fit the current pending state" —
+// typical trigger: user double-clicked 完成 / 保存并继续, or the FE's
+// optimistic dispatch raced an event. The first click advanced the
+// gate; the second one is benign. We swallow it silently rather than
+// poison the turn or bounce the page.
+//
+// Returns true when the error was handled (caller should skip the
+// normal post_error path).
 function handleDeckGone(err: unknown, notify: () => void): boolean {
-  if (err instanceof ApiError && (err.status === 410 || err.status === 404)) {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 409) {
+    // Superseded duplicate / late-fire. Drop quietly.
+    // eslint-disable-next-line no-console
+    console.debug("[session] superseded gate POST ignored:", err.message);
+    return true;
+  }
+  if (err.status === 410 || err.status === 404) {
     notify();
     return true;
   }

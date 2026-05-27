@@ -549,7 +549,13 @@ func (h *handlers) checkResumeReady(ctx context.Context, action, jobID string) (
 	}
 	p := state.GetPending()
 	if p == nil || p.Kind != expected {
-		return http.StatusGone, "deck is no longer awaiting this action; please refresh", false
+		// 409 Conflict (not 410 Gone): the deck IS still here, it's
+		// just already past this specific gate. Typical trigger:
+		// user double-clicked 完成 / 保存并继续, or the FE's
+		// optimistic dispatch raced the real WS event. 410 would tell
+		// the FE the deck vanished and bounce them to DeckNotFound,
+		// which is wrong — the deck is mid-Phase-3 and fine.
+		return http.StatusConflict, "deck is no longer awaiting this action; the previous click already advanced it", false
 	}
 	return 0, "", true
 }
