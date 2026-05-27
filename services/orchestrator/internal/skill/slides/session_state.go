@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -559,9 +560,19 @@ func (s *SessionState) MergeOutlineEdits(edits OutlineEdits) {
 	// Apply rename + relayout to slides. Both are by-index mutations
 	// that don't shift positions, so order doesn't matter.
 	for _, r := range edits.Renames {
-		if r.Index >= 0 && r.Index < len(s.Outline.Slides) {
-			s.Outline.Slides[r.Index].Headline = r.Title
+		if r.Index < 0 || r.Index >= len(s.Outline.Slides) {
+			continue
 		}
+		// Sprint U1.1 — drop whitespace-only renames. Without this a
+		// user who clicks into a title field and accidentally hits
+		// space ends up overwriting the agent's title with " ", which
+		// then renders as a blank slide. Better to silently keep the
+		// original than to produce a broken deck.
+		trimmed := strings.TrimSpace(r.Title)
+		if trimmed == "" {
+			continue
+		}
+		s.Outline.Slides[r.Index].Headline = trimmed
 	}
 	for _, rl := range edits.Relayouts {
 		if rl.Index >= 0 && rl.Index < len(s.Outline.Slides) && rl.Layout != "" {

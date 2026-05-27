@@ -57,6 +57,16 @@ type AgentRunner struct {
 // exists" view instead of swallowing the message as a generic error.
 var ErrSessionGone = errors.New("slides session unavailable")
 
+// ErrInvalidEdit is returned by the Resume* methods when the user's
+// pause-gate submission is malformed in a way the user can fix —
+// e.g. deleting every slide in the outline review then clicking
+// 保存并继续. The API layer maps this to HTTP 400 + a banner with
+// the wrapped message so the user can correct and retry. Distinct
+// from ErrSessionGone (which is "deck is gone, can't recover") so
+// the FE knows to keep the gate visible instead of jumping to the
+// DeckNotFound view.
+var ErrInvalidEdit = errors.New("invalid edit")
+
 // systemPromptInitial teaches the LLM the slides domain for an initial
 // generation. The order constraint is enforced by description text alone
 // for now — if the model drifts in practice, swap in a dynamic
@@ -625,9 +635,32 @@ func (r *AgentRunner) ResumeFromOutlineApproval(ctx context.Context, jobID strin
 	if pending == nil || pending.Kind != PendingOutlineReview {
 		return nil, fmt.Errorf("%w: job %s is not awaiting outline approval", ErrSessionGone, jobID)
 	}
+	// Sprint U1.1 — validate BEFORE mutating. If we Merge first and
+	// then reject, the state is left in a half-applied bad state
+	// (e.g. all slides already spliced out) and the user can't
+	// resubmit cleanly. Compute the projected outline size from the
+	// incoming edits and reject up-front.
+	if state.Outline == nil {
+		return nil, fmt.Errorf("%w: outline 已丢失，请刷新", ErrInvalidEdit)
+	}
+	if edits != nil && len(edits.DeleteIndices) > 0 {
+		dedup := map[int]bool{}
+		willDelete := 0
+		for _, i := range edits.DeleteIndices {
+			if i >= 0 && i < len(state.Outline.Slides) && !dedup[i] {
+				willDelete++
+				dedup[i] = true
+			}
+		}
+		if len(state.Outline.Slides)-willDelete <= 0 {
+			return nil, fmt.Errorf("%w: 至少要留一张幻灯片才能继续", ErrInvalidEdit)
+		}
+	}
+
 	if edits != nil {
 		state.MergeOutlineEdits(*edits)
 	}
+
 	state.ClearPending()
 
 	return r.runFromContent(ctx, state)
@@ -702,6 +735,12 @@ func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (
 		// Even on error we close the compose strip — otherwise the
 		// frontend leaves an in-progress checklist dangling.
 		r.emit(ctx, event.NewSlidesComposeEnd(len(outline.Slides), time.Since(composeStart).Milliseconds()))
+		// Sprint U1.3 — emit a top-level agent.error with stage="content"
+		// so the FE's chat-thread banner shows the failure immediately
+		// instead of relying on the user to scroll the (buried) tool.end
+		// row. The job's status flip in finishOrPause + this event give
+		// the FE two paths to render the same failure.
+		r.emit(ctx, event.NewError("content", err))
 		return nil, fmt.Errorf("content phase: %w", err)
 	}
 	r.emit(ctx, event.NewSlidesComposeEnd(len(outline.Slides), time.Since(composeStart).Milliseconds()))
@@ -711,8 +750,13 @@ func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (
 
 	// render_deck side-effected state.Deck + state.PptxPath. If the
 	// agent terminated before render_deck ran, surface a clear error.
+	// Sprint U1.3 — emit a stage="render" agent.error so the FE shows
+	// a banner; without this the user would only see the buried
+	// tool.end with the same message in ToolStrip.
 	if state.PptxPath == "" {
-		return nil, fmt.Errorf("content phase finished without rendering a deck")
+		renderErr := fmt.Errorf("content phase finished without rendering a deck")
+		r.emit(ctx, event.NewError("render", renderErr))
+		return nil, renderErr
 	}
 
 	// Sprint T2 — if the request carried a Brand (typically because

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -516,6 +517,17 @@ func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides
 			strings.Contains(msg, "no session for job") ||
 			strings.Contains(msg, "is not paused on") {
 			slog.WarnContext(ctx, opLabel+" superseded (likely double-click)", "job", job.ID, "err", err)
+			return
+		}
+		// Sprint U1.1: ErrInvalidEdit means the user's pause-gate
+		// submission was malformed (e.g. deleting every slide). The
+		// session state is INTACT (validation ran before any mutation);
+		// keep the job status on its awaiting_* value so the FE's gate
+		// stays open. Surface the message via job.Error so the FE
+		// banner reads it.
+		if errors.Is(err, slides.ErrInvalidEdit) {
+			slog.WarnContext(ctx, opLabel+" rejected user edit", "job", job.ID, "err", err)
+			job.Error = err.Error()
 			return
 		}
 		job.FinishedAt = time.Now().UTC()

@@ -31,10 +31,15 @@ create table if not exists idempotency_keys (
 );
 
 -- Sweep helper index — lets the future GC job find expired rows
--- without a full table scan.
+-- without a full table scan. Originally a partial index
+-- (`where ttl < now()`) for storage efficiency, but Postgres 18
+-- tightened the rule on index predicates: functions used in them
+-- must be IMMUTABLE, and `now()` is STABLE. A full-column btree
+-- still serves the same `where ttl < now()` GC query via range
+-- scan; we just pay slightly more disk for the universe of rows
+-- instead of the expired-only subset.
 create index if not exists idempotency_keys_ttl_idx
-  on idempotency_keys (ttl)
-  where ttl < now();
+  on idempotency_keys (ttl);
 
 alter table idempotency_keys enable row level security;
 
