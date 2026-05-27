@@ -409,15 +409,25 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	job.Error = ""
 	jobsMu.Unlock()
 
+	// Sprint W.2 — extract workspaceID from the request context BEFORE
+	// the goroutine spawns. Each resume function rebuilds its own ctx
+	// from context.Background() (so the run survives the HTTP
+	// timeout), which would otherwise lose the auth ctx values
+	// (workspace, user-id) that downstream tools and any future
+	// GetOrLoad calls depend on. Mirror runSlideJob's wsID-threading
+	// at line ~196-202 — wsID==uuid.Nil is fine; the inject below is
+	// no-op for anonymous sessions.
+	wsID := workspaceIDFromCtx(r.Context())
+
 	switch req.Action {
 	case "wizard_step":
-		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip, req.WizardBack)
+		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip, req.WizardBack, wsID)
 	case "clarify":
-		go h.resumeClarification(job, req.Answers)
+		go h.resumeClarification(job, req.Answers, wsID)
 	case "approve_outline":
-		go h.resumeOutlineApproval(job, req.Edits)
+		go h.resumeOutlineApproval(job, req.Edits, wsID)
 	default:
-		go h.continueSlideJob(job, req.Content)
+		go h.continueSlideJob(job, req.Content, wsID)
 	}
 
 	writeJSON(w, http.StatusAccepted, map[string]string{
@@ -426,10 +436,13 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
+func (h *handlers) continueSlideJob(job *slideJob, userMessage string, wsID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
+	if wsID != uuid.Nil {
+		ctx = tool.WithWorkspaceID(ctx, wsID)
+	}
 
 	out, err := h.deps.AgentRunner.Continue(ctx, job.ID, userMessage)
 	// Edit turns can't return ErrInvalidEdit pre-run validation; leave
@@ -442,10 +455,13 @@ func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
 // the call returns with status=awaiting_wizard again (the next
 // step's view was just emitted); on the final forward step it falls
 // through to outline planning (which itself pauses at the H1 gate).
-func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip, back bool) {
+func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip, back bool, wsID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
+	if wsID != uuid.Nil {
+		ctx = tool.WithWorkspaceID(ctx, wsID)
+	}
 
 	out, err := h.deps.AgentRunner.ResumeFromWizardStep(ctx, job.ID, step, answer, skip, back)
 	h.finishOrPause(job, ctx, out, err, "wizard step resume", "awaiting_wizard")
@@ -453,10 +469,13 @@ func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip
 
 // resumeClarification drives Phase 1+ after the H2 gate. Result will
 // itself be a pause (H1 gate) or — rarely — a hard error.
-func (h *handlers) resumeClarification(job *slideJob, answers []string) {
+func (h *handlers) resumeClarification(job *slideJob, answers []string, wsID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
+	if wsID != uuid.Nil {
+		ctx = tool.WithWorkspaceID(ctx, wsID)
+	}
 
 	out, err := h.deps.AgentRunner.ResumeFromClarification(ctx, job.ID, answers)
 	h.finishOrPause(job, ctx, out, err, "clarification resume", "awaiting_clarification")
@@ -471,7 +490,7 @@ func (h *handlers) resumeClarification(job *slideJob, answers []string) {
 // dropped (the slide keeps its agent-picked layout) — better to
 // gracefully degrade than to 4xx-fail the whole approval flow over
 // one bad picker entry.
-func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdits) {
+func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdits, wsID uuid.UUID) {
 	if edits != nil && len(edits.Relayouts) > 0 {
 		kept := edits.Relayouts[:0]
 		for _, rl := range edits.Relayouts {
@@ -485,6 +504,9 @@ func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdi
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
+	if wsID != uuid.Nil {
+		ctx = tool.WithWorkspaceID(ctx, wsID)
+	}
 
 	out, err := h.deps.AgentRunner.ResumeFromOutlineApproval(ctx, job.ID, edits)
 	h.finishOrPause(job, ctx, out, err, "outline approval resume", "awaiting_outline_approval")
@@ -710,8 +732,27 @@ func (h *handlers) slidePageHTML(w http.ResponseWriter, r *http.Request, nStr st
 	}
 	state, ok := h.deps.Sessions.Get(id)
 	if !ok {
-		errorJSON(w, http.StatusNotFound, "job not found")
-		return
+		// Sprint W.1 — in-memory miss after orchestrator restart.
+		// Mirror the hydrate pattern used by checkResumeReady (~line
+		// 530-545) and hydrateSlideJob: pull workspaceID from the
+		// request context (set by auth middleware via X-Dev-User-Id
+		// in dev or Supabase JWT in prod) and rehydrate from the
+		// slide_jobs row. Without this, every iframe in the live
+		// preview stack 404s after a server bounce — the deck IS
+		// recoverable from Postgres, GetSlides already does it
+		// (commit 3f44063), but this on-demand HTML handler was
+		// missed in that batch.
+		wsID := workspaceIDFromCtx(r.Context())
+		if wsID != uuid.Nil {
+			if hydrated, hOK := h.deps.Sessions.GetOrLoad(r.Context(), wsID, id); hOK {
+				state = hydrated
+				ok = true
+			}
+		}
+		if !ok {
+			errorJSON(w, http.StatusNotFound, "job not found")
+			return
+		}
 	}
 	deck, count := state.Snapshot()
 	if deck == nil || count == 0 {
