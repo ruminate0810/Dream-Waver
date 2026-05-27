@@ -100,6 +100,7 @@ export function ChatThread({
               hint={
                 session.turns[session.turns.length - 1]?.busyHint?.kind
               }
+              activeToolName={getActiveToolName(session.turns[session.turns.length - 1])}
             />
           ) : null}
 
@@ -296,17 +297,112 @@ function ErrorRow({ text }: { text: string }) {
   );
 }
 
-function ThinkingRow({ hint }: { hint?: "preparing" | "editing" }) {
-  // Sprint AC.3 — `hint` carries Turn.busyHint.kind when the user just
-  // submitted a gate ("preparing") or sent a chat message ("editing").
-  // Without it, the generic "thinking…" is fine (mid-agent-loop pause).
-  // With it, the copy is concrete so the user knows the action landed.
-  const label =
-    hint === "editing"
-      ? "正在编辑当前页面…"
-      : hint === "preparing"
-      ? "正在准备工具…"
-      : "thinking…";
+// getActiveToolName returns the name of the most recent in-flight tool
+// call on a turn — used by ThinkingRow to surface per-tool playful copy
+// instead of the generic "thinking…". Returns undefined when no tool is
+// running (between steps, or pre-first-event).
+function getActiveToolName(turn: import("./session").Turn | undefined): string | undefined {
+  if (!turn) return undefined;
+  for (let i = turn.steps.length - 1; i >= 0; i--) {
+    const step = turn.steps[i];
+    for (let j = step.toolCalls.length - 1; j >= 0; j--) {
+      if (step.toolCalls[j].status === "running") {
+        return step.toolCalls[j].name;
+      }
+    }
+  }
+  return undefined;
+}
+
+// TOOL_THINKING — per-tool playful Chinese copy. Each tool gets 2-3
+// alternates that rotate every ~3.5s so a long-running tool doesn't
+// look frozen. Lean editorial / artisan voice (排版 / 排兵布阵 / 字字
+// 斟酌) — matches the Dream-Waver editorial brand. No emoji, no
+// generic "loading..." style.
+const TOOL_THINKING: Record<string, string[]> = {
+  // Outline phase
+  plan_outline: ["排兵布阵中…", "搭骨架…", "拟章节…", "勾草稿…"],
+  critic_outline: ["挑刺中…", "用红笔批改…", "审章节安排…"],
+  revise_outline: ["推敲措辞…", "改章节标题…"],
+  // Content phase
+  write_content: ["字字斟酌…", "翻译思想为段落…", "敲键盘中…", "组织语言…"],
+  critic_content: ["审稿中…", "找逻辑漏洞…", "对照密度规则…"],
+  revise_slide: ["改稿中…", "重写这页…", "推敲第 N 页…"],
+  // Render
+  render_deck: ["开印…", "送进打字机…", "排版定型…", "上墨…"],
+  // Reflection
+  analyze_deck: ["全景扫描…", "盘点 deck…", "看看整体…"],
+  critic_deck: ["通读全文…", "找整体不协调…", "把关版面…"],
+  // Bulk edit
+  rewrite_for_density: ["把每页填满…", "增加分量…", "削掉冗余…"],
+  diversify_layouts: ["打破模板感…", "换花样…", "重新混排…"],
+  // Single edit
+  style_slide: ["调字号…", "微调排版…"],
+  convert_layout: ["换 layout…"],
+  merge_slides: ["合页…"],
+  split_slide: ["拆页…"],
+  add_slide: ["新加一页…", "想这页讲啥…"],
+  delete_slide: ["删页…"],
+  duplicate_slide: ["复制一份…"],
+  reorder_slide: ["调换顺序…"],
+  edit_slide_text: ["改文字…"],
+  edit_speaker_notes: ["补讲稿…"],
+  set_footer: ["改页脚…"],
+  change_theme: ["换主题…", "换装中…"],
+  apply_brand: ["套品牌色…"],
+  generate_image: ["AI 画图中…", "找配图…"],
+  web_search: ["上网查…", "搜资料…", "翻新闻…"],
+  terminate: ["收工…"],
+};
+
+const PREPARING_THINKING = ["正在准备工具…", "想想该做什么…", "决策中…"];
+const EDITING_THINKING = ["正在改…", "动手中…", "改这页…"];
+const DEFAULT_THINKING = ["thinking…", "动脑中…", "想…"];
+
+function pickThinkingPool(
+  hint?: "preparing" | "editing",
+  activeToolName?: string,
+): string[] {
+  if (activeToolName) {
+    const pool = TOOL_THINKING[activeToolName];
+    if (pool && pool.length > 0) return pool;
+    // Unknown tool — show its name as best fallback so user has some
+    // anchor instead of generic copy.
+    return [activeToolName.replace(/_/g, " ") + "…"];
+  }
+  if (hint === "editing") return EDITING_THINKING;
+  if (hint === "preparing") return PREPARING_THINKING;
+  return DEFAULT_THINKING;
+}
+
+function ThinkingRow({
+  hint,
+  activeToolName,
+}: {
+  hint?: "preparing" | "editing";
+  activeToolName?: string;
+}) {
+  // Sprint AC.3 + Z (再加趣味性) — `hint` carries Turn.busyHint.kind when
+  // the user just submitted a gate ("preparing") or sent a chat message
+  // ("editing"). When a tool is in flight, we prefer per-tool playful
+  // copy ("排兵布阵中…" for plan_outline, "字字斟酌…" for write_content
+  // etc). The pool rotates every ~3.5s so a slow tool doesn't look
+  // frozen — feels alive without being chatty.
+  const pool = pickThinkingPool(hint, activeToolName);
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    // Reset when the pool itself changes (tool transitioned) so the
+    // first phrase of the new pool shows immediately.
+    setIdx(0);
+    if (pool.length <= 1) return;
+    const id = setInterval(() => {
+      setIdx((i) => (i + 1) % pool.length);
+    }, 3500);
+    return () => clearInterval(id);
+  }, [pool.join("|")]);
+
+  const label = pool[idx] ?? pool[0] ?? "thinking…";
+
   return (
     <div className="space-y-1.5">
       <Label kind="ai" />
@@ -316,7 +412,12 @@ function ThinkingRow({ hint }: { hint?: "preparing" | "editing" }) {
           <Dot delay={150} />
           <Dot delay={300} />
         </span>
-        <span className="italic">{label}</span>
+        <span
+          key={label}
+          className="animate-phase-in italic"
+        >
+          {label}
+        </span>
       </div>
     </div>
   );
