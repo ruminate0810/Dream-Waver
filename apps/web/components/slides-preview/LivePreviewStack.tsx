@@ -22,21 +22,39 @@ import { EditPopover, type EditSubmit, type EditTarget } from "./EditPopover";
 export function LivePreviewStack({ job }: { job: SlideJob }) {
   const slideCount = job.slide_count ?? 0;
   // Only mount iframes when the backend will actually have slide HTML
-  // to serve. Sprint U follow-up — previously this was
-  //   `status !== "running" || slideCount > 0`
-  // which evaluated TRUE during awaiting_outline_approval (status is
-  // not "running") and made 8 iframes try to GET /page/N.html before
-  // Phase 3 had built any deck. Backend then returned the JSON
-  // envelope `{"error":"deck not ready","ok":false}` and the iframes
-  // displayed it as raw text. Mount conditions now:
-  //   - finished           → all pages exist
-  //   - running + count>0  → Phase 3 in progress; pages are arriving
-  // Everything else (awaiting_wizard / awaiting_clarification /
-  // awaiting_outline_approval / error) defers mount; the gate cards
-  // on the left column are the only thing the user should see.
+  // to serve. Sprint U follow-up + Sprint Z.next — previously this was
+  //   `status === "finished" || (status === "running" && count > 0)`
+  // which still let us mount 12 iframes the moment Phase 3 (content +
+  // render) started — but those page/N.html endpoints don't exist yet
+  // until each slide ACTUALLY renders. The result was a 12 × 404
+  // storm in the network panel + iframe error fallbacks blinking up.
+  //
+  // New gate: track the highest rendered slide index via slides.content
+  // events (renderedMax below). Only mount frames 1..renderedMax during
+  // the content phase; full slideCount when status=finished. The
+  // unrendered tail uses the SkeletonStack chrome from below so the
+  // user still sees the eventual deck shape.
   const ready =
     job.status === "finished" ||
     (job.status === "running" && slideCount > 0);
+  // renderedMax — the highest 1-based slide index that has fired a
+  // slides.content event. Updates as Phase 3 progresses, page-by-
+  // page. Starts at slideCount when finished (in case we landed on
+  // an already-done deck and missed the events).
+  const [renderedMax, setRenderedMax] = useState<number>(
+    job.status === "finished" ? slideCount : 0,
+  );
+  // When the deck flips to finished (via polling fallback OR
+  // agent.finish event) trust that ALL slides are now servable.
+  useEffect(() => {
+    if (job.status === "finished") {
+      setRenderedMax((m) => Math.max(m, slideCount));
+    }
+  }, [job.status, slideCount]);
+  // Effective count = how many iframes we actually mount this render.
+  // Capped at renderedMax during content phase to avoid 404 storms.
+  const effectiveCount =
+    job.status === "finished" ? slideCount : Math.min(slideCount, renderedMax);
 
   // Per-slide version counter. Each bump force-remounts that one iframe,
   // re-fetching the live HTML. We start everyone at 1 so the URL has a
@@ -102,11 +120,31 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   // vs batch, then bumps versions + sets active highlight + optionally
   // bumps focusTicks.
   const stream = useAgentEventStream();
+  // Sprint Z.next — listen for slides.content events (per-slide
+  // render completion during Phase 3) and bump renderedMax. This
+  // is what gates the iframe mount loop below — we only mount up
+  // to the slide index that's actually been rendered, instead of
+  // optimistically mounting all 12 and watching them 404.
+  useEffect(() => {
+    return stream.subscribe((ev) => {
+      if (ev.kind !== "slides.content") return;
+      const idx = ev.data.slide_index;
+      if (typeof idx === "number" && idx > 0) {
+        setRenderedMax((m) => Math.max(m, idx));
+      }
+    });
+  }, [stream]);
   useEffect(() => {
     return stream.subscribe((ev) => {
       if (ev.kind !== "slides.updated") return;
       const idx = ev.data.slide_index;
       if (typeof idx !== "number") return;
+      // slides.updated also implies the slide is now servable —
+      // belt + braces in case slides.content arrived first but
+      // somehow missed by the listener (HMR / stream replay).
+      if (idx > 0) {
+        setRenderedMax((m) => Math.max(m, idx));
+      }
 
       const now = Date.now();
       // Slide window: keep only events within the last 250ms — the
@@ -249,18 +287,26 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
     );
   }
 
+  // Sprint Z.next — during content phase show "rendered/total" so
+  // the user knows the deck is still typesetting rather than thinking
+  // every slide is broken because effectiveCount < slideCount.
+  const composing = effectiveCount < slideCount && job.status === "running";
+  const subtitleText = composing
+    ? `${effectiveCount}/${slideCount} slides · composing…`
+    : `${slideCount} slide${slideCount === 1 ? "" : "s"}`;
+
   return (
     <section>
       <div className="sticky top-0 z-10 -mx-2 bg-[color:var(--paper)]/85 px-2 pb-3 pt-1 backdrop-blur-sm">
         <PaneHeader
-          subtitle={`${slideCount} slide${slideCount === 1 ? "" : "s"}`}
+          subtitle={subtitleText}
           downloadHref={job.download_url ?? undefined}
         />
         <HintRow />
       </div>
 
       <ol className="space-y-12">
-        {Array.from({ length: slideCount }).map((_, i) => {
+        {Array.from({ length: effectiveCount }).map((_, i) => {
           const oneBased = i + 1;
           const isActive = activeSet.has(oneBased);
           // Sprint Z.4 — staggered phase-in on mount. The first 6
