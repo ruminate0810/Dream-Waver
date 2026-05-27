@@ -76,6 +76,20 @@ func (t *RenderDeck) Execute(ctx context.Context, args json.RawMessage) (schema.
 	// no Unsplash key is configured.
 	resolveImagesShim(ctx, t.Images, &deck)
 
+	// Sprint AE.fix — SetDeck BEFORE RenderIncremental, not after.
+	// RenderIncremental emits per-slide "rendered slide" events as
+	// each page finishes; the live-preview frontend reacts by
+	// immediately fetching /page/N.html (the iframe-mount race fixed
+	// in commit 2c8dc87). That handler reads from SessionState.Deck
+	// — if Deck is still nil because we hadn't called SetDeck yet,
+	// every initial-render iframe returns 404 "deck not ready" and
+	// the user sees Sprint U2.2's fallback card for every page until
+	// they manually click 重试. Setting Deck first means the very
+	// first slides.content event already finds a populated Deck.
+	if t.State != nil {
+		t.State.SetDeck(&deck)
+	}
+
 	// Initial render = "all slides are dirty". The IncrementalRenderer
 	// abstraction collapses initial generation and follow-up edits into
 	// one call site; the adapter handles cache.
@@ -84,7 +98,6 @@ func (t *RenderDeck) Execute(ctx context.Context, args json.RawMessage) (schema.
 		return schema.ToolResult{Error: err.Error()}, nil
 	}
 	if t.State != nil {
-		t.State.SetDeck(&deck)
 		t.State.SetPptxPath(pptxPath)
 	}
 
