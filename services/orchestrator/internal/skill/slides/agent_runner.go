@@ -773,7 +773,12 @@ func (r *AgentRunner) runFromContent(ctx context.Context, state *SessionState) (
 	// caching survives across calls.
 	rendererAdapter := &sessionRenderer{Renderer: r.Renderer, State: state}
 	registry := tool.NewRegistry(
-		&tools.WriteContent{Router: r.Router, State: state},
+		// Sprint AD — write_content streams content slide-by-slide. With
+		// Emitter wired it ticks the frontend ComposeStrip as each slide
+		// lands; with Renderer wired it kicks off chromedp per-slide in
+		// goroutines so by the time render_deck runs, the asset cache is
+		// largely populated and the chromedp pass is short-circuited.
+		&tools.WriteContent{Router: r.Router, State: state, Emitter: r.Emitter, Renderer: rendererAdapter},
 		&tools.CriticContent{Router: r.Router},
 		// revise_slide in Phase 3 mutates state.Content in place but does
 		// NOT re-render — render_deck handles the final pass. So pass nil

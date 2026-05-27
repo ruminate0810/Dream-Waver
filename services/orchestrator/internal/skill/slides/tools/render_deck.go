@@ -90,10 +90,19 @@ func (t *RenderDeck) Execute(ctx context.Context, args json.RawMessage) (schema.
 		t.State.SetDeck(&deck)
 	}
 
-	// Initial render = "all slides are dirty". The IncrementalRenderer
-	// abstraction collapses initial generation and follow-up edits into
-	// one call site; the adapter handles cache.
-	pptxPath, err := t.Renderer.RenderIncremental(ctx, deck, allSlideIndices(len(deck.Slides)))
+	// Sprint AD short-circuit: pass nil (= empty) dirty list so the
+	// renderer's RenderDirty logic falls into the "use cache for
+	// everything, only render what's missing" branch. With Sprint
+	// AD.2's streaming write_content, per-slide chromedp goroutines
+	// already populated the asset cache by the time we get here, so
+	// the chromedp pass is skipped entirely and we just assemble the
+	// PPTX. Wall-time win: 40-80s on a 10-slide deck.
+	//
+	// When the cache is empty (Pipeline path or a turn where streaming
+	// fell back to non-streaming Content), RenderDirty internally
+	// detects nil-dirty + nil-cache and renders all slides — same
+	// behaviour as before, just inferred instead of explicit.
+	pptxPath, err := t.Renderer.RenderIncremental(ctx, deck, nil)
 	if err != nil {
 		return schema.ToolResult{Error: err.Error()}, nil
 	}

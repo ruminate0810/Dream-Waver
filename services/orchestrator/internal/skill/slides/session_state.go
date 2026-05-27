@@ -518,6 +518,55 @@ func (s *SessionState) SplitSlide(index, splitAfter int) error {
 	return nil
 }
 
+// AppendSlide pushes a fully-formed slide onto the end of the deck +
+// keeps Content/Outline parallel-array length-aligned. Used by Sprint
+// AD's streaming write_content path — each ContentStream onSlide
+// callback appends one slide so live preview, chromedp rendering, and
+// the deck snapshot are all populated INCREMENTALLY as the LLM
+// streams JSON, rather than at the very end. Returns the 0-based
+// index of the just-appended slide.
+//
+// Caller is expected to hold no other locks; this method takes the
+// internal mutex.
+func (s *SessionState) AppendSlide(slide schema.Slide) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		// Initialise minimal Deck. Theme defaults via Assemble normally;
+		// the caller should backfill Title once known.
+		s.Deck = &schema.Deck{Theme: schema.Theme(slide.Template)}
+		if s.Deck.Theme == "" {
+			s.Deck.Theme = schema.ThemeMinimalist
+		}
+	}
+	s.Deck.Slides = append(s.Deck.Slides, slide)
+	idx := len(s.Deck.Slides) - 1
+
+	if s.Content == nil {
+		s.Content = &stages.ContentResult{}
+	}
+	s.Content.Slides = append(s.Content.Slides, stages.ContentSlide{
+		Index:        idx,
+		Template:     slide.Template,
+		Layout:       slide.Layout,
+		Data:         slide.Data,
+		SpeakerNotes: slide.SpeakerNotes,
+	})
+
+	if s.Outline != nil && idx >= len(s.Outline.Slides) {
+		// Keep Outline aligned even though it was authored beforehand
+		// — defensive in case the worker LLM produces more slides than
+		// the outline planned.
+		s.Outline.Slides = append(s.Outline.Slides, stages.OutlineSlide{
+			Index:    idx,
+			Type:     string(slide.Layout),
+			Headline: slide.Data.Title,
+		})
+	}
+	s.SlideCount = len(s.Deck.Slides)
+	return idx
+}
+
 // SetSlideStyle replaces (or clears, when style==nil) the per-slide
 // typography override on slide[index] (0-based). Used by the
 // style_slide edit tool for "字号太小 / 调大第 3 页的标题" requests.
