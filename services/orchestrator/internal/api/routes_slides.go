@@ -432,7 +432,9 @@ func (h *handlers) continueSlideJob(job *slideJob, userMessage string) {
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
 	out, err := h.deps.AgentRunner.Continue(ctx, job.ID, userMessage)
-	h.finishOrPause(job, ctx, out, err, "slide edit")
+	// Edit turns can't return ErrInvalidEdit pre-run validation; leave
+	// pauseStatus empty so a transient agent failure stays an error.
+	h.finishOrPause(job, ctx, out, err, "slide edit", "")
 }
 
 // resumeWizardStep drives the N1 wizard one step forward (or back
@@ -446,7 +448,7 @@ func (h *handlers) resumeWizardStep(job *slideJob, step int, answer string, skip
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
 	out, err := h.deps.AgentRunner.ResumeFromWizardStep(ctx, job.ID, step, answer, skip, back)
-	h.finishOrPause(job, ctx, out, err, "wizard step resume")
+	h.finishOrPause(job, ctx, out, err, "wizard step resume", "awaiting_wizard")
 }
 
 // resumeClarification drives Phase 1+ after the H2 gate. Result will
@@ -457,7 +459,7 @@ func (h *handlers) resumeClarification(job *slideJob, answers []string) {
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
 	out, err := h.deps.AgentRunner.ResumeFromClarification(ctx, job.ID, answers)
-	h.finishOrPause(job, ctx, out, err, "clarification resume")
+	h.finishOrPause(job, ctx, out, err, "clarification resume", "awaiting_clarification")
 }
 
 // resumeOutlineApproval drives Phase 3 — content writing + render —
@@ -485,7 +487,7 @@ func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdi
 	ctx = event.WithSessionID(ctx, job.SessionID)
 
 	out, err := h.deps.AgentRunner.ResumeFromOutlineApproval(ctx, job.ID, edits)
-	h.finishOrPause(job, ctx, out, err, "outline approval resume")
+	h.finishOrPause(job, ctx, out, err, "outline approval resume", "awaiting_outline_approval")
 }
 
 // checkResumeReady is the synchronous pre-flight for POST /messages.
@@ -562,7 +564,12 @@ func (h *handlers) checkResumeReady(ctx context.Context, action, jobID string) (
 
 // finishOrPause centralises the post-run bookkeeping so the three
 // resume paths above don't drift. Same flow as runSlideJob's tail.
-func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides.Output, err error, opLabel string) {
+//
+// pauseStatus is the awaiting_* status to restore the job to when the
+// run rejects the user's edit (ErrInvalidEdit). Empty string means
+// "don't restore" — appropriate for resumes that can't fail validation
+// (currently none, all three callers pass their gate's status).
+func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides.Output, err error, opLabel, pauseStatus string) {
 	jobsMu.Lock()
 	defer jobsMu.Unlock()
 	if err != nil {
@@ -584,12 +591,17 @@ func (h *handlers) finishOrPause(job *slideJob, ctx context.Context, out *slides
 		// Sprint U1.1: ErrInvalidEdit means the user's pause-gate
 		// submission was malformed (e.g. deleting every slide). The
 		// session state is INTACT (validation ran before any mutation);
-		// keep the job status on its awaiting_* value so the FE's gate
-		// stays open. Surface the message via job.Error so the FE
-		// banner reads it.
+		// re-open the gate so the FE's OutlineReviewCard/WizardCard
+		// stays on screen with the error banner. The POST handler
+		// optimistically flipped status to "running" before launching
+		// the goroutine — without restoring pauseStatus the FE keeps
+		// its busy spinner forever ("完全卡住" symptom).
 		if errors.Is(err, slides.ErrInvalidEdit) {
 			slog.WarnContext(ctx, opLabel+" rejected user edit", "job", job.ID, "err", err)
 			job.Error = err.Error()
+			if pauseStatus != "" {
+				job.Status = pauseStatus
+			}
 			return
 		}
 		job.FinishedAt = time.Now().UTC()

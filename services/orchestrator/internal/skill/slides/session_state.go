@@ -741,6 +741,25 @@ func (s *SessionStore) GetOrLoad(ctx context.Context, workspaceID uuid.UUID, job
 			state.Deck = &d
 		}
 	}
+	// Sprint V.5-followup — at the outline-review gate the canonical
+	// Outline lives only in PendingUserAction.OutlineJSON (we don't
+	// have a dedicated `outline` jsonb column on slide_jobs).
+	// `ResumeFromOutlineApproval` requires `state.Outline` to be
+	// non-nil — without this rebuild, clicking 保存并继续 after an
+	// orchestrator restart returns ErrInvalidEdit:"outline 已丢失"
+	// and the FE hangs on its spinner forever (job.Status stays
+	// "running", job.Error is set but never read while in flight).
+	if state.Pending != nil &&
+		state.Pending.Kind == PendingOutlineReview &&
+		state.Pending.OutlineJSON != "" {
+		var o stages.OutlineResult
+		if err := json.Unmarshal([]byte(state.Pending.OutlineJSON), &o); err == nil {
+			state.Outline = &o
+		} else {
+			slog.WarnContext(ctx, "session hydrate: outline_json malformed; resume will reject",
+				"job_id", jobID, "err", err)
+		}
+	}
 	state.persister = newSessionPersister(s.db, workspaceID, jobUUID)
 
 	// Cache the freshly-hydrated state so subsequent Get(jobID) calls
