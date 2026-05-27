@@ -10,17 +10,30 @@
 
 import { getActiveWorkspaceID } from "@/lib/workspace";
 import { getDevUserID } from "@/lib/devAuth";
+import { getSupabaseClient } from "@/lib/supabase/client";
 
 /**
  * apiFetch is the thin wrapper around fetch() that:
  *   - Prepends nothing — caller passes the full /api/v1/... path.
  *   - Injects the X-Workspace-ID header from the workspace cookie
  *     when one is set. Skipped when not (so anonymous calls still go).
- *   - Sprint T3 — injects X-Dev-User-Id (a stable per-device UUID)
- *     so the orchestrator's dev-mode auth can synthesise a user and
- *     workspace. In production-auth mode the header is ignored.
+ *   - Sprint Y — when a Supabase session exists, sends
+ *     `Authorization: Bearer <access_token>` so the orchestrator's
+ *     real-JWT path (JWKS-verified RS256) lights up. The backend
+ *     middleware then runs UpsertFromJWT + EnsurePersonal workspace
+ *     + trial credit on first login.
+ *   - Sprint T3 fallback — when there's NO Supabase session AND no
+ *     Authorization header, inject X-Dev-User-Id (a stable per-device
+ *     UUID). The backend's dev-mode auth synthesises a user + workspace
+ *     so local development without a real Supabase project still works.
+ *     In production this header is silently ignored.
  *   - Defaults Content-Type to application/json when the caller
  *     passes a body but no header.
+ *
+ * Auth precedence: explicit caller-supplied Authorization header wins
+ * (we never overwrite); Supabase session token comes next; X-Dev-User-Id
+ * is the last-resort fallback. Anonymous (no auth at all) is also fine
+ * for unauth'd endpoints.
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -28,10 +41,30 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
   if (wsID && !headers.has("X-Workspace-ID")) {
     headers.set("X-Workspace-ID", wsID);
   }
-  const devUser = getDevUserID();
-  if (devUser && !headers.has("X-Dev-User-Id")) {
-    headers.set("X-Dev-User-Id", devUser);
+
+  if (!headers.has("Authorization")) {
+    // Try Supabase first. We only reach this branch in the browser —
+    // server-side fetches go through a different helper. Fall through
+    // silently on any error so a misconfigured Supabase client never
+    // blocks an anonymous request.
+    let bearer: string | null = null;
+    try {
+      const supa = getSupabaseClient();
+      const { data } = await supa.auth.getSession();
+      bearer = data.session?.access_token ?? null;
+    } catch {
+      // Supabase env not configured — fine in pure-dev mode.
+    }
+    if (bearer) {
+      headers.set("Authorization", `Bearer ${bearer}`);
+    } else {
+      const devUser = getDevUserID();
+      if (devUser && !headers.has("X-Dev-User-Id")) {
+        headers.set("X-Dev-User-Id", devUser);
+      }
+    }
   }
+
   if (init?.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -689,6 +722,20 @@ export async function enhanceDesignImage(
   return unwrap<EditDesignImageResponse>(res);
 }
 
+/** Add realistic colour to a B&W photo. DreamAPI requires the source to
+ *  contain at least one human face; a 4xx with a hint is returned when
+ *  it doesn't, which the canvas surfaces inline. */
+export async function colorizeDesignImage(
+  body: EditDesignImageRequest,
+): Promise<EditDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/colorize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<EditDesignImageResponse>(res);
+}
+
 // ─── Outpaint (extend image borders) ──────────────────────────────────
 
 export type OutpaintDesignImageRequest = {
@@ -711,6 +758,87 @@ export async function outpaintDesignImage(
     body: JSON.stringify(body),
   });
   return unwrap<EditDesignImageResponse>(res);
+}
+
+// ─── NanoBanana (Google Gemini image generation) ──────────────────────
+//
+// Alternative generator to Flux. The standout feature is reference-image
+// support: the canvas can pass up to 4 already-hosted image URLs (e.g.
+// previously-generated AI images on the same workspace) and the model
+// riffs on them — closest analogue to "give me a variant of this image"
+// without going through image2image's prompt-driven path.
+
+export type NanoBananaModel = "nano-banana-2" | "nano-banana-pro";
+
+export type NanoBananaImageSize = "512" | "1K" | "2K" | "4K";
+
+export type GenerateNanoBananaRequest = {
+  prompt: string;
+  /** Defaults to nano-banana-2 (Gemini Flash) — cheap and fast.
+   *  nano-banana-pro routes to Gemini Pro (higher fidelity, 2.5× cost). */
+  model?: NanoBananaModel;
+  /** DreamAPI tier string, not pixel count. Pro caps at 2K. */
+  image_size?: NanoBananaImageSize;
+  /** Aspect ratio hint, e.g. "16:9", "1:1", "4:3". */
+  aspect_ratio?: string;
+  /** Up to 4 already-hosted URLs. Anything past 4 is rejected at the sidecar. */
+  images?: string[];
+};
+
+/** Generate an image via Google Gemini (NanoBanana). Width/height
+ *  come back as 0 because the Gemini endpoint doesn't echo realised
+ *  dimensions — the canvas measures the loaded <img> instead. */
+export async function generateDesignNanoBanana(
+  body: GenerateNanoBananaRequest,
+): Promise<GenerateDesignImageResponse> {
+  const res = await fetch("/api/v1/design/images/nano_banana", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<GenerateDesignImageResponse>(res);
+}
+
+// ─── Seedance 1.5 Pro — image-to-video ────────────────────────────────
+//
+// Click-to-animate: pick an AI image on the canvas, type a motion
+// prompt, get back an MP4 URL after ~60-120s. Output drops on the
+// canvas as a TLDraw video shape (TLDraw supports video assets
+// natively through the same AssetRecordType pipeline as images).
+
+export type SeedanceResolution = "480p" | "720p" | "1080p";
+
+export type SeedanceI2VRequest = {
+  image_url: string;
+  prompt: string;
+  /** Defaults to 720p (sidecar default). 1080p triples the cost; 480p halves it. */
+  resolution?: SeedanceResolution;
+  /** adaptive matches the source image's aspect ratio. */
+  ratio?: "adaptive" | "16:9" | "9:16" | "1:1" | "4:3";
+  /** 4-12 s (sidecar enforces). Default 5. */
+  duration?: number;
+  /** -1 = random; omit to let upstream pick. */
+  seed?: number;
+};
+
+export type SeedanceI2VResponse = {
+  video_url: string;
+  task_id: string;
+};
+
+/** Submit an image-to-video task and block until the MP4 is ready.
+ *  Holds the connection ~60-120 s for 720p/5s. Caller should show a
+ *  spinner — there's no in-canvas progress (sidecar is synchronous).
+ *  Returns the video URL on success. */
+export async function seedanceI2V(
+  body: SeedanceI2VRequest,
+): Promise<SeedanceI2VResponse> {
+  const res = await fetch("/api/v1/design/videos/seedance_i2v", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return unwrap<SeedanceI2VResponse>(res);
 }
 
 // ─── Image-to-image (transform an existing image via prompt) ──────────
