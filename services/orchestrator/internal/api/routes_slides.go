@@ -363,7 +363,7 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	// and return 410 Gone so apps/web's ApiError.status===410 branch
 	// can flip to the DeckNotFound view. The goroutines still
 	// re-validate via AgentRunner.ErrSessionGone as defense in depth.
-	if status, msg, ok := h.checkResumeReady(req.Action, job.ID); !ok {
+	if status, msg, ok := h.checkResumeReady(r.Context(), req.Action, job.ID); !ok {
 		errorJSON(w, status, msg)
 		return
 	}
@@ -456,18 +456,27 @@ func (h *handlers) resumeOutlineApproval(job *slideJob, edits *slides.OutlineEdi
 
 // checkResumeReady is the synchronous pre-flight for POST /messages.
 // Returns (status, message, ok=false) when the requested action can't
-// run because the in-memory session state is missing or in the wrong
-// pending kind — typically after an orchestrator restart wipes the
-// in-memory store. The frontend maps the 410 to its DeckNotFound
-// view; without this check, the failure would surface only as a
-// polled `status:"error"` string with no typed signal.
+// run because the session state is missing or in the wrong pending
+// kind — typically after an orchestrator restart wipes the in-memory
+// store. The frontend maps the 410 to its DeckNotFound view; without
+// this check, the failure would surface only as a polled
+// `status:"error"` string with no typed signal.
+//
+// Hydration: when in-memory miss, fall through to Postgres via
+// Sessions.GetOrLoad so a deck that was sitting on a HILT pause
+// (awaiting_outline_approval / awaiting_wizard / etc.) when the
+// orchestrator restarted can resume after the user clicks 完成.
+// Without this, the FE polling stops as soon as status != "running"
+// → in-memory never re-hydrates → click → 410 → DeckNotFound. The
+// hydrated session also warms the background goroutines' Sessions.Get
+// calls so the resume actually fires.
 //
 // The match between req.Action and the expected slides.PendingKind
 // mirrors the resume dispatch in PostSlideMessage above. The default
 // (free-text Continue) action only needs the session to exist; the
 // three HILT actions also need the session paused on the matching
 // kind.
-func (h *handlers) checkResumeReady(action, jobID string) (int, string, bool) {
+func (h *handlers) checkResumeReady(ctx context.Context, action, jobID string) (int, string, bool) {
 	if h.deps.Sessions == nil {
 		return 0, "", true
 	}
@@ -486,7 +495,20 @@ func (h *handlers) checkResumeReady(action, jobID string) (int, string, bool) {
 	}
 	state, ok := h.deps.Sessions.Get(jobID)
 	if !ok {
-		return http.StatusGone, "deck session is no longer available; please refresh", false
+		// In-memory miss → try the Postgres rehydration path
+		// (Sprint X2b-2). Requires workspace_id from the request
+		// context (set by auth middleware via X-Dev-User-Id in dev
+		// or Supabase JWT in prod).
+		wsID := workspaceIDFromCtx(ctx)
+		if wsID != uuid.Nil {
+			if hydrated, hOK := h.deps.Sessions.GetOrLoad(ctx, wsID, jobID); hOK {
+				state = hydrated
+				ok = true
+			}
+		}
+		if !ok {
+			return http.StatusGone, "deck session is no longer available; please refresh", false
+		}
 	}
 	if expected == "" {
 		return 0, "", true
