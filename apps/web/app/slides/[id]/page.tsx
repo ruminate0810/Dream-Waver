@@ -87,7 +87,17 @@ export default function SlideJobPage() {
         // Sprint I0.5 — backfill the title into the recent-decks list
         // the moment the planner gives it to us. Idempotent.
         if (j.title) updateDeckTitle(jobId, j.title);
-        if (j.status === "running") {
+        // Keep polling until the job hits a terminal state. The bug
+        // before this was `status === "running"` only — which stops
+        // the loop the moment the backend pauses at any HILT gate
+        // (awaiting_wizard / awaiting_clarification /
+        // awaiting_outline_approval). The user then clicks "保存并
+        // 继续", the backend flips status back to "running", but the
+        // FE never knows because polling died. If the WebSocket is
+        // also dropped (multi-minute Hub timeout), the page is fully
+        // stuck on the spinner. Keep polling for all non-terminal
+        // statuses; the awaiting_* states tick at 2s like running.
+        if (j.status !== "finished" && j.status !== "error") {
           timer = setTimeout(poll, 2000);
         }
       } catch (err) {
