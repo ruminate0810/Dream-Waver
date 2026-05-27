@@ -1278,3 +1278,66 @@ body.layout-quote    .slide { justify-content: center; }
   font-size: 11px; letter-spacing: 0.36em;
   color: var(--accent); opacity: 0.55;
 }
+
+/* ─── Sprint V — html (escape-hatch) layout container ──────────────
+   .html-slide wraps the LLM-authored markup. The container provides
+   theme-default colour / font / padding so a minimal LLM output
+   (e.g. a single <p>) still looks on-brand without the LLM having
+   to spell out every property. LLM is told to use var(--bg/--fg/
+   --accent/--font-*) for anything beyond defaults so theme + brand
+   overrides cascade through. */
+.html-slide {
+  position: absolute;
+  inset: 0;
+  padding: var(--pad-y, 80px) var(--pad-x, 140px);
+  color: var(--fg, #1A1614);
+  background: var(--bg, #FFFFFF);
+  font-family: var(--font-body, "Noto Sans SC", system-ui, sans-serif);
+  font-size: 24px;
+  line-height: 1.5;
+  overflow: hidden;
+}
+.html-slide > * {
+  max-width: 100%;
+}
+.html-slide h1, .html-slide h2, .html-slide h3 {
+  font-family: var(--font-display, "Noto Serif SC", Georgia, serif);
+  color: var(--fg, #1A1614);
+  margin: 0 0 0.4em;
+  line-height: 1.1;
+}
+.html-slide h1 { font-size: 72px; }
+.html-slide h2 { font-size: 48px; }
+.html-slide h3 { font-size: 32px; }
+.html-slide p { margin: 0 0 0.6em; }
+.html-slide a { color: var(--accent, currentColor); text-decoration: underline; }
+.html-slide code, .html-slide pre {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.92em;
+}
+.html-slide pre {
+  background: rgba(0, 0, 0, 0.03);
+  padding: 18px 22px;
+  border-left: 3px solid var(--accent, #B5371E);
+  white-space: pre;
+  overflow-x: auto;
+}
+.html-slide table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.html-slide th, .html-slide td {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.10);
+  padding: 10px 14px;
+  text-align: left;
+}
+.html-slide th {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--fg-muted, #555);
+}
+.html-slide ul, .html-slide ol { margin: 0 0 0.6em 1.2em; padding: 0; }
+.html-slide li { margin-bottom: 0.3em; }
+.html-slide svg { display: block; max-width: 100%; height: auto; }

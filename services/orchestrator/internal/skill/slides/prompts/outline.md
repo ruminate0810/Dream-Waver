@@ -15,7 +15,7 @@ Adapt vocabulary, depth, and tone to the audience. Choose a single overarching t
   "slides": [
     {
       "index": 1,
-      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist",
+      "type": "title | section | content | data | quote | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist | html",
       "headline": "≤ 12 words",
       "key_points": ["3–5 bullets, ≤ 20 words each"],
       "speaker_notes": "2–3 sentences the presenter would say"
@@ -204,11 +204,26 @@ For each slide, pick the `type` that best matches its content shape:
                    next steps / action items / readiness checklist
                    / training takeaways. Use when the user wants
                    the audience to LEAVE WITH SOMETHING TO DO.
+- `html`         — FREEFORM ESCAPE-HATCH. Use ONLY when none of
+                   the 24 typed layouts above honestly fits the
+                   content's visual shape. Examples of legitimate
+                   uses: a vintage UI mockup demo, an ASCII art
+                   piece, a hand-drawn diagram replica, an unusual
+                   non-templated data viz, a poetry slide with
+                   specific typographic shape. The slide carries:
+                   title (optional), html (a raw HTML string the
+                   LLM writes; styles via CSS variables). DO NOT
+                   default to this — typed layouts produce more
+                   on-brand decks. Limit: at most 1 `html` slide
+                   per deck unless the topic explicitly calls for
+                   multi-card freeform (e.g. "showcase 5 retro UI
+                   mockups").
 
 Prefer `bullets`/`content` when a slide doesn't strongly fit one of the
 specialised types. Specialised types make for stronger slides but only
 when the underlying content really is "a timeline", "a comparison", or
-"several KPIs".
+"several KPIs". And `html` is the absolute last resort — almost every
+visual idea has a better typed layout.
 
 # Visual rhythm — HARD RULES for varied decks (Sprint P1)
 

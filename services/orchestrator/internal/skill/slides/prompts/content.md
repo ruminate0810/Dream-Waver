@@ -7,7 +7,7 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
     {
       "index": 1,
       "template": "matches the deck theme",
-      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist",
+      "layout": "title | section | bullets | quote | two-column | data | closing | timeline | comparison | multi-metric | comparison-table | toc | swot | photo-essay | split-image | image-grid | process-flow | bento-grid | pull-quote | before-after | icon-grid | team-roster | code | checklist | html",
       "data": {
         "title": "...",
         "subtitle": "optional",
@@ -82,15 +82,38 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - For layout=`team-roster`, REQUIRED: `team_members` (3-6 items), each `{name, role, ...}`. Optional per-member: `avatar_query` (for AI portrait — short prompt like "professional portrait of male engineer, neutral background"), `bio` (≤ 12 words). Optional slide-level: `title`. Omit `bullets`/`body`. Names should match the deck's language (中文 for Chinese decks).
 - For layout=`code`, REQUIRED: `title` (≤ 6 words; describes WHAT the snippet does) AND `code` (the snippet as a single string — USE REAL NEWLINES `\n`, not literal "\n" escapes; preserve indentation; cap ~25 lines / ~80 cols). Optional: `language` (one of `go|ts|py|sh|sql|json|yaml|rust|css|html|md`; renders as a pill next to the title), `body` (1-paragraph intro placed ABOVE the snippet; ≤ 40 words), `footer` (1-line citation below the snippet; ≤ 16 words). Omit `bullets`. Example title: "Register a tool with the SDK", "Curl the streaming endpoint", "PostgreSQL RLS policy for tenant rows". The snippet MUST be actually runnable / pasteable; pseudo-code is OK only if labelled as such in `body`.
 - For layout=`checklist`, REQUIRED: `title` (the list's heading; ≤ 6 words; e.g. "上线前检查", "本周行动项", "Launch checklist") AND `tasks` (3-7 imperative items; each ≤ 14 words; START WITH A VERB — "审核 X", "完成 Y", "Update Z"). Optional: `body` (1-line context above the list; ≤ 25 words). Omit `bullets`. Items should be DISCRETE ACTIONS, not facts or opinions. Bad: "团队效率很重要". Good: "为团队制定每周 1-on-1 模板". Mix Chinese and English freely if the deck does.
+- For layout=`html`, REQUIRED: `html` (a raw HTML string the LLM writes from scratch; structural markup + inline `style` is the LLM's call). HARD RULES on the HTML:
+  1. Use CSS variables for ALL colour/font: `var(--bg)`, `var(--fg)`, `var(--accent)`, `var(--font-display)`, `var(--font-body)`, `var(--font-mono)`. Inline hex like `#FF6B35` defeats theme/brand and will look broken when the user switches theme later.
+  2. Allowed tags: `<div> <p> <h1> <h2> <h3> <span> <ul> <ol> <li> <table> <thead> <tbody> <tr> <td> <th> <pre> <code> <a> <img> <svg> <style>`. Inline `style="..."` attributes ARE allowed.
+  3. BANNED tags: `<script> <iframe> <form> <input> <button> <object> <embed> <link> <meta>`. The sanitizer strips these — your slide will lose that content. Don't waste tokens on them.
+  4. The content sits inside a `.html-slide` container that's already 1920×1080 with theme padding/font baseline. Do NOT set `position: absolute` or `width: 100vw` — work WITHIN the container.
+  5. Title field is optional and ignored by render (the `.html-slide` doesn't reserve title space). Put titles INSIDE your HTML if you want them.
+  6. Omit `bullets`/`body`/`metric`/`image_query` etc. — the html field is the entire slide.
+  Example output for layout=html: `{"layout":"html","html":"<div style=\"display:grid;grid-template-columns:1fr 1fr;gap:40px;height:100%\"><div style=\"font-family:var(--font-display);font-size:96px;color:var(--accent)\">2026</div><div style=\"font-family:var(--font-body);font-size:28px;color:var(--fg);line-height:1.4\">The year retail AI agents went mainstream...</div></div>"}`
 
 # When to emit image_query
 
-Emit `image_query` ONLY for slides where a single evocative photo strengthens the message — like Gamma does for hero shots. The query MUST be 2–5 English words that an Unsplash search would handle well.
+Emit `image_query` ONLY for slides where a single evocative photo strengthens the message — like Gamma does for hero shots.
 
 - ✅ `title` slide  → emit (sets the mood for the whole deck)
 - ✅ `section` slide → emit (chapter break wants visual reset)
 - ✅ `closing` slide → emit (mood for the takeaway)
-- ❌ `bullets` / `content` / `data` / `quote`  → DO NOT emit (the layout has its own visual structure; a photo competes with bullets/metrics/quote text)
+- ❌ `bullets` / `content` / `data` / `quote` / `html` → DO NOT emit (the layout has its own visual structure; a photo competes)
 
-Good queries: `urban skyline night`, `team collaborating office`, `quantum computing chip`, `young chinese student studying`.
-Bad queries: full sentences (`a photo of`), abstract concepts (`success`, `innovation`), brand names.
+Query SHAPE — Sprint V sharpened: 5-12 English words, structured as `[concrete subject + specific detail + setting + mood/lighting]`. This applies to BOTH NanoBanana (AI image) and Unsplash search.
+
+- ❌ TOO GENERIC (banned): `business meeting`, `team collaboration`, `success`, `innovation`, `quantum computing chip`, `urban skyline night`
+- ❌ FULL SENTENCES: `a photo of a team working together`
+- ❌ BRAND NAMES: `Apple keynote stage` (use the visual qualities instead)
+- ✅ STRONG: `Asian woman engineer reviewing wireframes in glass-walled office, soft morning light`
+- ✅ STRONG: `vintage 1970s polaroid of crowded Tokyo street at dusk, neon signs reflecting on wet pavement`
+- ✅ STRONG: `aerial view of olive groves in Tuscany at golden hour, long shadows`
+- ✅ STRONG: `close-up of hands kneading dough on flour-dusted wooden table, warm kitchen light`
+
+The 4 elements explained:
+  1. Subject — WHO or WHAT (specific person/object, not category): "Asian woman engineer" not "engineer"
+  2. Concrete detail — what they're doing/holding/wearing: "reviewing wireframes" not "working"
+  3. Setting — WHERE: "glass-walled office" not "office"
+  4. Mood/lighting — atmospheric cue: "soft morning light" / "neon signs at dusk"
+
+Short queries (< 5 words) WILL fail the critic check.

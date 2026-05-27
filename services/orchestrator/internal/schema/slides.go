@@ -39,6 +39,13 @@ const (
 	// Sprint P1 — close two major content-shape gaps:
 	LayoutCode      SlideLayout = "code"      // title + language pill + mono code block + optional caption — for tech tutorials, API docs, snippet showcases
 	LayoutChecklist SlideLayout = "checklist" // title + 3-7 task-item rows with ☐ checkboxes — for action items, "next steps", launch checklists, training takeaways
+	// Sprint V — freeform HTML escape-hatch. LLM writes raw HTML in
+	// SlideData.HTML when none of the 24 typed layouts fits the topic
+	// (vintage UI demo / ASCII art / unusual data viz). Output goes
+	// through a strict bluemonday sanitizer before render so it can't
+	// inject scripts. NOT a default — outline.md tells the LLM to
+	// only pick this when other layouts honestly don't work.
+	LayoutHTML SlideLayout = "html"
 )
 
 // AllSlideLayouts returns every templated layout the renderer knows
@@ -59,6 +66,7 @@ func AllSlideLayouts() []SlideLayout {
 		LayoutProcessFlow, LayoutBentoGrid, LayoutPullQuote,
 		LayoutBeforeAfter, LayoutIconGrid, LayoutTeamRoster,
 		LayoutCode, LayoutChecklist,
+		LayoutHTML,
 	}
 }
 
@@ -244,6 +252,16 @@ type SlideData struct {
 	// generic bullets. Each item should be an imperative verb-
 	// phrase (e.g. "审核 Q1 预算", "联系合规团队", "Update README").
 	Tasks []string `json:"tasks,omitempty"`
+
+	// HTML populates layout=html — raw HTML markup the LLM writes when
+	// none of the 24 typed layouts fits the topic (vintage UI mock,
+	// ASCII art, unusual data viz, etc). The renderer runs this
+	// through a strict bluemonday sanitizer before injecting into the
+	// `.html-slide` container, so script/iframe/form/object tags are
+	// stripped. Inline `<style>` IS allowed; the LLM is told to use
+	// `var(--bg/--fg/--accent/--font-*)` CSS variables so theme +
+	// brand overrides keep working.
+	HTML string `json:"html,omitempty"`
 }
 
 // TableRow is one data row inside a comparison-table slide. Cells

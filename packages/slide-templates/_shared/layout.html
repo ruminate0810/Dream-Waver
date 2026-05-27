@@ -463,6 +463,18 @@ __THEME_STYLE__
     </ol>
   </div>
 
+{{else if eq .Layout "html"}}
+  {{/* Sprint V — Freeform HTML escape-hatch. SlideData.HTML carries
+       raw markup the LLM wrote when no typed layout fit. The
+       `safehtml` template func runs it through bluemonday (strict
+       policy: structural tags + inline styles + svg; NO script /
+       iframe / form / object / link / input) and casts to
+       template.HTML so html/template doesn't re-escape. The
+       container is the only structural thing this layout owns —
+       actual layout choice is the LLM's. Theme CSS variables
+       (--bg/--fg/--accent/--font-*) cascade in. */}}
+  <div class="html-slide">{{safehtml .Data.HTML}}</div>
+
 {{else}}
   <div class="pretitle" data-no-extract></div>
   <div class="title">{{.Data.Title}}</div>

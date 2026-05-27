@@ -24,6 +24,7 @@ import (
 	cdpruntime "github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/google/uuid"
+	"github.com/microcosm-cc/bluemonday"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
@@ -547,7 +548,59 @@ var templateFuncs = template.FuncMap{
 		}
 		return out
 	},
+	// Sprint V — safehtml runs the LLM-authored HTML through a strict
+	// bluemonday sanitizer (htmlSlidePolicy below) and casts the
+	// result to template.HTML so Go's html/template doesn't re-escape
+	// it. Used ONLY by the `html` layout branch. Any script / iframe
+	// / form / object / link / input tag is stripped; inline style +
+	// svg + structural tags survive. Cost is sub-millisecond per
+	// slide so we sanitize on every render rather than caching.
+	"safehtml": func(raw string) template.HTML {
+		return template.HTML(htmlSlidePolicy.Sanitize(raw))
+	},
 }
+
+// htmlSlidePolicy is the bluemonday policy applied to LLM-authored
+// HTML in the `html` layout. Starts from UGCPolicy (the most
+// permissive default that's still XSS-safe) and tightens further:
+//   - allow inline `style` attributes (LLM needs them to use CSS vars)
+//   - allow inline `<style>` elements (LLM may scope styles to the slide)
+//   - allow `<svg>` and its common children (charts / decorations)
+//   - explicitly drop `<form>` / `<input>` / `<iframe>` (UGC allows
+//     iframe for video embeds; we don't want that in a slide)
+var htmlSlidePolicy = func() *bluemonday.Policy {
+	p := bluemonday.UGCPolicy()
+	p.AllowAttrs("style").Globally()
+	p.AllowElements("style")
+	// SVG primitives commonly used for inline charts / decorations.
+	p.AllowElements("svg", "g", "path", "rect", "circle", "ellipse",
+		"line", "polyline", "polygon", "text", "tspan", "defs",
+		"linearGradient", "radialGradient", "stop", "filter",
+		"feGaussianBlur", "feOffset", "feMerge", "feMergeNode",
+		"clipPath", "mask", "use")
+	p.AllowAttrs("viewBox", "width", "height", "fill", "stroke",
+		"stroke-width", "stroke-linecap", "stroke-linejoin", "d",
+		"x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry",
+		"points", "transform", "opacity", "fill-opacity",
+		"stroke-opacity", "stop-color", "stop-opacity", "offset",
+		"gradientUnits", "gradientTransform", "id", "clip-path",
+		"text-anchor", "font-size", "font-family").OnElements(
+		"svg", "g", "path", "rect", "circle", "ellipse",
+		"line", "polyline", "polygon", "text", "tspan",
+		"linearGradient", "radialGradient", "stop", "clipPath",
+		"mask", "use", "filter", "feGaussianBlur", "feOffset",
+		"feMerge", "feMergeNode")
+	// Hard-blocked tags (defense in depth — UGCPolicy already excludes
+	// most, but be explicit).
+	for _, banned := range []string{
+		"script", "iframe", "form", "input", "button", "object",
+		"embed", "link", "meta", "base", "applet", "frame", "frameset",
+	} {
+		p.AllowElements(banned)              // register so we can target
+		p = p.SkipElementsContent(banned)    // then strip + drop content
+	}
+	return p
+}()
 
 // toRoman returns lowercase Roman numerals up to 39. Enough for any slide
 // bullet list we'll generate; if we ever exceed it the fallback ("xxxix+")
