@@ -220,7 +220,16 @@ type Action =
   | { type: "user_message"; id: string; text: string }
   | { type: "post_error"; turnId: string; err: string }
   | { type: "queue"; text: string }
-  | { type: "unqueue" };
+  | { type: "unqueue" }
+  // Optimistic clear of the active turn's HILT gate, fired by the
+  // dispatchers (clarification / outline_approval / wizard_step) the
+  // moment the user submits. The card disappears immediately and we
+  // don't have to wait for the backend's first WS event to arrive —
+  // critical when the WS happens to be dropped (or simply slow) at
+  // submit time. If a wizard.step event lands afterwards (multi-step
+  // wizard advancing to the next question) it RE-SETS pending; no
+  // visible flicker because that lands in the same tick.
+  | { type: "gate_submitted" };
 
 type State = {
   turns: Turn[];
@@ -329,6 +338,24 @@ function reduce(state: State, action: Action): State {
       return { ...state, pending: action.text };
     case "unqueue":
       return { ...state, pending: null };
+    case "gate_submitted": {
+      // Optimistic clear of the active turn's HILT pending. Fired by
+      // the gate dispatchers (clarification / outline_approval /
+      // wizard_step) the moment a POST is sent. The card disappears
+      // immediately even if the backend's WS happens to be dropped
+      // or slow. If the next backend event is wizard.step (multi-
+      // step wizard continuing), the reducer's wizard.step case
+      // re-sets pending in the same render tick — no visible flicker.
+      const lastIdx = state.turns.length - 1;
+      if (lastIdx < 0) return state;
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          pending: undefined,
+        })),
+      };
+    }
     case "ws":
       return reduceWS(state, action.event);
   }
@@ -882,6 +909,10 @@ export function useAgentSession(job: SlideJob): AgentSession {
       if (!lastTurn || lastTurn.pending?.kind !== "clarification") return;
       // Optimistically clear the gate + go back to running. WS events
       // from the resumed Phase 1 will fold normally onto this turn.
+      // gate_submitted clears the active turn's pending so the card
+      // disappears the instant the user submits — important when the
+      // backend WS happens to be slow / dropped.
+      dispatch({ type: "gate_submitted" });
       dispatch({
         type: "ws",
         event: {
@@ -910,6 +941,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
       // Same optimistic flip as clarification — the resumed Phase 3
       // will emit slides.content / slides.render.* events that fold
       // onto the active turn.
+      dispatch({ type: "gate_submitted" });
       dispatch({
         type: "ws",
         event: {
@@ -953,6 +985,7 @@ export function useAgentSession(job: SlideJob): AgentSession {
       // wizard's Turn 0 state and feel jarring; back is just a quick
       // re-render of the previous step's view.
       if (!back) {
+        dispatch({ type: "gate_submitted" });
         dispatch({
           type: "ws",
           event: {
