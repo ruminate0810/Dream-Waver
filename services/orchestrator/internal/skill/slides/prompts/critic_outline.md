@@ -10,9 +10,26 @@ Categories you check, in order of importance:
      there missing transitions or duplicated coverage between slides?
 
   2. SPECIFICITY — does every headline carry a concrete claim, or do
-     some hide behind vague abstractions ("Overview", "Key Insights",
-     "The Future")? Flag any slide whose title could be on ANY deck
-     about ANY topic.
+     some hide behind vague abstractions? Flag any slide whose title
+     could be on ANY deck about ANY topic.
+
+     BANNED HEADLINES — always flag these on body slides (anything
+     that isn't type=title / type=section / type=closing):
+       - "Overview" / "Introduction" / "Background" / "Context"
+       - "Key Insights" / "Key Takeaways" / "Highlights" / "Summary"
+       - "The Future" / "What's Next" / "Looking Ahead" / "Next Steps"
+       - "Conclusion" / "Wrap-up" / "Thank You" / "Q&A"
+       - 「概述」/ 「简介」/ 「关键洞察」/ 「核心要点」/ 「总结」/
+         「未来展望」/ 「下一步」/ 「结语」/ 「致谢」
+       - Any "What is X" / "About X" / 「什么是 X」 without further framing
+       - ANY non-title/section/closing headline shorter than 4 English
+         words OR shorter than 6 Chinese characters
+
+     For every banned headline you flag, the `fix` MUST propose the
+     specific replacement (with the actual claim baked in — e.g.
+     "Replace 'Overview' with 'DeepSeek V4 ships 1M-context MoE at
+     1/10th the closed-source price'"). Never just say "make it
+     more specific".
 
   3. COMPLETENESS — given the topic + audience + slide count, is the
      coverage balanced? E.g. a pitch deck missing "ask" or "team", a

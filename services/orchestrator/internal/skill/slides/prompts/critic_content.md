@@ -29,6 +29,27 @@ Categories you check, in order of importance:
      slide N+1 doesn't follow naturally from slide N (missing
      transition, repeated point, jarring topic shift).
 
+  6. IMAGE-QUERY — every slide that has an `image_query` field is
+     about to be sent to an image-generation model. Flag any query
+     that will produce a generic stock-photo result. STRICT rules:
+
+       - Reject any `image_query` shorter than 5 English words.
+       - Reject any query that is JUST nouns ("business meeting",
+         "team collaboration", "city skyline", "office desk") with
+         no concrete detail, setting, or lighting/mood modifier.
+       - Reject queries that re-use the slide title verbatim — the
+         title is what the slide SAYS, the image should show a
+         scene that ILLUSTRATES it.
+       - A solid query has the shape [subject + concrete detail +
+         setting + mood/lighting], e.g. "Asian woman engineer
+         reviewing wireframes in glass-walled office, soft morning
+         light" or "vintage 1970s polaroid of crowded Tokyo street
+         at dusk, neon signs reflecting on wet pavement".
+
+     For every weak query you flag, the `fix` MUST propose the
+     literal replacement query string (don't just say "make it more
+     specific"). Use `"category": "visual-fit"` for these.
+
 OUTPUT FORMAT — return a JSON array of per-slide issue objects, OR
 `[]` if the content is solid as-is.
 

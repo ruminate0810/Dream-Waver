@@ -66,6 +66,12 @@ func (t *CriticOutline) Execute(ctx context.Context, args json.RawMessage) (sche
 		return schema.ToolResult{Error: "parse outline_json: " + err.Error()}, nil
 	}
 
+	// Sprint V.2 — algorithmic diversity guard runs alongside the LLM
+	// critic. It's deterministic and free, so it always fires and its
+	// notes are merged into whatever the LLM critic returns. Empty
+	// when the outline is structurally balanced.
+	diversityNotes := stages.CheckLayoutDiversity(&outline, a.Topic)
+
 	notes, _, err := stages.CriticOutline(ctx, t.Router, stages.OutlineParams{
 		Topic:      a.Topic,
 		Audience:   a.Audience,
@@ -73,17 +79,20 @@ func (t *CriticOutline) Execute(ctx context.Context, args json.RawMessage) (sche
 		Style:      a.Style,
 	}, &outline)
 	if err != nil {
-		// Critic is advisory — surface the failure but return [] so the
-		// agent treats it as "no issues" and ships the outline.
+		// Critic LLM is advisory — surface the failure but keep the
+		// diversity notes (those are local, can't fail) so revise_outline
+		// still gets structural hints.
 		out, _ := json.Marshal(map[string]any{
-			"notes":   []any{},
-			"warning": "critic_outline call failed; treating as no issues. err=" + err.Error(),
+			"notes":    diversityNotes,
+			"is_clean": len(diversityNotes) == 0,
+			"warning":  "critic_outline LLM call failed; only diversity guard applied. err=" + err.Error(),
 		})
 		return schema.ToolResult{Output: string(out)}, nil
 	}
+	merged := append(diversityNotes, notes...)
 	out, _ := json.Marshal(map[string]any{
-		"notes":    notes,
-		"is_clean": len(notes) == 0,
+		"notes":    merged,
+		"is_clean": len(merged) == 0,
 	})
 	return schema.ToolResult{Output: string(out)}, nil
 }
