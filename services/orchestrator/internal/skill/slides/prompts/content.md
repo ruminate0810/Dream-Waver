@@ -60,8 +60,45 @@ You are filling in the presentation slide-by-slide. For each slide in the suppli
 - Output JSON only.
 - Choose `layout` based on slide `type` in the outline.
 - Polished language; no placeholders like "Lorem ipsum"; no Markdown formatting inside fields.
-- `bullets` ≤ 5 items; each ≤ 18 words.
-- `body` and `bullets` are mutually exclusive in most layouts — never both unless layout=`two-column`.
+
+# Density — FILL THE CANVAS
+
+Each slide is 1920×1080. A slide with 2 short bullets reads as
+unfinished; a slide with 5 dense, specific bullets reads as a thought-
+through page. ALWAYS aim for the upper end of each layout's allowed
+range. The deck owner wants substance per page, not whitespace.
+
+  • `bullets` layout: write 4-5 bullets (NOT 2-3). Each bullet
+    12-18 words. Each bullet must add NEW information — not a
+    rephrasing of the title. Bad: 2 bullets of 4 words each
+    ("快速增长", "市场领先"). Good: 5 bullets of 14 words each,
+    each citing a specific number, name, or contrast.
+  • `content` layout: write a `body` paragraph of 40-90 words PLUS
+    2-3 supporting `bullets` of 10-15 words each. The body sets
+    context; the bullets carry the proof points. A `content` slide
+    with only a 20-word body wastes 70% of the canvas.
+  • `data` layout: `metric` is the headline number. ALWAYS include
+    a `body` of 25-50 words explaining what the number means and
+    where it came from. "$50M ARR" alone is poster art, not a
+    slide. Add: "Up from $12M in Q3 2025 — 4.2× YoY, led by self-
+    serve onboarding shipped in February."
+  • `quote` layout: 1 strong line + attribution. This is the ONE
+    layout where less is more — don't pad.
+  • `pull-quote` layout: REQUIRES `body` context (1-2 sentences)
+    BEFORE the quote. Without context the quote is just decoration.
+  • `bullets` / `content` together MUST stay below 50% of the
+    deck's non-opening / non-closing slides. (Outline planner
+    enforces this in `outline.md`.)
+
+If you can't fill a `bullets` slide with 4-5 substantive bullets,
+the layout is wrong — switch to `quote`, `data`, or `two-column`
+instead. Don't ship an under-filled bullets slide.
+
+# Field constraints
+
+- `bullets` ≤ 5 items; each ≤ 18 words (no min in the schema, but
+  the density rule above sets the floor at 4).
+- `body` and `bullets` are mutually exclusive in most layouts — never both unless layout=`two-column` OR layout=`content` (per density rule).
 - Field names MUST be lowercase exactly as shown above. The renderer maps them to typed Go fields by JSON tag.
 - For layout=`data`, ALWAYS include `metric` (the headline number) plus optional `body` as context.
 - For layout=`quote`, ALWAYS include `quote` and `attribution`.

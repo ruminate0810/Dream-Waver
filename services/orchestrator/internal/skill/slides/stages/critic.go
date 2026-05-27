@@ -156,9 +156,15 @@ func runCritic(
 		Model:        router.ModelFor("critic"),
 		SystemPrompt: systemPrompt,
 		Messages:     []schema.Message{schema.NewUser(user)},
-		// Critic output is intentionally small (1-2 KB of JSON). 3000
-		// tokens is plenty even for a 20-issue list. Keeps cost down.
-		MaxTokens:         3000,
+		// Critic output is "1-2 KB of JSON" in theory but real-world
+		// logs show critic_outline / critic_content regularly hit
+		// finish_reason="length" at 3000 — flash-tier verbosity tends
+		// to repeat the prompt issues in the `fix` field. Bumped to
+		// 5000 so we stop wasting a full retry round on truncation.
+		// Effective output is still ~1-2 KB; we're paying for headroom,
+		// not for what the model actually produces (output billing is
+		// by actual tokens, not by cap).
+		MaxTokens:         5000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		// Reset on each retry so a partial unmarshal doesn't leak.

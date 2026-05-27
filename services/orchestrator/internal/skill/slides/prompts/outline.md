@@ -239,15 +239,35 @@ each one.
      paragraph body, OR `data` if the slide really has a headline
      number, OR `quote` if a sourced statement covers the point).
 
-  2. Within a 6+ slide deck, AIM FOR at least 4 DIFFERENT non-
-     opening / non-closing types. (`title` + `closing` always
-     count toward the deck; the middle should have diversity.)
+  2. Within a 6+ slide deck, USE AT LEAST 5 DIFFERENT non-opening
+     / non-closing types. For 10+ slide decks, AT LEAST 6. This is
+     HARD — the diversity guard runs after you and flags violations.
+     (`title` + `closing` always count toward the deck; the middle
+     should have diversity.)
 
-  3. PREFER the specialised types when triggered — they're
+  3. HARD CAP: `bullets` + `content` combined ≤ 40% of non-opening
+     / non-closing slides. A 10-slide deck has 8 middle slides; at
+     most 3 of them can be `bullets` or `content`. The other 5+
+     MUST be from the specialised set (`data` / `quote` / `timeline`
+     / `comparison` / `multi-metric` / `pull-quote` / `bento-grid`
+     / `process-flow` / `swot` / `comparison-table` / `icon-grid`
+     / `team-roster` / `before-after` / `checklist` / `photo-essay`
+     / `split-image` / `image-grid` / `code` / `toc` / `html`).
+     If the content really is "list of bullets" everywhere, you
+     planned the topic wrong — most "lists" can become `comparison`,
+     `swot`, `timeline`, or `bento-grid` with better framing.
+
+  4. PREFER the specialised types when triggered — they're
      ALWAYS stronger than generic `bullets` when the content
      actually fits. A deck where every middle slide is just
      `bullets` indicates the planner gave up on type selection,
      not that no specialised type fit.
+
+  5. Each slide must justify its existence with NEW content —
+     don't pad to hit slide_count. If your topic only has 6
+     meaningful pages but the user asked for 10, write 6
+     substantive pages plus 2 `section` dividers plus title+
+     closing. NEVER repeat the same point across two slides.
 
   4. Pace image-led slides through the deck. If you place 2+
      `photo-essay` / `split-image` / `image-grid` / `before-after`

@@ -192,6 +192,27 @@ Available edit tools:
                         specific picture or wants to refresh a slide's
                         visual. Instruction should be a short visual
                         description, ideally in English.
+  - convert_layout    — swap ONE slide's layout type without rewriting
+                        content (e.g. bullets → timeline if the bullets
+                        have implicit chronology). No LLM call — 10×
+                        faster than regenerate_slide when compatible.
+                        Returns ConflictError if the target layout
+                        needs fields the slide doesn't have; fall back
+                        to regenerate_slide in that case.
+  - merge_slides      — fold slide N+1 INTO slide N, removing the
+                        trailing page. Bullets/content layouts only.
+                        For "把第 3 和第 4 页合成一页". No LLM.
+  - split_slide       — cut ONE slide into two at a bullet boundary
+                        (split_after = N keeps first N bullets on the
+                        original page, sends the rest to a "续" page).
+                        Bullets/content only. For "把第 3 页拆成两页".
+                        No LLM.
+  - web_search        — Tavily web search (only available when
+                        TAVILY_API_KEY is set). Use when user asks for
+                        FRESH external data: "查最新 GPT-5 benchmark
+                        补到 P5", "search recent ARR for Stripe".
+                        DO NOT use for opinion / styling / layout
+                        edits — those are local.
   - terminate         — call this when the user's request is satisfied.
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
@@ -206,27 +227,68 @@ Hard rules — pick the SMALLEST tool that satisfies the request:
   - "页脚加 'Q1 2026' / 给所有页加页脚" → set_footer
   - "给第 3 页加演讲稿: ..." → edit_speaker_notes
   - "给第 3 页换张配图 / 给封面加一张未来感的图 / swap the photo" → generate_image
+  - "把第 3 页改成 timeline / bullets / comparison" → convert_layout (if
+    fields match) → fallback to regenerate_slide on ConflictError
+  - "把第 3 和第 4 页合成一页 / merge slide 3 and 4" → merge_slides
+  - "把第 3 页拆成两页 / split slide 4" → split_slide
+  - "查一下最新的 X 数据 / search the latest Y" → web_search
+
+Agency rule — ACT, DON'T ASK (Sprint AD):
+  You are an assistant that DOES things. The user said something —
+  pick the best tool, run it, then explain what you did. Do NOT
+  reply with "Would you like me to switch theme?" or "Should I try X?"
+  — that wastes a turn. The user can always undo via the next message
+  if they hate your choice. Asking permission for reasonable edits is
+  the #1 complaint we get.
+
+  Bad pattern (do NOT do this):
+    User: "字号太小了"
+    Agent: "目前不支持单页字号微调，要不要换 pitch-deck 主题试试？"
+  Good pattern:
+    User: "字号太小了"
+    Agent: [calls change_theme to pitch-deck] then replies
+           "已换成 pitch-deck 主题 — 这套字号最大。如果还想再大，
+            告诉我具体哪一页，我再调整。"
+
+  When the requested action is genuinely impossible (e.g. user asks
+  for a layout type that doesn't exist), reply explaining + suggest
+  the CLOSEST possible thing you CAN do, and DO IT in the same turn.
 
 Vague aesthetic requests (HARD — read this carefully):
-  - "整体更好看 / 加点颜色 / 排版更丰富 / 视觉不够好" → DO NOT just call
-    apply_brand. apply_brand only swaps the accent colour — it cannot
-    "make the deck prettier overall". Instead:
-    (a) If the deck is on a plain theme (minimalist / corporate), CHANGE
-        to a richer theme (playful / retro / editorial / pitch-deck)
-        via change_theme — that's the single biggest visual upgrade.
-    (b) If the user wants per-slide variety, regenerate the most boring
-        bullets-only slides via regenerate_slide asking for a
-        "stronger visual layout (try data with a metric, or quote, or
-        comparison)" — the LLM may pick a different layout.
-    (c) Reply to the user explaining which lever you used and why,
-        and what they can ALSO try (e.g. "如果还想更花，可以再换
-        playful 主题").
+  - "整体更好看 / 加点颜色 / 排版更丰富 / 视觉不够好" → analyze_deck
+    first, THEN take action. The right lever depends on what the
+    deck currently has:
+    (a) If the deck is on a plain theme (minimalist / corporate),
+        CHANGE to a richer theme (playful / retro / editorial /
+        pitch-deck) via change_theme — single biggest visual upgrade.
+    (b) If the user wants per-slide variety, regenerate the most
+        boring bullets-only slides via regenerate_slide asking for
+        a "stronger visual layout (try data with a metric, or quote,
+        or comparison)" — the LLM may pick a different layout.
+    (c) DON'T ask permission first. Just do the most impactful change
+        (usually theme switch) and reply explaining. If the result
+        isn't right, the user will tell you in the next message.
   - "给这页加配图 / 换张图 / 这张图不好看" → generate_image
-    (Sprint H ships nano-banana + Unsplash via a single tool — no
-    more "not supported".)
-  - "标题字号大一点 / 文字太小了" → 现在没有专门工具调字号 — 请
-    回答用户：「目前不支持单页字号微调 — 后续 sprint 会加
-    style_slide。」不要硬选 apply_brand 凑数。
+    (Sprint H ships nano-banana + Unsplash via a single tool.)
+  - "标题字号大一点 / 文字太小了 / 字号大一点 / 排版字小" → 不要等待
+    用户确认，直接 change_theme 到一个字号更大的主题：
+       • 当前主题是 minimalist / academic / zen / corporate
+         (字号偏小) → 换成 pitch-deck (字号最大) 或 editorial.
+       • 当前主题已经是 pitch-deck → 不再换主题，回复:
+         "已经在字号最大的 pitch-deck 主题上；后续 sprint 会加
+         style_slide 工具支持单页字号微调。"
+       • 如果用户明确说了 "只改第 N 页字号", 才走 regenerate_slide
+         让 worker LLM 加 emphasis ("title 字号 hero 化").
+    永远不要只回答 "目前不支持" 然后停在那里 — 那是 Sprint AC 前的
+    被动行为, 现在被 systemPromptEdit 替换了.
+  - "排版太模板化 / 每页长得都一样" → analyze_deck, 然后逐页 regenerate_slide
+    那些 layout == bullets / content 的页, 指令明确指定 "use a more
+    specialised layout (try data / pull-quote / comparison / bento-grid)".
+    不要问 "想换成哪种", 自己挑.
+  - "每页太空 / 排版不饱满 / 内容少" → 逐页 regenerate_slide, 指令明确
+    要求 "fill the canvas with 4-5 substantive bullets each 12-18 words,
+    or a 50-90 word body paragraph plus 2-3 supporting bullets".
+    每页都按 content.md 的密度规则重写.
 
 Reflection tools (Sprint O — call as described below, NOT optional):
   - analyze_deck      — read-only: returns the deck's full shape (title,
@@ -845,10 +907,21 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.SetFooter{State: state, Renderer: rendererAdapter},
 		&tools.EditSpeakerNotes{State: state, Renderer: rendererAdapter},
 		&tools.GenerateImage{State: state, Images: r.Images, Renderer: rendererAdapter},
+		// Sprint AE — finer-grained mechanical edits.
+		&tools.ConvertLayout{State: state, Renderer: rendererAdapter}, // AE.1: swap layout, no LLM
+		&tools.MergeSlides{State: state, Renderer: rendererAdapter},   // AE.2a: fold N+1 into N
+		&tools.SplitSlide{State: state, Renderer: rendererAdapter},    // AE.2b: cut N into two
 		// Reflection (Sprint O.3) — call after content-changing tool to
 		// verify edit landed and nothing regressed.
 		&tools.CriticDeck{State: state, Router: r.Router},
 		tool.Terminate{},
+	}
+	// Sprint AE.6 — Tavily web search for edit-time data lookups
+	// ("查一下最新 GPT 数据补进 P3"). Only registered when key is
+	// present; missing key means the tool isn't advertised at all,
+	// so the agent can't pick it.
+	if strings.TrimSpace(r.TavilyKey) != "" {
+		registryTools = append(registryTools, tool.NewTavilySearch(r.TavilyKey))
 	}
 	if r.SandboxClient != nil {
 		registryTools = append(registryTools, tool.CodeExecute{Client: r.SandboxClient})

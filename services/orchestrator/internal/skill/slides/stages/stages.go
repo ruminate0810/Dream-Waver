@@ -200,10 +200,18 @@ func Content(ctx context.Context, router llm.Router, outline *OutlineResult) (*C
 	client := router.For("worker")
 	var out ContentResult
 	resp, err := askWithRetry(ctx, client, "content", llm.AskToolRequest{
-		Model:             router.ModelFor("worker"),
-		SystemPrompt:      prompts.Content,
-		Messages:          []schema.Message{schema.NewUser(user)},
-		MaxTokens:         6000,
+		Model:        router.ModelFor("worker"),
+		SystemPrompt: prompts.Content,
+		Messages:     []schema.Message{schema.NewUser(user)},
+		// 10000 (was 6000) — Sprint V.1 added the `html` escape-hatch
+		// layout whose `data.html` field is raw HTML and can run 800-
+		// 1500 tokens per slide on its own. A 5-slide html-heavy deck
+		// blew through 6000 before slide 2 finished, finish_reason=
+		// "length", JSON unterminated, retry hits the same cap = job
+		// fails permanently. 10000 covers up to ~8 html-layout slides
+		// in one batch; bigger decks need streaming (Sprint AD).
+		// Cost delta: <¥0.03 per deck on worker tier.
+		MaxTokens:         10000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		out = ContentResult{}

@@ -341,6 +341,199 @@ func (s *SessionState) DuplicateSlide(index int) error {
 	return nil
 }
 
+// MergeSlides folds slide [index+1] into slide [index] (both 0-based)
+// and removes the (now-merged) trailing slide. Used by the merge_slides
+// edit tool — typical user request "把第 3 和 第 4 页合成一页".
+//
+// Merge rules (kept simple — fail fast on incompatible layouts):
+//   - Both slides MUST be layout=bullets OR layout=content. Mixing
+//     specialised layouts (data + quote + timeline etc) has no obvious
+//     join; the agent should fall back to delete_slide + edit instead.
+//   - Title: keep slide[index]'s title.
+//   - Body:  concat with "\n\n" if both have body; otherwise take the
+//            non-empty one.
+//   - Bullets: append slide[index+1].Bullets to slide[index].Bullets.
+//              Cap at 8 total (the renderer's hard cap on bullets is 5
+//              for `bullets` layout but `content` accepts more — the
+//              critic_deck pass will flag overflow if it matters).
+//   - SpeakerNotes: concat with "\n---\n" separator.
+//   - Image: prefer slide[index]'s; ignore slide[index+1]'s (only one
+//            hero image per slide).
+//
+// After merging, slide[index+1] is removed via the existing
+// DeleteSlide path (which also keeps Content/Outline length-aligned).
+func (s *SessionState) MergeSlides(index int) error {
+	s.mu.Lock()
+	if s.Deck == nil {
+		s.mu.Unlock()
+		return fmt.Errorf("no deck loaded")
+	}
+	n := len(s.Deck.Slides)
+	if index < 0 || index >= n-1 {
+		s.mu.Unlock()
+		return fmt.Errorf("merge index %d out of range (need 0..%d for an %d-slide deck)", index, n-2, n)
+	}
+	a := &s.Deck.Slides[index]
+	b := s.Deck.Slides[index+1]
+	// Only allow same-family merges. Specialised layouts have field
+	// shapes that don't compose (e.g. comparison has left/right items
+	// that wouldn't survive a concatenation).
+	allowed := func(l schema.SlideLayout) bool {
+		return l == schema.LayoutBullets || l == schema.LayoutContent || l == ""
+	}
+	if !allowed(a.Layout) || !allowed(b.Layout) {
+		s.mu.Unlock()
+		return fmt.Errorf(
+			"merge_slides only supports bullets/content layouts; got %s + %s. Use convert_layout to bullets first, OR delete_slide + edit_slide_text manually",
+			a.Layout, b.Layout,
+		)
+	}
+
+	// Body concat.
+	switch {
+	case a.Data.Body != "" && b.Data.Body != "":
+		a.Data.Body = a.Data.Body + "\n\n" + b.Data.Body
+	case a.Data.Body == "" && b.Data.Body != "":
+		a.Data.Body = b.Data.Body
+	}
+	// Bullets concat, capped at 8 (renderer will trim further if the
+	// layout's hard cap is lower).
+	if len(b.Data.Bullets) > 0 {
+		merged := append([]string{}, a.Data.Bullets...)
+		merged = append(merged, b.Data.Bullets...)
+		if len(merged) > 8 {
+			merged = merged[:8]
+		}
+		a.Data.Bullets = merged
+	}
+	// SpeakerNotes concat.
+	switch {
+	case a.SpeakerNotes != "" && b.SpeakerNotes != "":
+		a.SpeakerNotes = a.SpeakerNotes + "\n---\n" + b.SpeakerNotes
+	case a.SpeakerNotes == "" && b.SpeakerNotes != "":
+		a.SpeakerNotes = b.SpeakerNotes
+	}
+	// Image: keep a's. Nothing to do.
+
+	// Lift Content/Outline lock by releasing then re-acquiring via the
+	// existing DeleteSlide path (which has its own mutex acquisition).
+	s.mu.Unlock()
+	return s.DeleteSlide(index + 1)
+}
+
+// SplitSlide cuts slide [index] (0-based) into two halves at bullet
+// boundary [splitAfter] (1-based count of bullets to keep on the
+// FIRST resulting slide). Used by the split_slide edit tool — typical
+// request: "把第 3 页拆成两页".
+//
+// Rules:
+//   - Slide MUST be layout=bullets OR layout=content with bullets.
+//     Other layouts have no obvious split — return error suggesting
+//     duplicate_slide + edit instead.
+//   - 1 ≤ splitAfter ≤ len(Bullets)-1 (both sides must have ≥1 bullet).
+//   - Resulting slide A keeps title/body/bullets[:splitAfter].
+//   - Resulting slide B is a clone of A with title appended " · 续",
+//     body cleared, bullets = original[splitAfter:], image cleared
+//     (only the first slide keeps the hero).
+//   - SpeakerNotes stay on A; B gets empty notes.
+func (s *SessionState) SplitSlide(index, splitAfter int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return fmt.Errorf("no deck loaded")
+	}
+	if index < 0 || index >= len(s.Deck.Slides) {
+		return fmt.Errorf("split index %d out of range (have %d slides)", index, len(s.Deck.Slides))
+	}
+	src := &s.Deck.Slides[index]
+	if src.Layout != schema.LayoutBullets && src.Layout != schema.LayoutContent {
+		return fmt.Errorf("split_slide only supports bullets/content layouts; got %s. Use duplicate_slide + edit_slide_text instead", src.Layout)
+	}
+	if len(src.Data.Bullets) < 2 {
+		return fmt.Errorf("split_slide needs ≥ 2 bullets on the source slide (have %d)", len(src.Data.Bullets))
+	}
+	if splitAfter < 1 || splitAfter > len(src.Data.Bullets)-1 {
+		return fmt.Errorf("split_after=%d out of range (need 1..%d)", splitAfter, len(src.Data.Bullets)-1)
+	}
+
+	// Cut bullets.
+	firstHalf := make([]string, splitAfter)
+	copy(firstHalf, src.Data.Bullets[:splitAfter])
+	secondHalf := make([]string, len(src.Data.Bullets)-splitAfter)
+	copy(secondHalf, src.Data.Bullets[splitAfter:])
+
+	// Build slide B BEFORE mutating src — so the title-append doesn't
+	// recursively show up.
+	bData := src.Data
+	bData.Body = ""
+	bData.Bullets = secondHalf
+	bData.Image = ""
+	bData.ImageQuery = ""
+	bData.ImageCredit = ""
+	titleSuffix := " · 续"
+	if !looksChinese(src.Data.Title) {
+		titleSuffix = " (cont.)"
+	}
+	bData.Title = src.Data.Title + titleSuffix
+	bSlide := schema.Slide{
+		Template:     src.Template,
+		Layout:       src.Layout,
+		Data:         bData,
+		SpeakerNotes: "",
+	}
+
+	// Mutate src into slide A.
+	src.Data.Bullets = firstHalf
+
+	// Insert B immediately after src. The insertion is by-hand (not via
+	// InsertSlide) because we already hold the mutex.
+	insertAt := index + 1
+	s.Deck.Slides = append(s.Deck.Slides[:insertAt], append([]schema.Slide{bSlide}, s.Deck.Slides[insertAt:]...)...)
+	if s.Content != nil {
+		bC := stages.ContentSlide{
+			Index:    insertAt,
+			Template: bSlide.Template,
+			Layout:   bSlide.Layout,
+			Data:     bData,
+		}
+		if insertAt >= len(s.Content.Slides) {
+			s.Content.Slides = append(s.Content.Slides, bC)
+		} else {
+			s.Content.Slides = append(s.Content.Slides[:insertAt], append([]stages.ContentSlide{bC}, s.Content.Slides[insertAt:]...)...)
+		}
+	}
+	if s.Outline != nil {
+		bO := stages.OutlineSlide{
+			Index:    insertAt,
+			Type:     string(bSlide.Layout),
+			Headline: bData.Title,
+		}
+		if insertAt >= len(s.Outline.Slides) {
+			s.Outline.Slides = append(s.Outline.Slides, bO)
+		} else {
+			s.Outline.Slides = append(s.Outline.Slides[:insertAt], append([]stages.OutlineSlide{bO}, s.Outline.Slides[insertAt:]...)...)
+		}
+	}
+	s.SlideCount = len(s.Deck.Slides)
+	return nil
+}
+
+// looksChinese returns true if more than half the runes in s are Han.
+// Used for picking the "cont." vs "续" suffix on split slides.
+func looksChinese(s string) bool {
+	if s == "" {
+		return false
+	}
+	han, total := 0, 0
+	for _, r := range s {
+		total++
+		if r >= 0x4E00 && r <= 0x9FFF {
+			han++
+		}
+	}
+	return han*2 > total
+}
+
 // reorderSlice is a generic move-an-element-from-from-to-to operation
 // that preserves the relative order of every other element. Centralised
 // so Deck / Content / Outline reorder identically.

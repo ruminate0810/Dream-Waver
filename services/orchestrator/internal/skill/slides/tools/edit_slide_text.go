@@ -33,6 +33,13 @@ type SessionAccessor interface {
 	// DuplicateSlide inserts a deep copy of slide [index] immediately
 	// after it. The new slide takes index+1 in the resulting deck.
 	DuplicateSlide(index int) error
+	// MergeSlides folds slide [index+1] into [index] and removes the
+	// trailing slide. Bullets/content layouts only.
+	MergeSlides(index int) error
+	// SplitSlide cuts slide [index] into two at bullet boundary
+	// [splitAfter] (1-based count of bullets to keep on the first half).
+	// Bullets/content layouts only.
+	SplitSlide(index, splitAfter int) error
 	MarkDirty(indices ...int)
 
 	// SetTheme rewrites Deck.Theme and every slide.Template to the new
