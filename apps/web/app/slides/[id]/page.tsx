@@ -164,6 +164,14 @@ export default function SlideJobPage() {
         </div>
       </header>
 
+      {/* Sprint U2.3 — page-level sticky banner for job.status=error.
+          Without it, the only error indicator was the small Withdrawn
+          caption in the header + a buried errorMsg deep in the chat
+          thread. Now the user gets one-tap "新建相似 deck" to escape. */}
+      {job?.status === "error" && !notFound ? (
+        <JobErrorBanner job={job} />
+      ) : null}
+
       {/* Body */}
       <div className="relative z-10 mx-auto max-w-[1480px] px-4 md:px-10">
         {notFound ? (
@@ -187,6 +195,42 @@ export default function SlideJobPage() {
         )}
       </div>
     </main>
+  );
+}
+
+// Sprint U2.3 — sticky banner shown below the header when job.status
+// flipped to "error". Persists across scroll so the user always sees
+// the failure + an escape route to /slides/new with the original
+// topic prefilled.
+function JobErrorBanner({ job }: { job: SlideJob }) {
+  const topic = (job.input?.topic || job.title || "").slice(0, 240);
+  const escapedTopic = encodeURIComponent(topic);
+  return (
+    <div className="sticky top-0 z-20 border-b border-[color:var(--vermillion)]/40 bg-[color:var(--vermillion)]/[0.06] backdrop-blur-sm">
+      <div className="mx-auto flex max-w-[1480px] flex-wrap items-baseline gap-3 px-4 py-2.5 md:px-10">
+        <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+          ✗ 本次生成失败
+        </span>
+        <span className="min-w-0 flex-1 truncate font-display text-[14px] italic text-[color:var(--ink)]">
+          {job.error || "agent stopped without producing a deck"}
+        </span>
+        {topic ? (
+          <a
+            href={`/slides/new?topic=${escapedTopic}`}
+            className="border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--paper)] no-underline transition-colors hover:bg-[color:var(--vermillion)]"
+          >
+            新建相似 deck
+          </a>
+        ) : (
+          <a
+            href="/slides/new"
+            className="border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--paper)] no-underline transition-colors hover:bg-[color:var(--vermillion)]"
+          >
+            返回首页
+          </a>
+        )}
+      </div>
+    </div>
   );
 }
 

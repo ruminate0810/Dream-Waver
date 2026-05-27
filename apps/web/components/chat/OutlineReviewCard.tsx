@@ -397,7 +397,9 @@ export function OutlineReviewCard({
         {/* Footer */}
         <div className="mt-6 flex items-center justify-between border-t border-[color:var(--ink)]/10 pt-4">
           <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-            点继续后 agent 开始写内容 + 渲染
+            {busy
+              ? "agent 即将撰写内容..."
+              : "点继续后 agent 开始写内容 + 渲染"}
           </span>
           <button
             type="button"
@@ -419,9 +421,21 @@ export function OutlineReviewCard({
                 className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]"
               />
             )}
-            <span>{edits ? "保存并继续" : "看起来不错，继续"}</span>
+            <span>
+              {busy ? "处理中" : edits ? "保存并继续" : "看起来不错，继续"}
+            </span>
           </button>
         </div>
+
+        {/* Sprint U3.2 — caption below the footer when busy. The
+            content phase takes 1-2 minutes (write_content + critic +
+            render); without this caption the user sees the spinner
+            on the button but doesn't know how long to wait. */}
+        {busy ? (
+          <p className="mt-3 font-display text-[13px] italic text-[color:var(--ink-soft)]">
+            撰写 + 渲染通常 1-2 分钟。下方的进度条会逐张点亮。
+          </p>
+        ) : null}
       </div>
     </div>
   );

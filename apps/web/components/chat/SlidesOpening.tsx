@@ -88,7 +88,37 @@ function PhaseBody({
 }) {
   if (phase.status === "error") {
     const msg = turn?.errorMsg ?? job.error ?? "Unknown failure.";
-    return <p className="font-display text-base italic text-red-800">{msg}</p>;
+    const topic = (job.input?.topic || job.title || "").slice(0, 240);
+    // Sprint U2.1 — upgrade the silent italic red `<p>` to a card with
+    // a retry CTA. Initial-gen failures can't replay the same job
+    // (deck rows aren't restartable from a Phase-3 crash mid-job);
+    // best we can do is hand the topic back to /slides/new prefilled.
+    return (
+      <div className="mt-2 mb-1">
+        <div className="h-[3px] w-[36px] bg-[color:var(--vermillion)]" />
+        <div
+          role="alert"
+          className="flex flex-wrap items-start gap-3 border border-[color:var(--vermillion)]/45 bg-[color:var(--vermillion)]/[0.06] px-4 py-3"
+        >
+          <div className="flex flex-1 min-w-0 items-start gap-2">
+            <span className="mt-[2px] font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+              Err
+            </span>
+            <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink)]">
+              {msg}
+            </p>
+          </div>
+          {topic ? (
+            <a
+              href={`/slides/new?topic=${encodeURIComponent(topic)}`}
+              className="group inline-flex items-center gap-1.5 border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] no-underline transition-all hover:bg-[color:var(--vermillion)] active:translate-y-[1px]"
+            >
+              <span>新建相似 deck</span>
+            </a>
+          ) : null}
+        </div>
+      </div>
+    );
   }
 
   return renderForPhase(phase.key, phase.status, turn, job, previewVersion, compact);

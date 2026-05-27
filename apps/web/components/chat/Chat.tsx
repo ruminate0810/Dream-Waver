@@ -80,6 +80,16 @@ export function Chat({
           key={turn.id}
           turn={turn}
           index={i + 5}
+          // Sprint U2.1 — retry re-dispatches the user's original
+          // message, opening a NEW turn (the old errored turn stays
+          // visible as history). Only enabled when we have a userMessage
+          // to replay (edit turns always do; defensive for safety).
+          onRetry={
+            turn.userMessage
+              ? () => session.dispatchUserMessage(turn.userMessage!)
+              : undefined
+          }
+          retrying={session.busy}
         />
       ))}
 

@@ -69,6 +69,13 @@ export function SlideFrame({
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [scale, setScale] = useState(1);
   const [loaded, setLoaded] = useState(false);
+  // Sprint U2.2 — detect iframe load failures (404 from missing page
+  // HTML, network drop, orchestrator restart mid-edit). The iframe's
+  // onLoad fires even on chi's 404 page so we sample contentDocument
+  // for the "404 page not found" body marker. Bumping retryNonce
+  // re-renders the iframe with a fresh cache-bust.
+  const [loadError, setLoadError] = useState(false);
+  const [retryNonce, setRetryNonce] = useState(0);
   // Track the last tick value of each control channel so its useEffect
   // only fires when the parent intentionally bumps it (not on every
   // unrelated render).
@@ -148,7 +155,9 @@ export function SlideFrame({
   // The URL bakes the version in so the browser fetches a fresh response
   // on every edit. We also remount via key={version} for paranoia — some
   // browsers cache HTML iframes aggressively even with no-store headers.
-  const src = `/api/v1/slides/${jobId}/page/${index}.html?v=${version}`;
+  // Sprint U2.2 — retryNonce adds an additional cache-bust segment so a
+  // user-clicked "retry" actually re-fetches.
+  const src = `/api/v1/slides/${jobId}/page/${index}.html?v=${version}&r=${retryNonce}`;
 
   return (
     <div
@@ -180,10 +189,34 @@ export function SlideFrame({
       <iframe
         ref={iframeRef}
         // key forces a real DOM remount on version bumps so cached pages
-        // never linger after an edit.
-        key={version}
+        // never linger after an edit. retryNonce changes ALSO bump key
+        // so a user-clicked retry escapes any in-memory render cache.
+        key={`${version}-${retryNonce}`}
         src={src}
-        onLoad={() => setLoaded(true)}
+        onLoad={(e) => {
+          setLoaded(true);
+          // Sprint U2.2 — chi returns the literal body "404 page not
+          // found\n" with status 404 for missing slides. The iframe's
+          // onLoad fires anyway so we have to sniff the body to detect.
+          // (Browsers won't fire onerror for cross-status HTTP responses,
+          // only for transport failures.)
+          try {
+            const doc = (e.target as HTMLIFrameElement).contentDocument;
+            const text = doc?.body?.textContent ?? "";
+            if (
+              text.trim().startsWith("404 page not found") ||
+              text.trim().startsWith("job not found")
+            ) {
+              setLoadError(true);
+            } else {
+              setLoadError(false);
+            }
+          } catch {
+            // Cross-origin would throw — but sandbox allow-same-origin
+            // means we shouldn't hit this. Defensive no-op.
+          }
+        }}
+        onError={() => setLoadError(true)}
         title={`Slide ${index}`}
         // Sandbox: allow scripts (we need the bridge) but disable
         // navigation/forms/popups/storage. Same-origin needed for the
@@ -196,6 +229,32 @@ export function SlideFrame({
           transform: `scale(${scale})`,
         }}
       />
+
+      {/* Sprint U2.2 — visible fallback when the iframe 404s. Without
+          this the user sees a blank white frame and assumes the whole
+          deck broke. The retry button bumps retryNonce so the iframe
+          re-fetches with a fresh cache-bust segment. */}
+      {loadError ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-[color:var(--vermillion)]/40 bg-[#FBF9F2]/95 p-6 text-center">
+          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+            Slide {String(index).padStart(2, "0")} · 加载失败
+          </span>
+          <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
+            这页暂时拿不到 — 可能是后台刚重启或缓存过期。
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(false);
+              setLoaded(false);
+              setRetryNonce((n) => n + 1);
+            }}
+            className="border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)]"
+          >
+            重试
+          </button>
+        </div>
+      ) : null}
 
       {/* Page chip — bottom-left. Hairline rule + mono caps; vermillion
           accent when the slide just updated (active prop). */}

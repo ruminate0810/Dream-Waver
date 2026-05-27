@@ -269,12 +269,18 @@ export function WizardCard({
             disabled={!canNext || locked}
             className={clsx(
               "group inline-flex items-center gap-2 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
-              !canNext || busy
+              !canNext || locked
                 ? "cursor-not-allowed bg-[color:var(--ink)]/10 text-[color:var(--ink-faint)]"
                 : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
             )}
           >
-            {busy ? (
+            {/* Sprint U3.1 — spinner driven by `locked` (= busy ||
+                submitting) instead of just `busy`. The local
+                `submitting` flag flips synchronously on click while
+                `busy` only flips when the first server event lands;
+                without this, ~100ms of "is it frozen?" feedback gap
+                opens. */}
+            {locked ? (
               <Loader2 size={12} strokeWidth={1.8} className="animate-spin" />
             ) : (
               <ChevronRight
@@ -283,9 +289,27 @@ export function WizardCard({
                 className="transition-transform group-hover:translate-x-[2px]"
               />
             )}
-            <span>{view.step === view.total ? "完成" : "下一步"}</span>
+            <span>
+              {locked
+                ? "处理中"
+                : view.step === view.total
+                  ? "完成"
+                  : "下一步"}
+            </span>
           </button>
         </div>
+
+        {/* Sprint U3.1 — visible caption when waiting. LLM clarification
+            replies (or — on the final 完成 click — the entire outline
+            planning loop) can take 30-90s; without this caption the
+            user thinks the page froze. */}
+        {locked ? (
+          <p className="mt-3 font-display text-[13px] italic text-[color:var(--ink-soft)]">
+            {view.step === view.total
+              ? "agent 正在规划大纲... 通常 30-90 秒"
+              : "处理中... agent 正在准备下一步"}
+          </p>
+        ) : null}
       </form>
     </div>
   );
