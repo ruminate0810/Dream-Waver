@@ -11,7 +11,9 @@
 //   - Future "evening edition" (dark mode) variations can swap eases
 //     without touching every component.
 
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { gsap } from "gsap";
+import { useGSAP } from "@gsap/react";
 
 // ─── Shared eases ─────────────────────────────────────────────────
 //
@@ -45,6 +47,17 @@ export const DUR = {
   reveal: 0.55,
   /** Brand mark breath (full cycle). */
   breath: 4.0,
+  // ─── Sprint Z additions ────────────────────────────────────────
+  /** Chat card mount (gate cards / pending row / message bubble). */
+  card: 0.32,
+  /** Card exit before unmount (slightly faster than entry). */
+  cardExit: 0.22,
+  /** Body collapse/expand (ToolStrip body, ThoughtCollapse). */
+  collapse: 0.28,
+  /** Status glyph crossfade (pending → running → done). */
+  statusFlip: 0.2,
+  /** iframe onLoad fade-in. */
+  frameLoad: 0.24,
 } as const;
 
 // ─── Staggers ─────────────────────────────────────────────────────
@@ -111,3 +124,211 @@ export function applyMotionDefaults() {
 // defaults. The check above guards against React strict-mode double-
 // invocation in dev.
 applyMotionDefaults();
+
+// ─── Sprint Z — shared hooks for chat-layer motion ────────────────
+//
+// useCardMotion: mount-only entrance for cards that DON'T need an
+// exit animation. Use on cards that live inside a stable parent
+// (ChatThread always rendered, PendingRow conditional but unmounted
+// directly). Honors prefers-reduced-motion (opacity-only fallback).
+//
+// useExitMotion: presence wrapper for cards that NEED an exit
+// animation before React unmounts them. The wizard / outline-review /
+// clarification cards are the canonical case — they vanish on
+// `gate_submitted` and the user benefits from a 220ms farewell before
+// the next phase chrome takes over.
+
+type MotionRef = RefObject<HTMLElement | null>;
+
+/**
+ * Mount-only entrance for a card. Call from inside the component's
+ * body with a ref attached to the outer element. Runs once on mount;
+ * cleanup is automatic via useGSAP scoping.
+ *
+ * @param ref       ref to the outer element
+ * @param opts.y    pixel distance to rise from (default 12). Set 0
+ *                  to skip translate and keep opacity-only.
+ * @param opts.delay seconds to delay the start (default 0). Useful
+ *                  when chaining after a parent's entrance.
+ */
+export function useCardMotion(
+  ref: MotionRef,
+  opts: { y?: number; delay?: number; duration?: number } = {},
+) {
+  const { y = 12, delay = 0, duration = DUR.card } = opts;
+  useGSAP(
+    () => {
+      if (!ref.current) return;
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        gsap.from(ref.current, {
+          opacity: 0,
+          y,
+          duration,
+          delay,
+          ease: EASE.entrance,
+          clearProps: "transform,opacity",
+        });
+      });
+      mm.add(PREFERS_REDUCED_MOTION, () => {
+        gsap.from(ref.current, {
+          opacity: 0,
+          duration: Math.min(duration, 0.2),
+          delay: 0,
+          ease: "none",
+          clearProps: "opacity",
+        });
+      });
+    },
+    { scope: ref },
+  );
+}
+
+/**
+ * useExitMotion — returns a `mounted` flag + `nodeRef` that gates
+ * React rendering AND a ref to attach to the outer element. When the
+ * parent flips `visible` false, we tween the element out then drop
+ * mounted=false so React unmounts. Mount entry uses the same
+ * useCardMotion semantics.
+ *
+ * Usage:
+ *
+ *   const { mounted, ref } = useExitMotion(pending?.kind === "wizard");
+ *   if (!mounted) return null;
+ *   return <div ref={ref}>...</div>;
+ *
+ * The hook stays mounted through one extra render cycle while the
+ * exit tween plays, then drops the node. Idempotent on rapid
+ * visible toggles — kills in-flight tweens before retargeting.
+ */
+export function useExitMotion(
+  visible: boolean,
+  opts: { y?: number; duration?: number } = {},
+): { mounted: boolean; ref: MotionRef } {
+  const { y = -6, duration = DUR.cardExit } = opts;
+  const ref = useRef<HTMLElement | null>(null);
+  const [mounted, setMounted] = useState(visible);
+  // Track latest visibility so the deferred exit fires on the right edge.
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  useEffect(() => {
+    if (visible && !mounted) {
+      setMounted(true);
+      return;
+    }
+    if (!visible && mounted) {
+      const node = ref.current;
+      if (!node) {
+        setMounted(false);
+        return;
+      }
+      // Kill any inbound tween + play exit.
+      gsap.killTweensOf(node);
+      const reduced =
+        typeof window !== "undefined" &&
+        window.matchMedia(PREFERS_REDUCED_MOTION).matches;
+      gsap.to(node, {
+        opacity: 0,
+        y: reduced ? 0 : y,
+        duration: reduced ? Math.min(duration, 0.18) : duration,
+        ease: EASE.feedback,
+        onComplete: () => {
+          // Double-check user didn't flip back to visible mid-exit.
+          if (!visibleRef.current) setMounted(false);
+        },
+      });
+    }
+  }, [visible, mounted, duration, y]);
+
+  // Mount entrance — same as useCardMotion but inline because we own
+  // the ref lifecycle here.
+  useGSAP(
+    () => {
+      if (!ref.current || !mounted) return;
+      const mm = gsap.matchMedia();
+      mm.add(PREFERS_FULL_MOTION, () => {
+        gsap.from(ref.current, {
+          opacity: 0,
+          y: 12,
+          duration: DUR.card,
+          ease: EASE.entrance,
+          clearProps: "transform,opacity",
+        });
+      });
+      mm.add(PREFERS_REDUCED_MOTION, () => {
+        gsap.from(ref.current, {
+          opacity: 0,
+          duration: 0.18,
+          ease: "none",
+          clearProps: "opacity",
+        });
+      });
+    },
+    { scope: ref, dependencies: [mounted] },
+  );
+
+  return { mounted, ref };
+}
+
+/**
+ * useHeightCollapse — controlled open/close with GSAP height tween.
+ * Replaces the native `<details>` element which can't animate. Used
+ * by ToolStrip body and ThoughtCollapse.
+ *
+ * Pattern:
+ *   - When `open` flips true: measure scrollHeight → tween to it +
+ *     fade content in.
+ *   - When `open` flips false: tween height to 0 + fade content out.
+ *   - After settle, drop inline height so further content changes
+ *     auto-size correctly.
+ *
+ * Returns a ref to attach to the collapsing element.
+ */
+export function useHeightCollapse(open: boolean): MotionRef {
+  const ref = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia(PREFERS_REDUCED_MOTION).matches;
+
+    gsap.killTweensOf(node);
+
+    if (open) {
+      // Set to height 0 first if currently 0 / unset, then animate.
+      const target = node.scrollHeight;
+      gsap.fromTo(
+        node,
+        { height: 0, opacity: 0 },
+        {
+          height: target,
+          opacity: 1,
+          duration: reduced ? 0.15 : DUR.collapse,
+          ease: EASE.entrance,
+          onComplete: () => {
+            // Drop inline height so subsequent content changes
+            // resize naturally.
+            node.style.height = "auto";
+          },
+        },
+      );
+    } else {
+      const current = node.scrollHeight || node.getBoundingClientRect().height;
+      gsap.fromTo(
+        node,
+        { height: current, opacity: 1 },
+        {
+          height: 0,
+          opacity: 0,
+          duration: reduced ? 0.12 : DUR.collapse * 0.85,
+          ease: EASE.feedback,
+        },
+      );
+    }
+  }, [open]);
+
+  return ref;
+}

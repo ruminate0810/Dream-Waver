@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Briefcase,
   BookOpen,
@@ -17,6 +17,7 @@ import {
 import clsx from "clsx";
 
 import type { WizardStepView } from "./transport";
+import { useCardMotion } from "@/lib/motion";
 
 // WizardCard — Sprint N1 pre-generation multi-step wizard UI.
 //
@@ -149,8 +150,16 @@ export function WizardCard({
     onSubmit(view.step - 1, "", false, true);
   };
 
+  // Sprint Z.2 — mount entrance. Card fades + rises 12px once on
+  // first paint. Reduced-motion users get opacity-only. The hook
+  // does nothing on subsequent re-renders (e.g. when view.step
+  // changes for a multi-step wizard) — that's deliberate, we don't
+  // want the whole card flying around per step.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useCardMotion(rootRef);
+
   return (
-    <div className="mx-auto my-4 w-full max-w-2xl">
+    <div ref={rootRef} className="mx-auto my-4 w-full max-w-2xl">
       {/* Top vermillion press-strip — matches existing L1 cards. */}
       <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
 

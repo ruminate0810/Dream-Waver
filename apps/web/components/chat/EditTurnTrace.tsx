@@ -55,7 +55,10 @@ export function EditTurnTrace({
       }
     >
       {turn.userMessage ? (
-        <blockquote className="border-l-[3px] border-[color:var(--vermillion)]/55 pl-5 font-display text-[22px] italic leading-snug text-[color:var(--ink)]">
+        // Sprint Z.6 — turn user-message fades in (animate-phase-in
+        // gives opacity 0→1 + translateY 10px). Only fires once on
+        // turn open, then stays put.
+        <blockquote className="animate-phase-in border-l-[3px] border-[color:var(--vermillion)]/55 pl-5 font-display text-[22px] italic leading-snug text-[color:var(--ink)]">
           {turn.userMessage}
         </blockquote>
       ) : null}

@@ -35,12 +35,47 @@ body { @apply bg-white text-ink font-sans antialiased; }
 }
 
 /* ── Editorial motion ──────────────────────────────────────────────── */
+/* Sprint Z — single source of truth for timing/easing tokens. JS side
+ * (lib/motion.ts) keeps the same values in seconds for GSAP; CSS side
+ * uses ms here. Update both together. */
+:root {
+  /* Easing — fast-start, late-settle for entrances; symmetric for swaps. */
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-feedback: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-settle:   cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Duration tokens — keep parity with lib/motion.ts DUR. */
+  --dur-micro:      220ms;
+  --dur-card:       320ms;
+  --dur-card-exit:  220ms;
+  --dur-collapse:   280ms;
+  --dur-status:     200ms;
+  --dur-frame-load: 240ms;
+  --dur-entrance:   600ms;
+}
+
 @keyframes phase-in {
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 .animate-phase-in {
-  animation: phase-in 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: phase-in 700ms var(--ease-entrance) both;
+}
+
+/* Sprint Z.3 — status glyph crossfade. Applied on the wrapper around
+ * the per-status icon variant; key={status} triggers a React remount
+ * which re-fires this animation. Result: pending dot → loader → check
+ * crossfade with a gentle scale tick, not the previous hard swap. */
+@keyframes dw-status-flip {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.dw-status-flip {
+  display: inline-block;
+  animation: dw-status-flip var(--dur-status) var(--ease-entrance) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dw-status-flip { animation: none; }
 }
 
 @keyframes hairline-draw {

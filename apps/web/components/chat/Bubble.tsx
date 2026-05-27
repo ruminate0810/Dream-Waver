@@ -165,65 +165,63 @@ function StatusGlyph({
   status: SectionStatus;
   className?: string;
 }) {
-  if (status === "pending") {
-    return (
-      <span
-        aria-hidden
-        className={clsx(
-          "block h-2 w-2 rounded-full border border-[color:var(--ink-faint)]",
-          className,
-        )}
-      />
-    );
-  }
-  if (status === "running") {
-    return (
-      <span
-        role="status"
-        aria-label="running"
-        className={clsx("relative block h-2 w-2", className)}
-      >
-        <span className="absolute inset-0 rounded-full bg-[color:var(--vermillion)]" />
+  // Sprint Z.3 — crossfade between status icons. The `key={status}`
+  // forces React to remount the inner glyph when status changes, and
+  // the .dw-status-flip class kicks off a 200ms opacity+scale fade-in
+  // (defined in globals.css). Pending → running → done now feels like
+  // a progress beat instead of a hard icon swap. Reduced-motion users
+  // get the icon swap without animation.
+  return (
+    <span key={status} className={clsx("dw-status-flip", className)}>
+      {status === "pending" ? (
         <span
           aria-hidden
-          className="absolute -inset-[5px] rounded-full border border-[color:var(--vermillion)]/40"
-          style={{ animation: "ping 1800ms cubic-bezier(0,0,0.2,1) infinite" }}
+          className="block h-2 w-2 rounded-full border border-[color:var(--ink-faint)]"
         />
-      </span>
-    );
-  }
-  if (status === "done") {
-    return (
-      <svg
-        aria-label="done"
-        viewBox="0 0 14 14"
-        className={clsx("h-3.5 w-3.5 text-[color:var(--ink)]", className)}
-        fill="none"
-      >
-        <path
-          d="M2.5 7.5L5.5 10.5L11.5 3.5"
-          stroke="currentColor"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    );
-  }
-  return (
-    <svg
-      aria-label="error"
-      viewBox="0 0 14 14"
-      className={clsx("h-3 w-3 text-red-700", className)}
-      fill="none"
-    >
-      <path
-        d="M3 3L11 11M11 3L3 11"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      />
-    </svg>
+      ) : status === "running" ? (
+        <span
+          role="status"
+          aria-label="running"
+          className="relative block h-2 w-2"
+        >
+          <span className="absolute inset-0 rounded-full bg-[color:var(--vermillion)]" />
+          <span
+            aria-hidden
+            className="absolute -inset-[5px] rounded-full border border-[color:var(--vermillion)]/40"
+            style={{ animation: "ping 1800ms cubic-bezier(0,0,0.2,1) infinite" }}
+          />
+        </span>
+      ) : status === "done" ? (
+        <svg
+          aria-label="done"
+          viewBox="0 0 14 14"
+          className="h-3.5 w-3.5 text-[color:var(--ink)]"
+          fill="none"
+        >
+          <path
+            d="M2.5 7.5L5.5 10.5L11.5 3.5"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ) : (
+        <svg
+          aria-label="error"
+          viewBox="0 0 14 14"
+          className="h-3 w-3 text-red-700"
+          fill="none"
+        >
+          <path
+            d="M3 3L11 11M11 3L3 11"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      )}
+    </span>
   );
 }
 

@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import clsx from "clsx";
+
+import { useCardMotion } from "@/lib/motion";
 
 // ClarificationCard — Sprint L1.H2 gate UI.
 //
@@ -41,8 +43,12 @@ export function ClarificationCard({
     onSubmit(answers.map((a) => a.trim()));
   };
 
+  // Sprint Z.2 — mount entrance.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useCardMotion(rootRef);
+
   return (
-    <div className="mx-auto my-4 w-full max-w-2xl">
+    <div ref={rootRef} className="mx-auto my-4 w-full max-w-2xl">
       {/* Top vermillion bleed strip — press registration mark */}
       <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
 

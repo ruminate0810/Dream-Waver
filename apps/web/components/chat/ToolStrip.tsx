@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import clsx from "clsx";
+
+import { useHeightCollapse } from "@/lib/motion";
 import {
   Loader2,
   Check,
@@ -95,8 +97,16 @@ export function ToolStrip({ calls }: { calls: ToolCallEntry[] }) {
   if (!calls.length) return null;
   return (
     <ol className="mt-6 divide-y divide-[color:var(--rule)] border-t border-[color:var(--rule)]">
-      {calls.map((c) => (
-        <li key={c.id}>
+      {calls.map((c, i) => (
+        // Sprint Z.5 — new ToolCard fades + rises into the list.
+        // First few entries stagger (40ms apart) so a burst of
+        // critic→revise calls reads as a sequence not a slam.
+        // Late single arrivals (capped at 5 × 40ms) snap in alone.
+        <li
+          key={c.id}
+          className="animate-phase-in"
+          style={{ animationDelay: `${Math.min(i, 5) * 40}ms` }}
+        >
           <ToolCard call={c} />
         </li>
       ))}
@@ -110,6 +120,10 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
   const zh = ZH_LABEL[call.name];
   const category = categoryOf(call.name);
   const hasBody = Boolean(call.output || call.error || call.input);
+  // Sprint Z.5 — height collapse on body open/close. The body is
+  // always mounted so the height tween has something to measure;
+  // useHeightCollapse handles the open/close lifecycle.
+  const bodyRef = useHeightCollapse(open) as React.RefObject<HTMLDivElement | null>;
 
   return (
     <div
@@ -182,30 +196,40 @@ function ToolCard({ call }: { call: ToolCallEntry }) {
         )}
       </button>
 
-      {hasBody && open && (
-        <div className="mt-3 ml-13 max-h-64 overflow-y-auto border-l-2 border-[color:var(--rule)] pl-4">
-          {call.input && (
-            <div className="mb-3">
-              <p className="mb-1 font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-                Input
-              </p>
-              <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
-                {call.input}
-              </pre>
-            </div>
-          )}
-          {(call.output || call.error) && (
-            <div>
-              {call.input && (
+      {/* Sprint Z.5 — body always mounted, controlled by useHeightCollapse.
+          When `open` false the wrapper height is tweened to 0 + opacity 0;
+          when true it's tweened to scrollHeight + opacity 1. Keeps the
+          DOM stable so screen readers + GSAP measurements behave. */}
+      {hasBody && (
+        <div
+          ref={bodyRef}
+          className="ml-13 overflow-hidden border-l-2 border-[color:var(--rule)] pl-4"
+          style={{ height: 0, opacity: 0 }}
+        >
+          <div className="mt-3 max-h-64 overflow-y-auto">
+            {call.input && (
+              <div className="mb-3">
                 <p className="mb-1 font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-                  {call.error ? "Error" : "Output"}
+                  Input
                 </p>
-              )}
-              <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
-                {call.output || call.error}
-              </pre>
-            </div>
-          )}
+                <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
+                  {call.input}
+                </pre>
+              </div>
+            )}
+            {(call.output || call.error) && (
+              <div>
+                {call.input && (
+                  <p className="mb-1 font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+                    {call.error ? "Error" : "Output"}
+                  </p>
+                )}
+                <pre className="whitespace-pre-wrap break-words font-mono-jb text-[11px] leading-relaxed text-[color:var(--ink-soft)]">
+                  {call.output || call.error}
+                </pre>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

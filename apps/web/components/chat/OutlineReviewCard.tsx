@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Loader2, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
 import type { OutlineForReview, OutlineEditsPayload } from "./session";
+import { useCardMotion } from "@/lib/motion";
 
 // OutlineReviewCard — Sprint L1.H1 gate, Sprint S selection upgrade.
 //
@@ -182,8 +183,12 @@ export function OutlineReviewCard({
     (edits?.delete_indices?.length ?? 0) +
     (edits?.theme ? 1 : 0);
 
+  // Sprint Z.2 — mount entrance.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  useCardMotion(rootRef);
+
   return (
-    <div className="mx-auto my-4 w-full max-w-3xl">
+    <div ref={rootRef} className="mx-auto my-4 w-full max-w-3xl">
       {/* Top vermillion bleed strip */}
       <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
 

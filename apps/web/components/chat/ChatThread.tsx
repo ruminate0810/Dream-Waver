@@ -310,8 +310,14 @@ function ThinkingRow() {
 // thinking indicator so the user sees their next instruction lined up.
 // Cancel × removes it from the queue without sending.
 function PendingRow({ text, onCancel }: { text: string; onCancel: () => void }) {
+  // Sprint Z.6 — queue chip fades + rises in. Mounted only while
+  // session has a pending message, so animate-phase-in fires once
+  // per queue cycle. opacity-65 removed because the keyframe ends at
+  // opacity 1 (animation-fill-mode: both) and would override the
+  // parent's opacity — the mute is now carried by text colors only
+  // (text-[color:var(--ink)]/70 in the body).
   return (
-    <div className="space-y-1.5 opacity-65">
+    <div className="space-y-1.5 animate-phase-in">
       <div className="flex items-center gap-2">
         <span className="flex h-5 w-5 items-center justify-center rounded-full border border-dashed border-[color:var(--ink)]/40 text-[10px] font-medium text-[color:var(--ink-soft)]">
           你

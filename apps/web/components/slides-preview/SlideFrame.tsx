@@ -236,11 +236,20 @@ export function SlideFrame({
         // navigation/forms/popups/storage. Same-origin needed for the
         // postMessage payload to include trusted bbox numbers.
         sandbox="allow-scripts allow-same-origin"
-        className="absolute left-0 top-0 origin-top-left border-0"
+        // Sprint Z.4 — fade iframe in once it actually has content.
+        // Starts at opacity 0 so the "Composing ##" skeleton (above)
+        // is what the user sees while the iframe is fetching;
+        // crossfades to the rendered slide over var(--dur-frame-load).
+        // loadError keeps it hidden so the error fallback (below)
+        // takes the visual stage uncontested.
+        className="absolute left-0 top-0 origin-top-left border-0 transition-opacity"
         style={{
           width: 1920,
           height: 1080,
           transform: `scale(${scale})`,
+          opacity: loaded && !loadError ? 1 : 0,
+          transitionDuration: "var(--dur-frame-load)",
+          transitionTimingFunction: "var(--ease-entrance)",
         }}
       />
 

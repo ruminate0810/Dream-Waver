@@ -263,8 +263,19 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
         {Array.from({ length: slideCount }).map((_, i) => {
           const oneBased = i + 1;
           const isActive = activeSet.has(oneBased);
+          // Sprint Z.4 — staggered phase-in on mount. The first 6
+          // frames cascade in (40ms apart, total ~200ms) so the
+          // initial deck reveal reads as a printing-press sequence
+          // rather than a wall slamming into place. Late-arriving
+          // frames (slide_count growing from N → N+1 mid-edit) get
+          // 0 delay so they animate alone, immediately.
+          const staggerDelay = `${Math.min(i, 5) * 40}ms`;
           return (
-            <li key={oneBased} className="group/frame">
+            <li
+              key={oneBased}
+              className="group/frame animate-phase-in"
+              style={{ animationDelay: staggerDelay }}
+            >
               <NumberMarker oneBased={oneBased} active={isActive} />
               <SlideFrame
                 jobId={job.job_id}
