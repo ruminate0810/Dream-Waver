@@ -20,6 +20,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
 // slideJob is an in-memory record of one async generation. Production swaps
@@ -127,7 +128,17 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 	jobs[jobID] = job
 	jobsMu.Unlock()
 
-	go h.runSlideJob(job, in)
+	// Capture the workspace context BEFORE spawning the goroutine. The
+	// runSlideJob worker uses context.Background() (so it survives the
+	// HTTP request returning early), which means the request-scoped
+	// auth ctx values are NOT inherited. Without this lift, the agent
+	// runner sees tool.WorkspaceID(ctx) == uuid.Nil, the session
+	// persister's bootstrap silently skips, and the deck never lands
+	// in slide_jobs — symptom: refresh after orchestrator restart
+	// always shows DeckNotFound.
+	wsID := workspaceIDFromCtx(r.Context())
+
+	go h.runSlideJob(job, in, wsID)
 
 	writeJSON(w, http.StatusAccepted, createSlidesResponse{
 		JobID:     jobID,
@@ -142,10 +153,18 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 //
 // Either runner returns the same (*slides.Output, error) pair so the job
 // bookkeeping below has only one shape to handle.
-func (h *handlers) runSlideJob(job *slideJob, in slides.Input) {
+//
+// wsID is the workspace captured from the originating HTTP request — see
+// CreateSlides for why we propagate it explicitly (the goroutine uses
+// context.Background() and so loses the request's auth ctx values).
+// uuid.Nil is fine: the persister hookup no-ops for anonymous sessions.
+func (h *handlers) runSlideJob(job *slideJob, in slides.Input, wsID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
+	if wsID != uuid.Nil {
+		ctx = tool.WithWorkspaceID(ctx, wsID)
+	}
 
 	var (
 		out *slides.Output
@@ -222,8 +241,17 @@ func (h *handlers) GetSlides(w http.ResponseWriter, r *http.Request) {
 	job, ok := jobs[id]
 	jobsMu.RUnlock()
 	if !ok {
-		errorJSON(w, http.StatusNotFound, "job not found")
-		return
+		// Same X2b-2 hydration fallback PostSlideMessage uses (line ~304).
+		// Without this, the polling GET 404s after an orchestrator restart
+		// even though the deck row + Pending state are still in Postgres,
+		// and the FE shows DeckNotFound / freezes mid-wizard. Symmetry
+		// with PostSlideMessage is the fix.
+		if hydrated := h.hydrateSlideJob(r.Context(), id); hydrated != nil {
+			job = hydrated
+		} else {
+			errorJSON(w, http.StatusNotFound, "job not found")
+			return
+		}
 	}
 	v := slideJobView{
 		JobID:      job.ID,
@@ -552,7 +580,12 @@ func (h *handlers) slidePagePNG(w http.ResponseWriter, r *http.Request, nStr str
 	jobsMu.RLock()
 	job, ok := jobs[id]
 	jobsMu.RUnlock()
-	if !ok || job.PptxPath == "" {
+	if !ok {
+		if hydrated := h.hydrateSlideJob(r.Context(), id); hydrated != nil {
+			job = hydrated
+		}
+	}
+	if job == nil || job.PptxPath == "" {
 		errorJSON(w, http.StatusNotFound, "job not found or not finished")
 		return
 	}
@@ -912,7 +945,12 @@ func (h *handlers) DownloadSlides(w http.ResponseWriter, r *http.Request) {
 	jobsMu.RLock()
 	job, ok := jobs[id]
 	jobsMu.RUnlock()
-	if !ok || job.PptxPath == "" {
+	if !ok {
+		if hydrated := h.hydrateSlideJob(r.Context(), id); hydrated != nil {
+			job = hydrated
+		}
+	}
+	if job == nil || job.PptxPath == "" {
 		errorJSON(w, http.StatusNotFound, "pptx not ready")
 		return
 	}
