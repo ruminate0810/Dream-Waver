@@ -35,7 +35,7 @@ __THEME_STYLE__
 
 </head>
 <body class="theme-{{.Theme}} layout-{{.Layout}}">
-<section class="slide" data-folio="{{.Folio}}" data-folio-roman="{{.FolioRoman}}">
+<section class="slide" data-folio="{{.Folio}}" data-folio-roman="{{.FolioRoman}}"{{slideStyle .Data.Style}}>
 
 {{if eq .Layout "title"}}
   {{if .Data.Image}}

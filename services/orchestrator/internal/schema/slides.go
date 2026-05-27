@@ -262,6 +262,37 @@ type SlideData struct {
 	// `var(--bg/--fg/--accent/--font-*)` CSS variables so theme +
 	// brand overrides keep working.
 	HTML string `json:"html,omitempty"`
+
+	// Sprint AE.7 — per-slide style overrides. Nil = inherit theme
+	// defaults (the normal case). When set, the renderer emits inline
+	// CSS variables on the slide's root div so per-slide typography
+	// can deviate from theme without forking the theme file.
+	//
+	// Scales are multipliers around 1.0 (= theme default). Allowed
+	// range 0.7..1.5 (validated on the tool side). Density is a
+	// shorthand that simultaneously bumps padding + line-height for a
+	// roomier or tighter feel without per-element tuning.
+	Style *SlideStyle `json:"style,omitempty"`
+}
+
+// SlideStyle is the per-slide typography override. Each field is
+// optional; zero values keep the theme default. Implemented as a
+// pointer on SlideData so a slide with no override doesn't carry
+// any payload (and `omitempty` keeps the JSON tight).
+type SlideStyle struct {
+	// TitleScale multiplies the title font-size around 1.0. Range
+	// 0.7..1.5. 1.2 = "make the title 20% bigger". Renderer emits
+	// --slide-title-scale CSS variable; base.css title sizes use
+	// `calc(... * var(--slide-title-scale, 1))`.
+	TitleScale float64 `json:"title_scale,omitempty"`
+	// BodyScale multiplies body/paragraph font-size. Same range.
+	BodyScale float64 `json:"body_scale,omitempty"`
+	// BulletScale multiplies bullet/list font-size. Same range.
+	BulletScale float64 `json:"bullet_scale,omitempty"`
+	// Density is a shorthand for padding + line-height. One of
+	// "compact" (tighter, ~80%), "normal" (theme default), or
+	// "spacious" (looser, ~125%). Empty string means "no change".
+	Density string `json:"density,omitempty"`
 }
 
 // TableRow is one data row inside a comparison-table slide. Cells

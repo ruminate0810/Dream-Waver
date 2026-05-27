@@ -518,6 +518,25 @@ func (s *SessionState) SplitSlide(index, splitAfter int) error {
 	return nil
 }
 
+// SetSlideStyle replaces (or clears, when style==nil) the per-slide
+// typography override on slide[index] (0-based). Used by the
+// style_slide edit tool for "字号太小 / 调大第 3 页的标题" requests.
+func (s *SessionState) SetSlideStyle(index int, style *schema.SlideStyle) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.Deck == nil {
+		return fmt.Errorf("no deck loaded")
+	}
+	if index < 0 || index >= len(s.Deck.Slides) {
+		return fmt.Errorf("slide index %d out of range (have %d slides)", index, len(s.Deck.Slides))
+	}
+	s.Deck.Slides[index].Data.Style = style
+	if s.Content != nil && index < len(s.Content.Slides) {
+		s.Content.Slides[index].Data.Style = style
+	}
+	return nil
+}
+
 // looksChinese returns true if more than half the runes in s are Han.
 // Used for picking the "cont." vs "续" suffix on split slides.
 func looksChinese(s string) bool {

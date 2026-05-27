@@ -580,6 +580,58 @@ var templateFuncs = template.FuncMap{
 	"safehtml": func(raw string) template.HTML {
 		return template.HTML(htmlSlidePolicy.Sanitize(raw))
 	},
+	// Sprint AE.7 — emit the inline CSS variable bag for per-slide
+	// typography overrides. Returns a `style="..."` attribute fragment
+	// (including the leading space) when any override is set; returns
+	// "" otherwise so templates don't get stray empty attributes.
+	// Template usage: `<section class="slide"{{slideStyle .Data.Style}} …>`
+	"slideStyle": func(s *schema.SlideStyle) template.HTMLAttr {
+		if s == nil {
+			return ""
+		}
+		parts := []string{}
+		if s.TitleScale > 0 {
+			parts = append(parts, fmt.Sprintf("--slide-title-scale: %g", clampScale(s.TitleScale)))
+		}
+		if s.BodyScale > 0 {
+			parts = append(parts, fmt.Sprintf("--slide-body-scale: %g", clampScale(s.BodyScale)))
+		}
+		if s.BulletScale > 0 {
+			parts = append(parts, fmt.Sprintf("--slide-bullet-scale: %g", clampScale(s.BulletScale)))
+		}
+		switch s.Density {
+		case "compact":
+			parts = append(parts,
+				"--slide-density-pad: 0.78",
+				"--slide-density-leading: 0.92",
+			)
+		case "spacious":
+			parts = append(parts,
+				"--slide-density-pad: 1.28",
+				"--slide-density-leading: 1.12",
+			)
+		}
+		if len(parts) == 0 {
+			return ""
+		}
+		// Leading space + style="..." so the template can splice it inline
+		// straight after the existing attributes on <section>.
+		return template.HTMLAttr(` style="` + strings.Join(parts, "; ") + `"`)
+	},
+}
+
+// clampScale enforces the documented 0.7..1.5 range on per-slide
+// scale multipliers. Values outside the range are silently clamped to
+// the nearest valid bound — the tool layer rejects bad inputs but
+// this is defence-in-depth in case a stored deck has stale values.
+func clampScale(x float64) float64 {
+	if x < 0.7 {
+		return 0.7
+	}
+	if x > 1.5 {
+		return 1.5
+	}
+	return x
 }
 
 // htmlSlidePolicy is the bluemonday policy applied to LLM-authored

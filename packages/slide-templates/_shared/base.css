@@ -47,22 +47,32 @@ body.layout-quote    .slide { justify-content: center; }
  * slide. Sizes derived from auditing all 5 legacy templates — body
  * titles cluster around 48px, section ~128px, opening title ~140-180px.
  * Themes override individually where they want bigger or bolder. */
-.title      { font-size: 48px; font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
-.subtitle   { margin-top: 32px; font-size: 36px; color: var(--fg-muted); line-height: 1.35; max-width: 1100px; }
+/* Per-slide typography overrides (Sprint AE.7).
+ * The style_slide tool emits inline CSS variables on .slide which
+ * propagate via inheritance into these selectors:
+ *   --slide-title-scale   default 1, range 0.7..1.5
+ *   --slide-body-scale    default 1
+ *   --slide-bullet-scale  default 1
+ *   --slide-density-pad   default 1   (multiplies padding / line-height)
+ *   --slide-density-leading default 1 (multiplies line-height only)
+ * Themes that re-define title/body/bullet sizes should also wrap
+ * those sizes in calc(... * var(...)) — the base values here do. */
+.title      { font-size: calc(48px * var(--slide-title-scale, 1)); font-weight: 700; line-height: calc(1.1 * var(--slide-density-leading, 1)); letter-spacing: -0.02em; margin: 0; }
+.subtitle   { margin-top: 32px; font-size: calc(36px * var(--slide-title-scale, 1)); color: var(--fg-muted); line-height: calc(1.35 * var(--slide-density-leading, 1)); max-width: 1100px; }
 .kicker     { font-size: 16px; text-transform: uppercase; letter-spacing: 0.4em; color: var(--accent); font-weight: 600; margin-bottom: 40px; }
-.body-text  { font-size: 30px; line-height: 1.5; color: var(--fg-muted); max-width: 1400px; margin-top: 32px; }
+.body-text  { font-size: calc(30px * var(--slide-body-scale, 1)); line-height: calc(1.5 * var(--slide-density-leading, 1)); color: var(--fg-muted); max-width: 1400px; margin-top: 32px; }
 
 /* ─── Title / section / closing blocks ───────────────────────────── */
 
 .title-block, .section-block, .closing-block { display: flex; flex-direction: column; }
-.title-block .title    { font-size: 144px; line-height: 1.02; }
-.section-block .title  { font-size: 112px; line-height: 1.05; }
-.closing-block .title  { font-size: 112px; line-height: 1.05; }
+.title-block .title    { font-size: calc(144px * var(--slide-title-scale, 1)); line-height: 1.02; }
+.section-block .title  { font-size: calc(112px * var(--slide-title-scale, 1)); line-height: 1.05; }
+.closing-block .title  { font-size: calc(112px * var(--slide-title-scale, 1)); line-height: 1.05; }
 
 /* ─── Bullets ────────────────────────────────────────────────────── */
 
-.bullets    { display: flex; flex-direction: column; gap: 32px; margin-top: 48px; }
-.bullet     { display: flex; gap: 24px; align-items: flex-start; font-size: 34px; line-height: 1.5; }
+.bullets    { display: flex; flex-direction: column; gap: calc(32px * var(--slide-density-pad, 1)); margin-top: 48px; }
+.bullet     { display: flex; gap: 24px; align-items: flex-start; font-size: calc(34px * var(--slide-bullet-scale, 1)); line-height: calc(1.5 * var(--slide-density-leading, 1)); }
 .bullet::before {
   content: "";
   width: var(--bullet-size, 12px);
@@ -75,7 +85,7 @@ body.layout-quote    .slide { justify-content: center; }
 
 /* ─── Two-column ─────────────────────────────────────────────────── */
 
-.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; margin-top: 48px; font-size: 30px; line-height: 1.55; }
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 96px; margin-top: 48px; font-size: calc(30px * var(--slide-body-scale, 1)); line-height: calc(1.55 * var(--slide-density-leading, 1)); }
 .two-column .body  { color: var(--fg); }
 .two-column .col.bullets { margin-top: 0; }
 

@@ -213,6 +213,26 @@ Available edit tools:
                         补到 P5", "search recent ARR for Stripe".
                         DO NOT use for opinion / styling / layout
                         edits — those are local.
+  - style_slide       — per-slide typography override (font scale +
+                        density preset). NO LLM call. Args: slide_index
+                        + any of title_scale / body_scale / bullet_scale
+                        (0.7-1.5) + density ("compact"|"normal"|
+                        "spacious"). For "字号太小 / 标题大一点 /
+                        这页太挤". This is the RIGHT answer to font-size
+                        requests — DO NOT fall back to change_theme any
+                        more (Sprint AE.7).
+  - rewrite_for_density — BULK: rewrite every sparse bullets/content
+                        slide following content.md density rules. Auto-
+                        detects targets (≤ 3 bullets or body < 40 chars)
+                        OR takes explicit slide_indices. Concurrent (3×).
+                        For "每页太空 / 排版不饱满 / 把所有页填满".
+                        ONE tool call replaces N regenerate_slide calls.
+  - diversify_layouts — BULK: find consecutive bullets/content runs
+                        (3+ in a row) and rewrite each into a more
+                        specialised layout (data / quote / comparison /
+                        multi-metric / pull-quote / icon-grid). Concurrent
+                        (3×). For "排版太模板化 / 每页都一样".
+                        ONE tool call replaces N regenerate_slide calls.
   - terminate         — call this when the user's request is satisfied.
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
@@ -232,6 +252,12 @@ Hard rules — pick the SMALLEST tool that satisfies the request:
   - "把第 3 和第 4 页合成一页 / merge slide 3 and 4" → merge_slides
   - "把第 3 页拆成两页 / split slide 4" → split_slide
   - "查一下最新的 X 数据 / search the latest Y" → web_search
+  - "把第 3 页字号调大 / 标题大一点 / make slide 3's title bigger"
+    → style_slide (title_scale=1.2 or similar; slide_index=N)
+  - "这页太挤 / spacing 太密 / 排太紧" → style_slide density=spacious
+  - "这页太空 / 排得很散 / 空白太多" → style_slide density=compact
+  - "整体太空 / 每页内容少 / 把所有页填满" → rewrite_for_density
+  - "排版太模板化 / 每页长得都一样" → diversify_layouts
 
 Agency rule — ACT, DON'T ASK (Sprint AD):
   You are an assistant that DOES things. The user said something —
@@ -270,25 +296,23 @@ Vague aesthetic requests (HARD — read this carefully):
         isn't right, the user will tell you in the next message.
   - "给这页加配图 / 换张图 / 这张图不好看" → generate_image
     (Sprint H ships nano-banana + Unsplash via a single tool.)
-  - "标题字号大一点 / 文字太小了 / 字号大一点 / 排版字小" → 不要等待
-    用户确认，直接 change_theme 到一个字号更大的主题：
-       • 当前主题是 minimalist / academic / zen / corporate
-         (字号偏小) → 换成 pitch-deck (字号最大) 或 editorial.
-       • 当前主题已经是 pitch-deck → 不再换主题，回复:
-         "已经在字号最大的 pitch-deck 主题上；后续 sprint 会加
-         style_slide 工具支持单页字号微调。"
-       • 如果用户明确说了 "只改第 N 页字号", 才走 regenerate_slide
-         让 worker LLM 加 emphasis ("title 字号 hero 化").
-    永远不要只回答 "目前不支持" 然后停在那里 — 那是 Sprint AC 前的
-    被动行为, 现在被 systemPromptEdit 替换了.
-  - "排版太模板化 / 每页长得都一样" → analyze_deck, 然后逐页 regenerate_slide
-    那些 layout == bullets / content 的页, 指令明确指定 "use a more
-    specialised layout (try data / pull-quote / comparison / bento-grid)".
-    不要问 "想换成哪种", 自己挑.
-  - "每页太空 / 排版不饱满 / 内容少" → 逐页 regenerate_slide, 指令明确
-    要求 "fill the canvas with 4-5 substantive bullets each 12-18 words,
-    or a 50-90 word body paragraph plus 2-3 supporting bullets".
-    每页都按 content.md 的密度规则重写.
+  - "标题字号大一点 / 文字太小了 / 字号大一点 / 排版字小" → Sprint AE.7
+    上线后, 用 style_slide 直接调整对应页的字号:
+       • 单页请求 "把第 N 页字号调大" → style_slide
+         slide_index=N, title_scale=1.2 (或 body_scale, bullet_scale).
+       • 整 deck 请求 "全 deck 字号大一点" → 还是逐页 style_slide
+         (range 0.7-1.5, 推荐 1.2). 如果用户明确想要整 deck 改主题
+         的视觉冲击, 也可用 change_theme 配合.
+       • "这页太挤" → style_slide density=spacious
+       • "这页太空" → style_slide density=compact (or rewrite_for_density
+         for content-level fix instead of typography-level)
+    永远不要回答 "目前不支持" — style_slide 就是干这个的.
+  - "排版太模板化 / 每页长得都一样" → diversify_layouts (Sprint AE.5)
+    单 tool call, 自动找连续 3+ bullets/content 页并发改成多样化 layout.
+    不需要 analyze_deck + 多次 regenerate_slide.
+  - "每页太空 / 排版不饱满 / 内容少" → rewrite_for_density (Sprint AE.4)
+    单 tool call, 自动找 bullets ≤3 或 body <40 字的页, 并发按密度
+    规则重写. 一次性解决整个 deck.
 
 Reflection tools (Sprint O — call as described below, NOT optional):
   - analyze_deck      — read-only: returns the deck's full shape (title,
@@ -911,6 +935,10 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.ConvertLayout{State: state, Renderer: rendererAdapter}, // AE.1: swap layout, no LLM
 		&tools.MergeSlides{State: state, Renderer: rendererAdapter},   // AE.2a: fold N+1 into N
 		&tools.SplitSlide{State: state, Renderer: rendererAdapter},    // AE.2b: cut N into two
+		&tools.StyleSlide{State: state, Renderer: rendererAdapter},    // AE.7: per-slide font/density override, no LLM
+		// Sprint AE bulk LLM-driven — rewrite many slides in one tool call.
+		&tools.RewriteForDensity{State: state, Router: r.Router, Renderer: rendererAdapter}, // AE.4
+		&tools.DiversifyLayouts{State: state, Router: r.Router, Renderer: rendererAdapter},  // AE.5
 		// Reflection (Sprint O.3) — call after content-changing tool to
 		// verify edit landed and nothing regressed.
 		&tools.CriticDeck{State: state, Router: r.Router},

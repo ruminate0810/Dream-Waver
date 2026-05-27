@@ -40,6 +40,11 @@ type SessionAccessor interface {
 	// [splitAfter] (1-based count of bullets to keep on the first half).
 	// Bullets/content layouts only.
 	SplitSlide(index, splitAfter int) error
+	// SetSlideStyle sets (or clears via nil) the per-slide typography
+	// override on slide[index]. The renderer emits inline CSS vars on
+	// the slide root so per-slide title/body/bullet sizes can deviate
+	// from theme defaults.
+	SetSlideStyle(index int, style *schema.SlideStyle) error
 	MarkDirty(indices ...int)
 
 	// SetTheme rewrites Deck.Theme and every slide.Template to the new
