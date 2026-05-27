@@ -25,7 +25,6 @@ import { parseTopic } from "@/lib/parseHints";
 import { rememberDeck } from "@/lib/recentDecks";
 import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
 import {
-  LAYOUT_EXAMPLES,
   TEMPLATES,
   findTemplate,
   type Template,
@@ -34,29 +33,26 @@ import {
   FeaturedTemplateCard,
   TemplateCard,
 } from "@/components/slides/TemplateCard";
-import { LayoutExampleCard } from "@/components/slides/LayoutExampleCard";
 import { TemplateCreator } from "@/components/slides/TemplateCreator";
 
 gsap.registerPlugin(useGSAP);
 
-// /slides/new — Sprint T1: galleries restored on top of Sprint R's
-// chat-first hero.
+// /slides/new — Sprint AB layout (Manus-style 2-section).
 //
 // Layout:
-//   § 01 Brief        — textarea + Begin (Sprint R kept)
-//   § 02 Style Atlas  — 11-theme picker (featured card + grid) [Sprint T1]
-//   § 03 Composition  — 9 image-led / IA layout examples (read-only) [T1]
+//   § 01 Brief         — textarea + Begin (kept)
+//   § 02 我的模板       — saved templates grid (hoisted from former T4 tab)
+//   § 03 主题风格        — collapsible disclosure ("AI 帮你挑，想手动调点这里")
+//                          contains the 11-theme picker. Default closed.
 //
-// Pipeline strip (§ between Brief and Style) is NOT restored — agent
-// flow is already self-explanatory via wizard + outline review gate.
+// Removed in Sprint AB:
+//   - § 03 Composition (9 layout schematics) — was read-only education;
+//     layout is agent-decided, so the gallery was inert.
+//   - 探索 / 我的模板 tab bar — both got their own sections instead.
 //
-// Picking a template sets `style` state. Submit then passes
-// `force_theme: style` to createSlides so the planner honours the
-// user's pick. Default is "minimalist" so first-load Begin has a
-// known theme without any clicking required.
-//
-// Sprint T4 will add tab bar (探索 / 我的模板) on § 02 — placeholder
-// state goes in here so Sprint T1 visually matches the eventual UI.
+// Picking a theme still sets `style` state; submit passes
+// `force_theme: style` to createSlides. Default "minimalist" so
+// first-load Begin has a known theme without any clicking required.
 
 // Starter prompts — six worked examples that double as a topology
 // hint (pitch / technical / retro / lesson / launch / photo-essay).
@@ -69,8 +65,6 @@ const STARTER_PROMPTS = [
   "8 页摄影集风格 deck：京都樱花季的一周，photo-essay + split-image 配图",
 ] as const;
 
-type StyleTab = "explore" | "mine";
-
 function NewSlidesChat() {
   const router = useRouter();
   const search = useSearchParams();
@@ -80,8 +74,10 @@ function NewSlidesChat() {
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
-  // Sprint T4 — Style Atlas tab + saved-templates state.
-  const [styleTab, setStyleTab] = useState<StyleTab>("explore");
+  // Sprint AB — Style Atlas is now a collapsible disclosure (default
+  // closed). The user can flip it open to manually pick a theme; AI
+  // picks one for them if they leave it closed.
+  const [themeExpanded, setThemeExpanded] = useState(false);
   const [myTemplates, setMyTemplates] = useState<UserTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -283,9 +279,11 @@ function NewSlidesChat() {
     }
   }
   function handleTemplateCreated(created: UserTemplate) {
+    // Sprint AB — 我的模板 is now its own section (no tab to switch
+    // to). The new template appears in-place at the top of the grid;
+    // applying it sets the brand + theme for submit.
     setMyTemplates((prev) => [created, ...prev]);
     setShowCreator(false);
-    setStyleTab("mine");
     applyUserTemplate(created);
   }
 
@@ -467,53 +465,100 @@ function NewSlidesChat() {
           </div>
         </section>
 
-        {/* ── § 02 — Style Atlas (theme picker) ───────────────────── */}
-        <section className="mb-24">
+        {/* ── § 02 — 我的模板 (saved user templates) ────────────────
+            Sprint AB — hoisted out of the former Style Atlas tab bar
+            into its own top-level section, mirroring Manus's "我的技能"
+            block. First slot is always "+ 新建模板" (dashed card). */}
+        <section className="mb-20">
           <div className="dw-new-template-head mb-6 flex items-baseline gap-4">
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
               § 02
             </span>
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-              Style Atlas · 选风格
+              我的模板
             </span>
             <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
             <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
-              {styleTab === "explore" ? `${TEMPLATES.length} 个` : `${myTemplates.length} 个`}
+              {templatesLoading
+                ? "loading…"
+                : myTemplates.length > 0
+                ? `${myTemplates.length} saved`
+                : "0 saved"}
             </span>
           </div>
 
-          {/* Sprint T4 — tab bar (探索 / 我的模板). Editorial-style
-              underline indicator + caps mono labels so it doesn't
-              feel like a generic SaaS tab strip. */}
-          <div className="mb-6 flex items-baseline gap-6 border-b border-[color:var(--rule)]">
-            <StyleTabButton
-              active={styleTab === "explore"}
-              onClick={() => setStyleTab("explore")}
-              label="探索"
-              hint={`${TEMPLATES.length} themes`}
-            />
-            <StyleTabButton
-              active={styleTab === "mine"}
-              onClick={() => setStyleTab("mine")}
-              label="我的模板"
-              hint={
-                templatesLoading
-                  ? "loading…"
-                  : myTemplates.length > 0
-                  ? `${myTemplates.length} saved`
-                  : "empty"
-              }
-            />
+          <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+            保存你常用的「主题 + 品牌色 + 字体」组合，下次生成 deck 一键
+            套用。点一个 → Begin 时按这套设定写所有幻灯片。
+          </p>
+
+          <MyTemplatesGrid
+            templates={myTemplates}
+            loading={templatesLoading}
+            error={templatesError}
+            selectedID={selectedMyTemplate?.id ?? null}
+            onPick={applyUserTemplate}
+            onDelete={handleDeleteTemplate}
+            onCreate={() => setShowCreator(true)}
+          />
+        </section>
+
+        {/* ── § 03 — 主题风格 (Style Atlas, collapsed by default) ──
+            Sprint AB — was the always-visible § 02 in Sprint T1.
+            Now hidden behind a disclosure so the main flow is
+            "type → begin"; advanced users who want manual theme
+            control can expand. AI's default theme pick is honoured
+            when this stays closed (force_theme=minimalist fallback). */}
+        <section className="mb-32">
+          <div className="dw-new-template-head mb-6 flex items-baseline gap-4">
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+              § 03
+            </span>
+            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+              主题风格 · 高级
+            </span>
+            <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
+            <button
+              type="button"
+              onClick={() => setThemeExpanded((v) => !v)}
+              className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+            >
+              <ChevronDown
+                size={11}
+                strokeWidth={1.6}
+                className={clsx(
+                  "translate-y-[1px] transition-transform",
+                  themeExpanded && "rotate-180",
+                )}
+              />
+              <span>{themeExpanded ? "收起" : "展开 · 手动挑"}</span>
+            </button>
           </div>
 
-          {styleTab === "explore" ? (
-            <>
-              <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
-                点任一卡片切换风格。当前选中
+          <p className="mb-6 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+            {themeExpanded ? (
+              <>
+                当前选中
                 <span className="not-italic text-[color:var(--ink)]"> {selectedTemplate.label} </span>
                 —— Begin 时 agent 按这套色板和字体写所有幻灯片。
-              </p>
+              </>
+            ) : (
+              <>
+                AI 会根据你的 brief 自动挑一个合适的主题。想自己挑？点
+                <button
+                  type="button"
+                  onClick={() => setThemeExpanded(true)}
+                  className="not-italic underline decoration-[color:var(--vermillion)]/40 underline-offset-2 transition-colors hover:text-[color:var(--vermillion)]"
+                >
+                  右上角展开
+                </button>
+                {" "}看全部 {TEMPLATES.length} 个。
+              </>
+            )}
+          </p>
 
+          {themeExpanded ? (
+            <>
               <FeaturedTemplateCard template={selectedTemplate} />
 
               <div className="dw-new-template-grid mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -530,46 +575,7 @@ function NewSlidesChat() {
                 ))}
               </div>
             </>
-          ) : (
-            <MyTemplatesGrid
-              templates={myTemplates}
-              loading={templatesLoading}
-              error={templatesError}
-              selectedID={selectedMyTemplate?.id ?? null}
-              onPick={applyUserTemplate}
-              onDelete={handleDeleteTemplate}
-              onCreate={() => setShowCreator(true)}
-            />
-          )}
-        </section>
-
-        {/* ── § 03 — Composition (image-led / IA layouts, read-only) */}
-        <section className="mb-32">
-          <div className="dw-new-layout-head mb-8 flex items-baseline gap-4">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
-              § 03
-            </span>
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-              Composition · 图像化版式
-            </span>
-            <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
-              AI 配图 · {LAYOUT_EXAMPLES.length} 种
-            </span>
-          </div>
-
-          <p className="mb-10 max-w-2xl font-display text-[17px] italic leading-relaxed text-[color:var(--ink-soft)] md:text-[19px]">
-            主题涉及摄影、旅行、时尚、美食、产品等视觉内容时，planner
-            自动挑下面这几种构图，
-            <span className="not-italic text-[color:var(--ink)]"> nano-banana </span>
-            直接生成贴合主题的 16:9 配图。你不用挑 —— 选好风格就放手。
-          </p>
-
-          <div className="dw-new-layout-grid grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {LAYOUT_EXAMPLES.map((l, i) => (
-              <LayoutExampleCard key={l.key} example={l} index={i} />
-            ))}
-          </div>
+          ) : null}
         </section>
       </div>
 
@@ -588,51 +594,8 @@ function NewSlidesChat() {
   );
 }
 
-// ─── Style Atlas tab bar pieces ───────────────────────────────────
-
-function StyleTabButton({
-  active,
-  onClick,
-  label,
-  hint,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  hint: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={clsx(
-        "group relative -mb-px border-b-2 pb-3 pt-1 transition-colors",
-        active
-          ? "border-[color:var(--vermillion)]"
-          : "border-transparent hover:border-[color:var(--ink)]/30",
-      )}
-    >
-      <span className="flex items-baseline gap-2">
-        <span
-          className={clsx(
-            "font-display text-[17px] transition-colors",
-            active ? "text-[color:var(--ink)]" : "text-[color:var(--ink-soft)] group-hover:text-[color:var(--ink)]",
-          )}
-        >
-          {label}
-        </span>
-        <span
-          className={clsx(
-            "font-mono-jb text-[9px] uppercase tracking-[0.22em] transition-colors",
-            active ? "text-[color:var(--vermillion)]" : "text-[color:var(--ink-faint)]",
-          )}
-        >
-          {hint}
-        </span>
-      </span>
-    </button>
-  );
-}
+// (StyleTabButton removed in Sprint AB — 我的模板 is its own section
+// now; no tabs needed.)
 
 function MyTemplatesGrid({
   templates,
