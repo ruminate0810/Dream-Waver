@@ -195,18 +195,32 @@ export function SlideFrame({
         src={src}
         onLoad={(e) => {
           setLoaded(true);
-          // Sprint U2.2 — chi returns the literal body "404 page not
-          // found\n" with status 404 for missing slides. The iframe's
-          // onLoad fires anyway so we have to sniff the body to detect.
-          // (Browsers won't fire onerror for cross-status HTTP responses,
-          // only for transport failures.)
+          // Sprint U2.2 — sniff the body text to distinguish a real
+          // slide render from various error responses chi / our own
+          // handler can return as text-or-JSON instead of HTML.
+          // Browsers don't fire onerror for HTTP-status failures
+          // (only transport failures), so body inspection is the
+          // only path.
+          //
+          // Known error bodies:
+          //   "404 page not found"             — chi default 404
+          //   `{"error":"job not found", ...}` — handler errorJSON
+          //   `{"error":"deck not ready", ...}`— Phase 3 not finished
+          //   `{"error":"slide index out of range", ...}`
+          //   `{"error":"live preview not configured", ...}`
+          // The shape detector: any body that's pure text (no
+          // <html>/<head>/<body> structure beyond chi's empty doc)
+          // AND contains either "404 page not found" or starts with
+          // `{"error":` is treated as a load failure.
           try {
             const doc = (e.target as HTMLIFrameElement).contentDocument;
-            const text = doc?.body?.textContent ?? "";
-            if (
-              text.trim().startsWith("404 page not found") ||
-              text.trim().startsWith("job not found")
-            ) {
+            const text = (doc?.body?.textContent ?? "").trim();
+            const isChi404 = text.startsWith("404 page not found");
+            const isErrJSON =
+              text.startsWith("{") &&
+              text.includes('"ok":false') &&
+              text.includes('"error":');
+            if (isChi404 || isErrJSON) {
               setLoadError(true);
             } else {
               setLoadError(false);

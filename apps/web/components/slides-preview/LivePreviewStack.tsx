@@ -21,7 +21,22 @@ import { EditPopover, type EditSubmit, type EditTarget } from "./EditPopover";
 
 export function LivePreviewStack({ job }: { job: SlideJob }) {
   const slideCount = job.slide_count ?? 0;
-  const ready = job.status !== "running" || slideCount > 0;
+  // Only mount iframes when the backend will actually have slide HTML
+  // to serve. Sprint U follow-up — previously this was
+  //   `status !== "running" || slideCount > 0`
+  // which evaluated TRUE during awaiting_outline_approval (status is
+  // not "running") and made 8 iframes try to GET /page/N.html before
+  // Phase 3 had built any deck. Backend then returned the JSON
+  // envelope `{"error":"deck not ready","ok":false}` and the iframes
+  // displayed it as raw text. Mount conditions now:
+  //   - finished           → all pages exist
+  //   - running + count>0  → Phase 3 in progress; pages are arriving
+  // Everything else (awaiting_wizard / awaiting_clarification /
+  // awaiting_outline_approval / error) defers mount; the gate cards
+  // on the left column are the only thing the user should see.
+  const ready =
+    job.status === "finished" ||
+    (job.status === "running" && slideCount > 0);
 
   // Per-slide version counter. Each bump force-remounts that one iframe,
   // re-fetching the live HTML. We start everyone at 1 so the URL has a
