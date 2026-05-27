@@ -21,6 +21,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
 )
 
@@ -138,6 +139,39 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 	// in slide_jobs — symptom: refresh after orchestrator restart
 	// always shows DeckNotFound.
 	wsID := workspaceIDFromCtx(r.Context())
+
+	// Sprint U follow-up — INSERT the initial slide_jobs row NOW so
+	// the deck survives an orchestrator restart from the very first
+	// moment. Previously the row only got written by SaveCheckpoint's
+	// UPDATE-only path, which silently no-ops when no row exists. A
+	// crash mid-Phase-1 → restart → poll GET /slides/{id} → 404 →
+	// DeckNotFound forever. With this Put, the row exists from the
+	// start; subsequent SaveCheckpoint / UpdateStatus UPDATE it in
+	// place. Anonymous requests (wsID == Nil) still skip — there's no
+	// workspace to scope the row to and slide_jobs.workspace_id is
+	// NOT NULL.
+	if wsID != uuid.Nil && h.deps.Store != nil && h.deps.Store.SlideJobs != nil {
+		ctxPut, cancelPut := context.WithTimeout(context.Background(), 5*time.Second)
+		jobUUID, jErr := uuid.Parse(jobID)
+		sessUUID, sErr := uuid.Parse(sessionID)
+		if jErr == nil && sErr == nil {
+			inputJSON, _ := json.Marshal(in)
+			row := &store.SlideJob{
+				ID:          jobUUID,
+				WorkspaceID: wsID,
+				SessionID:   sessUUID,
+				Status:      job.Status,
+				Mode:        job.Mode,
+				Input:       inputJSON,
+				StartedAt:   job.StartedAt,
+			}
+			if err := h.deps.Store.SlideJobs.Put(ctxPut, row); err != nil {
+				slog.WarnContext(r.Context(), "initial slide_jobs.Put failed; deck will not survive restart",
+					"job", jobID, "workspace", wsID, "err", err)
+			}
+		}
+		cancelPut()
+	}
 
 	go h.runSlideJob(job, in, wsID)
 
