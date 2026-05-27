@@ -710,7 +710,7 @@ func (h *handlers) slidePageHTML(w http.ResponseWriter, r *http.Request, nStr st
 		errorJSON(w, http.StatusNotFound, "slide index out of range")
 		return
 	}
-	html, err := h.deps.Renderer.RenderSlideHTML(deck.Slides[n-1], deck.Theme)
+	html, err := h.deps.Renderer.RenderSlideHTML(deck.Slides[n-1], deck.Theme, n)
 	if err != nil {
 		errorJSON(w, http.StatusInternalServerError, "render: "+err.Error())
 		return

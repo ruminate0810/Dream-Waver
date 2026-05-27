@@ -33,13 +33,26 @@
  * the layout HTML stays neutral. */
 
 .theme-academic .slide::before {
-  content: "DREAM·WAVER PRESS";
+  /* Sprint V.4 micro-anchor: bake the § N page mark into the existing
+   * editorial corner label so the deck reads as a numbered journal
+   * (DREAM·WAVER PRESS · § 3) without burning the bottom-left slot
+   * that ::before / ::after both occupy. attr() reads from
+   * data-folio on .slide — supported in every browser for `content`. */
+  content: "DREAM·WAVER PRESS · § " attr(data-folio);
   position: absolute;
   top: 60px; left: 160px;
   font-family: var(--font-mono);
   font-size: 18px;
   letter-spacing: 0.18em;
   color: var(--fg-faint);
+}
+
+/* Sprint V.4 micro-anchor: top hairline separator across the page,
+ * above the corner label — gives every slide a "head rule" the way
+ * academic journals print one above each article header. Hairline
+ * only — anything bolder would compete with the body-title underline. */
+.theme-academic .slide {
+  border-top: 1px solid #D4D4D8;
 }
 .theme-academic .slide::after {
   content: "— " counter(slide-year);

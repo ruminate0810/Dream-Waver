@@ -95,3 +95,23 @@
   letter-spacing: 0.5em;
   margin-bottom: 28px;
 }
+
+/* ─── Sprint V.4 micro-anchor: left vertical accent rule ────────────
+ * 4px navy rule running the full height of every slide, hugging the
+ * left edge. Adds a "filed-document" weight Manus/Genspark don't have
+ * and makes the brand-primary colour read more strongly even when the
+ * top header bar is cropped in a thumbnail.
+ *
+ * Uses .slide::after — .slide::before is already consumed by the
+ * existing 14px top header bar. */
+.theme-corporate .slide::after {
+  content: "";
+  position: absolute;
+  top: 14px;       /* clear the existing top header bar */
+  bottom: 0;
+  left: 0;
+  width: 4px;
+  background: var(--accent);
+  z-index: 1;
+  pointer-events: none;
+}

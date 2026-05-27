@@ -67,3 +67,42 @@
 /* The legacy minimalist had no `.pretitle` decoration on body slides,
  * so we hide the empty marker so it doesn't reserve vertical space. */
 .theme-minimalist .pretitle { display: none; }
+
+/* ─── Sprint V.4 micro-anchor: editorial folio chrome ───────────────
+ * Adds a fine top hairline + bottom-right Roman folio numeral on every
+ * body slide. Reads .Folio / .FolioRoman from layout.html's data attrs
+ * so neither the markup nor the data model grows for theme-only chrome.
+ *
+ * Suppressed on title / section / closing layouts because their hero
+ * compositions already use the .slide::after pseudo (see line ~35) for
+ * the right-edge accent bar — overlapping pseudos clip badly. */
+
+/* Hairline at the very top edge — folio-frame top rule. */
+.theme-minimalist:not(.layout-title):not(.layout-section):not(.layout-closing) .slide::before {
+  content: "";
+  position: absolute;
+  top: 56px;
+  left: 140px;
+  right: 140px;
+  height: 1px;
+  background: #E2E8F0;
+  pointer-events: none;
+}
+
+/* Folio Roman numeral, bottom-right of body slides. The DM Serif
+ * Display in italic + tracked uppercase reads as a publisher's mark.
+ * Uses attr() against data-folio-roman (precomputed in Go because
+ * CSS Level 5's typed attr() integer→Roman is still behind a flag). */
+.theme-minimalist:not(.layout-title):not(.layout-section):not(.layout-closing) .slide-folio,
+.theme-minimalist:not(.layout-title):not(.layout-section):not(.layout-closing) .slide::after {
+  content: attr(data-folio-roman);
+  position: absolute;
+  bottom: 56px;
+  right: 140px;
+  font-family: 'DM Serif Display', 'Noto Serif SC', Georgia, serif;
+  font-size: 24px;
+  font-style: italic;
+  letter-spacing: 0.08em;
+  color: var(--fg-faint);
+  pointer-events: none;
+}

@@ -391,7 +391,10 @@ func (r *SlideRender) renderSlidesIndices(
 			continue
 		}
 		s := deck.Slides[i]
-		html, err := r.renderHTML(s, deck.Theme)
+		// folio is the audience-facing 1-based slide number; themes that
+		// paint page-folio chrome (minimalist Roman / academic § N) read
+		// it from `data-folio` / `data-folio-roman` attrs in layout.html.
+		html, err := r.renderHTML(s, deck.Theme, i+1)
 		if err != nil {
 			return nil, fmt.Errorf("slide %d render html: %w", i, err)
 		}
@@ -483,25 +486,39 @@ func (r *SlideRender) renderSlidesIndices(
 // templateView is what we pass into html/template. Keeping it a concrete
 // struct (not a map) means the template engine catches typos at execute time
 // and IDEs can find every reference to e.g. .Data.Bullets.
+//
+// Folio is the 1-based slide number (what the audience sees — "slide 3 of
+// 12"). Themes that paint page-folio chrome (minimalist's Roman numerals,
+// academic's § N marker) read it via attr() in CSS — see layout.html which
+// emits both `data-folio` (arabic) and `data-folio-roman` (upper Roman).
 type templateView struct {
 	Layout schema.SlideLayout
 	Theme  schema.Theme
 	Data   schema.SlideData
+	Folio  int
+	// FolioRoman is precomputed because CSS attr() can't transform
+	// integer → Roman numerals (CSS Level 5's typed attr() is still
+	// behind a flag in Chromium). Set to upper Roman in renderHTML.
+	FolioRoman string
 }
 
 // RenderSlideHTML is the public, chromedp-free path. The live-preview HTTP
 // endpoint calls this to serve one slide's HTML straight out of the
 // template engine — no Chromium, no PNG, no PPTX. Sub-millisecond cost,
 // so the right-hand iframe stack can refresh on every keystroke.
-func (r *SlideRender) RenderSlideHTML(s schema.Slide, theme schema.Theme) ([]byte, error) {
+//
+// folio is the 1-based slide number the audience sees. Used by themes
+// that paint page-folio chrome (minimalist's Roman numerals at bottom-
+// right, academic's § N marker on the left edge).
+func (r *SlideRender) RenderSlideHTML(s schema.Slide, theme schema.Theme, folio int) ([]byte, error) {
 	if err := r.loadTemplates(); err != nil {
 		return nil, fmt.Errorf("load templates: %w", err)
 	}
-	return r.renderHTML(s, theme)
+	return r.renderHTML(s, theme, folio)
 }
 
 // renderHTML executes the HTML+Tailwind template for one slide.
-func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme) ([]byte, error) {
+func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme, folio int) ([]byte, error) {
 	tplName := s.Template
 	if tplName == "" {
 		tplName = string(schema.ThemeMinimalist)
@@ -516,10 +533,15 @@ func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme) ([]byte, er
 	if tpl == nil {
 		return nil, fmt.Errorf("template %q not found in %s", tplName, r.TemplateDir)
 	}
+	if folio < 1 {
+		folio = 1
+	}
 	view := templateView{
-		Layout: s.Layout,
-		Theme:  theme,
-		Data:   s.Data,
+		Layout:     s.Layout,
+		Theme:      theme,
+		Data:       s.Data,
+		Folio:      folio,
+		FolioRoman: strings.ToUpper(toRoman(folio)),
 	}
 	var buf bytes.Buffer
 	if err := tpl.Execute(&buf, view); err != nil {
