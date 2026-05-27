@@ -87,6 +87,17 @@ func streamingContent(
 	decoderDone := make(chan struct{})
 	go func() {
 		defer close(decoderDone)
+		// CRITICAL: close pr when decoder finishes. Otherwise, after
+		// the decoder sees the `]` and returns, the pipe writer side
+		// (fed by onChunk) keeps trying to Write for any trailing
+		// tokens the LLM emits (whitespace, the outer `}`, sometimes
+		// a markdown coda). With no reader, writes BLOCK forever →
+		// AskToolStream blocks on onChunk → write_content tool blocks
+		// → the entire agent loop hangs even though slides streamed
+		// in fine. Closing pr here makes subsequent writes return
+		// ErrClosedPipe immediately (and onChunk silently swallows
+		// the error, which is the right call — the data made it).
+		defer pr.Close()
 		decodeErr = runJSONDecoder(pr, func(s ContentSlide) {
 			mu.Lock()
 			slides = append(slides, s)
