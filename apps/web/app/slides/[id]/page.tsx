@@ -304,16 +304,26 @@ function Workspace({
         ref={wsRef}
         className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14"
       >
-        {/* ── Left: chat surface (variant-selected) ───────────────────── */}
+        {/* ── Left: chat surface (variant-selected) ─────────────────────
+            Sprint U follow-up — the UiToggle used to float over the
+            chat content via `lg:absolute`, which read as a floating
+            badge disconnected from anything. It now lives in a thin
+            sticky header strip above the chat panel: clearly part of
+            the chrome, ruled off from the messages below. */}
         <section className="dw-deck-chat relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">
-          <UiToggle current={uiVariant} />
           {uiVariant === "thread" ? (
-            <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)]">
-              <ChatThread job={job} sessionId={sessionId} />
+            <div className="lg:sticky lg:top-[57px] lg:flex lg:h-[calc(100dvh-57px)] lg:flex-col">
+              <ChatPanelHeader uiVariant={uiVariant} />
+              <div className="min-h-0 flex-1">
+                <ChatThread job={job} sessionId={sessionId} />
+              </div>
             </div>
           ) : (
-            <div className="lg:sticky lg:top-[57px] lg:max-h-[calc(100dvh-57px)] lg:overflow-y-auto lg:pb-10 lg:pt-2 lg:[scrollbar-width:thin]">
-              <Chat job={job} sessionId={sessionId} compact />
+            <div className="lg:sticky lg:top-[57px] lg:flex lg:max-h-[calc(100dvh-57px)] lg:flex-col">
+              <ChatPanelHeader uiVariant={uiVariant} />
+              <div className="min-h-0 flex-1 lg:overflow-y-auto lg:pb-10 lg:[scrollbar-width:thin]">
+                <Chat job={job} sessionId={sessionId} compact />
+              </div>
             </div>
           )}
         </section>
@@ -329,13 +339,22 @@ function Workspace({
   );
 }
 
-// UiToggle is the tiny tab strip pinned at the top of the left column.
-// Default = Chat; Log is the escape hatch back to the editorial view.
-function UiToggle({ current }: { current: "log" | "thread" }) {
+// ChatPanelHeader — the thin chrome row above the chat surface. Sprint
+// U follow-up — replaces the old floating UiToggle (which was
+// `lg:absolute` and read as a disconnected badge sitting on top of
+// chat content). Now the variant toggle lives in a proper editorial
+// header: kicker on the left, tab toggle on the right, hairline rule
+// underneath separating chrome from messages.
+function ChatPanelHeader({ uiVariant }: { uiVariant: "log" | "thread" }) {
   return (
-    <div className="ml-3 mt-3 inline-flex border border-[color:var(--rule)] lg:absolute lg:left-3 lg:top-2 lg:z-10">
-      <TabLink href="?" active={current === "thread"} label="Chat" />
-      <TabLink href="?ui=log" active={current === "log"} label="Log" />
+    <div className="flex items-baseline justify-between gap-3 border-b border-[color:var(--rule)] px-4 py-3 lg:px-5">
+      <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+        § Conversation
+      </span>
+      <div className="inline-flex border border-[color:var(--rule)]">
+        <TabLink href="?" active={uiVariant === "thread"} label="Chat" />
+        <TabLink href="?ui=log" active={uiVariant === "log"} label="Log" />
+      </div>
     </div>
   );
 }
