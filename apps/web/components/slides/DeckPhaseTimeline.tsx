@@ -147,24 +147,27 @@ function PhaseRow({
   const subLabel = pool[idx] ?? pool[0] ?? "";
 
   return (
-    <li className="relative flex gap-3 pb-5">
-      {/* Connector line — drawn from the dot down to the next phase's
-          dot. Skipped on last row. Color shifts with done-ness. */}
-      {!isLast ? (
-        <span
-          aria-hidden
-          className={clsx(
-            "pointer-events-none absolute left-[5px] top-3 h-[calc(100%-4px)] w-px",
-            status === "done"
-              ? "bg-[color:var(--ink-soft)]/40"
-              : "bg-[color:var(--rule)]",
-          )}
-        />
-      ) : null}
+    <li className="relative flex gap-3 pb-6">
+      {/* Sprint AF.1 v2 — dot + connector live in a flex-col so the
+          connector NATURALLY fills the remaining vertical space below
+          the dot. No more brittle calc(100%-4px) math that left gaps
+          between dots and made the timeline look disconnected. */}
+      <div className="flex flex-col items-center">
+        <PhaseDot status={status} />
+        {!isLast ? (
+          <span
+            aria-hidden
+            className={clsx(
+              "mt-1 w-px flex-1 min-h-[28px]",
+              status === "done"
+                ? "bg-[color:var(--ink-soft)]/55"
+                : "bg-[color:var(--rule)]",
+            )}
+          />
+        ) : null}
+      </div>
 
-      <PhaseDot status={status} />
-
-      <div className="min-w-0 flex-1 -mt-0.5">
+      <div className="min-w-0 flex-1 -mt-0.5 pb-1">
         <div className="flex items-baseline gap-2">
           <span
             className={clsx(
