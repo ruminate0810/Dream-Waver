@@ -159,7 +159,13 @@ function PopoverBody({
 
   const trimmedDirect = direct.trim();
   const trimmedRewrite = rewrite.trim();
-  const canSubmitDirect = trimmedDirect.length > 0 && trimmedDirect !== target.text.trim() && !busy;
+  // Sprint AF.4 — dropped the `trimmedDirect !== target.text.trim()`
+  // equality check. The user might want to RE-RENDER the same text
+  // (e.g. after a transient render glitch) — refusing to submit when
+  // the input matches the original confused users who typed the
+  // original text back in. Server-side edit_slide_text is idempotent
+  // so a same-text submit is harmless.
+  const canSubmitDirect = trimmedDirect.length > 0 && !busy;
   const canSubmitRewrite = trimmedRewrite.length > 0 && !busy;
 
   const submitDirect = (e?: FormEvent | KeyboardEvent) => {

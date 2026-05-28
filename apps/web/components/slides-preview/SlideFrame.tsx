@@ -76,12 +76,40 @@ export function SlideFrame({
   // re-renders the iframe with a fresh cache-bust.
   const [loadError, setLoadError] = useState(false);
   const [retryNonce, setRetryNonce] = useState(0);
+  // Sprint AF.4 — auto-retry counter. 404s during initial render are
+  // common (Phase 3 generates slides in order; iframe fetches before
+  // each is done). Auto-retry 3 times at 1s / 3s / 8s before showing
+  // the human-visible fallback card — most 404s self-heal within ~3s.
+  const [autoRetries, setAutoRetries] = useState(0);
+  const AUTO_RETRY_MAX = 3;
+  const AUTO_RETRY_DELAYS = [1000, 3000, 8000];
   // Track the last tick value of each control channel so its useEffect
   // only fires when the parent intentionally bumps it (not on every
   // unrelated render).
   const lastFocusTick = useRef<number | undefined>(focusTick);
   const lastClearTick = useRef<number | undefined>(clearActiveTick);
   const lastSuccessTick = useRef<number | undefined>(successTick);
+
+  // Sprint AF.4 — auto-retry on load failure. When loadError flips
+  // true AND we haven't exhausted AUTO_RETRY_MAX, schedule a retry
+  // with exponentially-growing delay (1s / 3s / 8s). The retry bumps
+  // retryNonce which re-mounts the iframe with a fresh cache-bust.
+  // Most "404 page not found" responses self-heal within 3s as
+  // chromedp finishes rendering the next slide. Only after exhausting
+  // retries does the user see the manual-retry fallback card.
+  useEffect(() => {
+    if (!loadError) return;
+    if (autoRetries >= AUTO_RETRY_MAX) return;
+    const delay = AUTO_RETRY_DELAYS[autoRetries] ?? 8000;
+    const id = setTimeout(() => {
+      setLoadError(false);
+      setLoaded(false);
+      setRetryNonce((n) => n + 1);
+      setAutoRetries((n) => n + 1);
+    }, delay);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadError, autoRetries]);
 
   // Compute (and keep current) the scale that maps the 1920px-wide slide
   // canvas onto whatever pixel width the host occupies. ResizeObserver
@@ -177,11 +205,31 @@ export function SlideFrame({
     >
       {/* Soft skeleton while the iframe loads its (CDN-backed) Tailwind +
           fonts. The host's background colour matches our paper canvas
-          rather than going hard white so the fade-in feels seamless. */}
-      {!loaded && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[color:var(--paper)]/40">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-            Composing · {String(index).padStart(2, "0")}
+          rather than going hard white so the fade-in feels seamless.
+          Sprint AF.4 — copy upgraded from generic "Composing ##" to a
+          warmer "正在排版第 ## 页…" that matches the editorial voice. */}
+      {!loaded && !loadError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[color:var(--paper)]/40">
+          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+            § {String(index).padStart(2, "0")}
+          </span>
+          <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+            正在排版第 {index} 页…
+          </span>
+        </div>
+      )}
+      {/* Auto-retry intermediate state — keep the same skeleton voice
+          but signal the retry attempt so the user knows we're working. */}
+      {loadError && autoRetries < AUTO_RETRY_MAX && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[color:var(--paper)]/60">
+          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]/70">
+            § {String(index).padStart(2, "0")} · 等待 agent
+          </span>
+          <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+            还在渲染中, 再等一下…
+          </span>
+          <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            attempt {autoRetries + 1}/{AUTO_RETRY_MAX}
           </span>
         </div>
       )}
@@ -221,9 +269,14 @@ export function SlideFrame({
               text.includes('"ok":false') &&
               text.includes('"error":');
             if (isChi404 || isErrJSON) {
+              // Sprint AF.4 — don't IMMEDIATELY show the fallback card.
+              // Schedule an auto-retry (effect below handles the delay).
+              // Only after AUTO_RETRY_MAX failures does loadError stick
+              // and the fallback card render.
               setLoadError(true);
             } else {
               setLoadError(false);
+              setAutoRetries(0);
             }
           } catch {
             // Cross-origin would throw — but sandbox allow-same-origin
@@ -256,8 +309,10 @@ export function SlideFrame({
       {/* Sprint U2.2 — visible fallback when the iframe 404s. Without
           this the user sees a blank white frame and assumes the whole
           deck broke. The retry button bumps retryNonce so the iframe
-          re-fetches with a fresh cache-bust segment. */}
-      {loadError ? (
+          re-fetches with a fresh cache-bust segment. Sprint AF.4 —
+          only shown AFTER auto-retries are exhausted; before that we
+          show the softer "等待 agent" placeholder. */}
+      {loadError && autoRetries >= AUTO_RETRY_MAX ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-[color:var(--vermillion)]/40 bg-[#FBF9F2]/95 p-6 text-center">
           <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
             Slide {String(index).padStart(2, "0")} · 加载失败
@@ -268,9 +323,12 @@ export function SlideFrame({
           <button
             type="button"
             onClick={() => {
+              // Reset the auto-retry counter so a manual click starts
+              // a fresh cycle if it still fails.
               setLoadError(false);
               setLoaded(false);
               setRetryNonce((n) => n + 1);
+              setAutoRetries(0);
             }}
             className="border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)]"
           >
