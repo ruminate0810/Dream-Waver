@@ -29,6 +29,7 @@ import {
   findTemplate,
   type Template,
 } from "@/lib/templates";
+import { ErrorCallout } from "@/components/ui/ErrorCallout";
 import {
   FeaturedTemplateCard,
   TemplateCard,
@@ -334,27 +335,15 @@ function NewSlidesChat() {
           </p>
 
           {err && !submitting ? (
-            <div
-              role="alert"
-              className="mt-6 flex flex-wrap items-start gap-3 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] px-4 py-3"
-            >
-              <div className="flex flex-1 items-start gap-2">
-                <span className="mt-[2px] font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
-                  Err
-                </span>
-                <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink)]">
-                  {err}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => submit()}
-                disabled={!topic.trim() || submitting}
-                className="group inline-flex items-center gap-1.5 border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)] active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <ArrowUpRight size={11} strokeWidth={1.8} className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]" />
-                <span>重试</span>
-              </button>
+            <div className="mt-6">
+              <ErrorCallout
+                message={err}
+                action={
+                  topic.trim()
+                    ? { label: "重试", onClick: () => submit() }
+                    : undefined
+                }
+              />
             </div>
           ) : null}
 

@@ -1,11 +1,10 @@
 "use client";
 
-import { ArrowUpRight, Loader2 } from "lucide-react";
-
 import { BusyHint } from "./BusyHint";
 import { Phase, type SectionStatus } from "./Bubble";
 import { ThoughtCollapse } from "./ThoughtCollapse";
 import { ToolStrip } from "./ToolStrip";
+import { ErrorCallout } from "../ui/ErrorCallout";
 
 import type { Thought, ToolCallEntry, Turn } from "./session";
 
@@ -65,11 +64,16 @@ export function EditTurnTrace({
       ) : null}
 
       {turn.errorMsg ? (
-        <ErrorBanner
-          message={turn.errorMsg}
-          onRetry={onRetry}
-          retrying={retrying}
-        />
+        <div className="mt-4 mb-1">
+          <ErrorCallout
+            message={turn.errorMsg}
+            action={
+              onRetry
+                ? { label: "重试", busyLabel: "重试中", onClick: onRetry, busy: retrying }
+                : undefined
+            }
+          />
+        </div>
       ) : null}
 
       {/* Bridge the silent gap between dispatchUserMessage and the
@@ -83,57 +87,8 @@ export function EditTurnTrace({
   );
 }
 
-// ErrorBanner — Sprint U2.1. Replaces the original mt-3 italic red `<p>`
-// with a card that the user can't miss + retry control. Shape mirrors
-// the /slides/new error banner (vermillion bleed strip + tight border)
-// so the visual language is consistent.
-function ErrorBanner({
-  message,
-  onRetry,
-  retrying,
-}: {
-  message: string;
-  onRetry?: () => void;
-  retrying?: boolean;
-}) {
-  return (
-    <div className="mt-4 mb-1">
-      <div className="h-[3px] w-[36px] bg-[color:var(--vermillion)]" />
-      <div
-        role="alert"
-        className="flex flex-wrap items-start gap-3 border border-[color:var(--vermillion)]/45 bg-[color:var(--vermillion)]/[0.06] px-4 py-3"
-      >
-        <div className="flex flex-1 min-w-0 items-start gap-2">
-          <span className="mt-[2px] font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
-            Err
-          </span>
-          <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink)]">
-            {message}
-          </p>
-        </div>
-        {onRetry ? (
-          <button
-            type="button"
-            onClick={onRetry}
-            disabled={retrying}
-            className="group inline-flex items-center gap-1.5 border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)] active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {retrying ? (
-              <Loader2 size={11} strokeWidth={1.8} className="animate-spin" />
-            ) : (
-              <ArrowUpRight
-                size={11}
-                strokeWidth={1.8}
-                className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]"
-              />
-            )}
-            <span>{retrying ? "重试中" : "重试"}</span>
-          </button>
-        ) : null}
-      </div>
-    </div>
-  );
-}
+// (ErrorBanner removed in Sprint AF.3 — replaced by the shared
+// <ErrorCallout> imported above. Same visual, single source of truth.)
 
 function pad2(n: number): string {
   return n < 10 ? `0${n}` : `${n}`;

@@ -36,6 +36,7 @@ import { ComposeStrip } from "./ComposeStrip";
 import { GamePlanCard } from "./GamePlanCard";
 import { OutlineReviewCard } from "./OutlineReviewCard";
 import { WizardCard } from "./WizardCard";
+import { ErrorCallout } from "../ui/ErrorCallout";
 
 // ChatThread is the production chat surface: vertical stack of role-
 // labelled messages, tool calls collapse to Claude-Code-style inline
@@ -287,12 +288,14 @@ function AiRow({ text }: { text: string }) {
 }
 
 function ErrorRow({ text }: { text: string }) {
+  // Sprint AF.3 — upgraded from a plain red-text `<p>` (which was
+  // easy to miss in a long thread) to the shared <ErrorCallout> so
+  // chat-thread errors read the same as gate-submit failures, render
+  // failures, and SlideFrame fallbacks.
   return (
     <div className="space-y-1.5">
       <Label kind="ai" />
-      <p className="text-[14.5px] leading-relaxed text-red-700">
-        Error · {text}
-      </p>
+      <ErrorCallout message={text} />
     </div>
   );
 }
