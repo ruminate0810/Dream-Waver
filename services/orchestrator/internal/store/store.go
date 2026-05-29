@@ -253,6 +253,57 @@ type DesignAssets interface {
 	Delete(ctx context.Context, workspaceID, assetID uuid.UUID) error
 }
 
+// DesignSession is one ChatGPT-style design thread (Sprint BA): a named,
+// resumable conversation carrying its own chat history + a thumbnail.
+// Workspace-scoped. History is the frontend's HistoryEntry[] as JSON.
+type DesignSession struct {
+	ID           uuid.UUID
+	WorkspaceID  uuid.UUID
+	CreatedBy    uuid.UUID
+	Title        string
+	ThumbnailURL string
+	History      json.RawMessage // HistoryEntry[] — small (URLs + text)
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
+
+// DesignSessions persists design threads. List returns metadata only
+// (history omitted) so the switcher payload stays light; Get returns
+// the full row including history for resume. Update is a partial
+// upsert of title / thumbnail / history (whichever the caller sets);
+// it always bumps updated_at.
+type DesignSessions interface {
+	Create(ctx context.Context, s *DesignSession) error
+	List(ctx context.Context, workspaceID uuid.UUID, limit int) ([]*DesignSession, error)
+	Get(ctx context.Context, workspaceID, sessionID uuid.UUID) (*DesignSession, error)
+	Update(ctx context.Context, s *DesignSession) error
+	Delete(ctx context.Context, workspaceID, sessionID uuid.UUID) error
+}
+
+// DesignMemoryEntry is one persistent fact the assistant remembers
+// across sessions (Sprint BB), workspace-scoped. Source is "auto"
+// (written by the extract/consolidate LLM pass) or "manual" (pinned
+// by the user; the auto pass never deletes manual rows).
+type DesignMemoryEntry struct {
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
+	Content     string
+	Source      string // "auto" | "manual"
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// DesignMemory persists cross-session memory. The extract/consolidate
+// pass uses List (read current set) + Add/UpdateContent/Delete to apply
+// the LLM's A.U.D.N. decisions; the panel uses List + Add(manual) +
+// Delete. Scoped by workspace throughout.
+type DesignMemory interface {
+	List(ctx context.Context, workspaceID uuid.UUID, limit int) ([]*DesignMemoryEntry, error)
+	Add(ctx context.Context, e *DesignMemoryEntry) error
+	UpdateContent(ctx context.Context, workspaceID, id uuid.UUID, content string) error
+	Delete(ctx context.Context, workspaceID, id uuid.UUID) error
+}
+
 // ─── Billing (X3a) ─────────────────────────────────────────────────
 
 // CreditLedgerEntry is one row in credit_ledger. Append-only —
@@ -383,6 +434,8 @@ type Store struct {
 	GameJobs        GameJobs
 	VideoRuns       VideoRuns
 	DesignAssets    DesignAssets
+	DesignSessions  DesignSessions // BA — ChatGPT-style design threads
+	DesignMemory    DesignMemory   // BB — cross-session persistent memory
 	IdempotencyKeys IdempotencyKeys
 	CreditLedger    CreditLedger // X3a
 	ToolCalls       ToolCalls    // X3a

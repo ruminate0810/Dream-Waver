@@ -316,8 +316,14 @@ func (h *handlers) GenerateDesignNanoBanana(w http.ResponseWriter, r *http.Reque
 	}
 	start := time.Now()
 
+	// BB — inject the workspace's remembered preferences into the
+	// prompt so generations stay consistent with the user's style /
+	// brand / recurring-subject facts across sessions. No-op when
+	// there's no memory.
+	effectivePrompt := h.applyMemoryToPrompt(r, body.Prompt)
+
 	resp, err := h.deps.DesignBridge.NanoBanana(r.Context(), design.NanoBananaRequest{
-		Prompt:      body.Prompt,
+		Prompt:      effectivePrompt,
 		Model:       body.Model,
 		ImageSize:   body.ImageSize,
 		AspectRatio: body.AspectRatio,

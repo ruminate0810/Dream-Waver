@@ -17,6 +17,8 @@ func NewMemory() *Store {
 		GameJobs:        newMemGameJobs(),
 		VideoRuns:       newMemVideoRuns(),
 		DesignAssets:    newMemDesignAssets(),
+		DesignSessions:  newMemDesignSessions(),
+		DesignMemory:    newMemDesignMemory(),
 		IdempotencyKeys: newMemIdempotencyKeys(),
 		CreditLedger:    newMemCreditLedger(),
 		ToolCalls:       newMemToolCalls(),

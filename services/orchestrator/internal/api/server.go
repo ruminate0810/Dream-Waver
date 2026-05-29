@@ -203,6 +203,20 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 			// one of the design tool intents so the frontend dispatches
 			// to the right endpoint. Falls back to generate on failure.
 			r.Post("/chat", h.RouteDesignChat)
+			// Sessions (BA) — ChatGPT-style design threads. Workspace-
+			// scoped (via dev-user-id personal workspace). Each carries
+			// its own chat history + thumbnail.
+			r.Get("/sessions", h.ListDesignSessions)
+			r.Post("/sessions", h.CreateDesignSession)
+			r.Get("/sessions/{id}", h.GetDesignSession)
+			r.Patch("/sessions/{id}", h.UpdateDesignSession)
+			r.Delete("/sessions/{id}", h.DeleteDesignSession)
+			// Memory (BB) — ChatGPT-style cross-session facts. mem0-style
+			// extract+consolidate writes auto facts; the panel adds manual.
+			r.Get("/memory", h.ListDesignMemory)
+			r.Post("/memory", h.AddDesignMemory)
+			r.Delete("/memory/{id}", h.DeleteDesignMemory)
+			r.Post("/memory/extract", h.ExtractDesignMemory)
 			r.Post("/images/generate", h.GenerateDesignImage)
 			r.Post("/images/generate/submit", h.SubmitDesignGenerate)
 			// Note the trailing path segment ordering: `/{task_id}/events`
