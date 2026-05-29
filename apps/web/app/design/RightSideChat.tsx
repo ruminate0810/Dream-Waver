@@ -112,6 +112,10 @@ export type RightSideChatProps = {
    *  dispatches the corresponding intent (variants / reimagine /
    *  animate / generate) with the entry's URL as a ref. */
   onFollowup: (entry: HistoryEntry, label: string) => void;
+  /** "remember: X" / "记住：X" shortcut. Parent pins a manual memory
+   *  fact and returns true when it handled the input — the chat then
+   *  skips its normal generate path. */
+  onRememberFact: (content: string) => boolean;
 };
 
 const ASPECT_HINT: Record<Aspect, string> = {
@@ -141,6 +145,7 @@ export function RightSideChat({
   onSketchAsRef,
   onRoutedIntent,
   onFollowup,
+  onRememberFact,
 }: RightSideChatProps) {
   const [open, setOpen] = useState(true);
   const [input, setInput] = useState("");
@@ -250,6 +255,15 @@ export function RightSideChat({
     e?.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
+
+    // "remember: X" / "记住：X" → pin a memory fact instead of
+    // generating. The parent handles the API call + panel refresh.
+    if (onRememberFact(trimmed)) {
+      setInput("");
+      setNotice("Got it — I'll remember that.");
+      setTimeout(() => setNotice(null), 3500);
+      return;
+    }
 
     const skill = getSkill(activeSkillId);
     // When a skill is active, prepend its scaffold so the model gets

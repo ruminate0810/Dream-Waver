@@ -972,6 +972,123 @@ export async function listDesignAssets(limit?: number): Promise<DesignAsset[]> {
   return data.assets ?? [];
 }
 
+// ─── Design sessions (BA — ChatGPT-style threads) ─────────────────────
+//
+// Server-backed, workspace-scoped (via the X-Dev-User-Id personal
+// workspace, no login required). Each session is a named, resumable
+// design thread carrying its own chat history (the HistoryEntry[]) +
+// a thumbnail. The switcher lists metadata; resume fetches full history.
+// All calls use apiFetch so the workspace header rides along.
+
+export type DesignSessionMeta = {
+  id: string;
+  title: string;
+  thumbnail_url?: string;
+  created_at: string;
+  updated_at: string;
+};
+
+/** Full session = metadata + history (opaque to this layer — the
+ *  /design page owns the HistoryEntry shape). */
+export type DesignSessionFull<H = unknown> = DesignSessionMeta & {
+  history: H[];
+};
+
+export async function listDesignSessions(
+  limit?: number,
+): Promise<DesignSessionMeta[]> {
+  const qs = limit ? `?limit=${limit}` : "";
+  const res = await apiFetch(`/api/v1/design/sessions${qs}`);
+  const data = await unwrap<{ sessions: DesignSessionMeta[] }>(res);
+  return data.sessions ?? [];
+}
+
+export async function createDesignSession(
+  title?: string,
+): Promise<DesignSessionFull> {
+  const res = await apiFetch("/api/v1/design/sessions", {
+    method: "POST",
+    body: JSON.stringify({ title }),
+  });
+  return unwrap<DesignSessionFull>(res);
+}
+
+export async function getDesignSession<H = unknown>(
+  id: string,
+): Promise<DesignSessionFull<H>> {
+  const res = await apiFetch(`/api/v1/design/sessions/${id}`);
+  return unwrap<DesignSessionFull<H>>(res);
+}
+
+export async function updateDesignSession(
+  id: string,
+  patch: { title?: string; thumbnail_url?: string; history?: unknown[] },
+): Promise<void> {
+  const res = await apiFetch(`/api/v1/design/sessions/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  await unwrap<{ ok: boolean }>(res);
+}
+
+export async function deleteDesignSession(id: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/design/sessions/${id}`, {
+    method: "DELETE",
+  });
+  await unwrap<{ ok: boolean }>(res);
+}
+
+// ─── Design memory (BB — cross-session, ChatGPT-style) ────────────────
+//
+// Workspace-scoped persistent facts ("prefers minimalist", "brand color
+// #FF6B6B") that the orchestrator injects into every generation. Two
+// sources: "auto" (written by the mem0-style extract+consolidate pass)
+// and "manual" (user-pinned; auto pass never deletes these).
+
+export type DesignMemoryEntry = {
+  id: string;
+  content: string;
+  source: "auto" | "manual";
+  created_at: string;
+  updated_at: string;
+};
+
+export async function listDesignMemory(): Promise<DesignMemoryEntry[]> {
+  const res = await apiFetch("/api/v1/design/memory");
+  const data = await unwrap<{ memory: DesignMemoryEntry[] }>(res);
+  return data.memory ?? [];
+}
+
+export async function addDesignMemory(
+  content: string,
+): Promise<DesignMemoryEntry> {
+  const res = await apiFetch("/api/v1/design/memory", {
+    method: "POST",
+    body: JSON.stringify({ content }),
+  });
+  return unwrap<DesignMemoryEntry>(res);
+}
+
+export async function deleteDesignMemory(id: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/design/memory/${id}`, {
+    method: "DELETE",
+  });
+  await unwrap<{ ok: boolean }>(res);
+}
+
+/** Run the mem0-style extract+consolidate pass over recent prompts.
+ *  Returns the updated memory list + how many entries changed (so the
+ *  caller can decide whether to surface a "memory updated" hint). */
+export async function extractDesignMemory(
+  recentPrompts: string[],
+): Promise<{ memory: DesignMemoryEntry[]; changed: number }> {
+  const res = await apiFetch("/api/v1/design/memory/extract", {
+    method: "POST",
+    body: JSON.stringify({ recent_prompts: recentPrompts }),
+  });
+  return unwrap<{ memory: DesignMemoryEntry[]; changed: number }>(res);
+}
+
 export type SubmitDesignGenerateResponse = {
   task_id: string;
 };

@@ -29,16 +29,29 @@ import {
 
 import {
   ApiError,
+  addDesignMemory,
+  extractDesignMemory,
   generateDesignNanoBanana,
-  listDesignAssets,
   seedanceI2V,
-  type DesignAsset,
   type DesignIntent,
   type NanoBananaModel,
   type SeedanceResolution,
 } from "@/lib/api";
 import { RightSideChat, type Aspect } from "./RightSideChat";
 import { getSkill } from "./skills";
+import { ProjectSwitcher } from "./ProjectSwitcher";
+import {
+  createProject,
+  deleteProject,
+  ensureActiveProject,
+  listProjects,
+  loadHistory,
+  renameProject,
+  saveHistory,
+  setActiveProjectId,
+  touchThumbnail,
+  type DesignProject,
+} from "./designProjects";
 import type {
   CanvasController,
   CanvasHistoryFlags,
@@ -107,11 +120,16 @@ export default function DesignPage() {
   const controllerRef = useRef<CanvasController | null>(null);
   const [selected, setSelected] = useState<SelectedImageInfo | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  // hydrated tracks whether the server-side history load has finished
-  // so the chat doesn't show the "empty state" suggestions while we're
-  // still loading. Falls open (true) on error so the UI doesn't get
-  // stuck loading forever.
-  const [hydrated, setHydrated] = useState(false);
+  // ─── Design projects (multi-canvas) ───────────────────────────────
+  // Each project is a named TLDraw document (persistenceKey = id) + its
+  // own chat history. activeProjectId drives both the canvas remount and
+  // which history we load/save. Starts null until the mount effect
+  // resolves the active project from localStorage (avoids an SSR/CSR
+  // hydration mismatch — we only touch localStorage in an effect).
+  const [projects, setProjects] = useState<DesignProject[]>([]);
+  const [activeProjectId, setActiveProjectIdState] = useState<string | null>(
+    null,
+  );
   // canUndo/canRedo mirror TLDraw's internal history stack. Surfaced
   // up here so the header's Undo/Redo buttons can show disabled state
   // — without it the buttons would always look enabled even on an
@@ -133,32 +151,191 @@ export default function DesignPage() {
 
   const startGeneration = useGenerateWithProgress(controllerRef, setHistory);
 
-  // Hydrate history from the server on mount. The server returns
-  // workspace-scoped design_assets newest-first; we map each row to a
-  // HistoryEntry with shapeId: undefined so the chat knows the source
-  // shape is no longer on the canvas (the click handler re-places it
-  // at viewport centre instead of "focus existing").
-  //
-  // Failures are silent — the chat just starts empty rather than
-  // blocking the page. The empty state shows starter prompts so
-  // users aren't blocked even if the API is down.
+  // hydrated guards the history-persist effect: we must NOT write the
+  // empty initial [] to the server before the mount load fills it.
+  // Flipped true once the active session's history has loaded.
+  const hydratedRef = useRef(false);
+  // Debounce timer for history saves — history mutates on generation
+  // start + done (a few changes per generation); coalesce into one
+  // PATCH per ~800ms idle window so we don't hammer the server.
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Resolve the active session on mount + load its chat history. The
+  // session list + history live server-side (workspace-scoped); only
+  // the "last opened" pointer is local. Effect-only so SSR renders a
+  // neutral shell (no hydration mismatch).
   useEffect(() => {
     let cancelled = false;
-    listDesignAssets(100)
-      .then((assets) => {
+    (async () => {
+      try {
+        const { active, all } = await ensureActiveProject();
         if (cancelled) return;
-        const entries: HistoryEntry[] = assets.map(toHistoryEntry);
-        setHistory(entries);
-        setHydrated(true);
-      })
-      .catch(() => {
+        setProjects(all);
+        setActiveProjectIdState(active.id);
+        const h = await loadHistory<HistoryEntry>(active.id);
         if (cancelled) return;
-        // Network / 500 — fall through to empty state.
-        setHydrated(true);
-      });
+        setHistory(h);
+      } catch {
+        // Server unreachable / no workspace — leave empty; the user can
+        // still generate (results just won't persist to a session).
+      } finally {
+        if (!cancelled) hydratedRef.current = true;
+      }
+    })();
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Persist the active session's chat history (debounced) whenever it
+  // changes — but only after the initial hydrate, so we never clobber
+  // stored history with the empty initial state.
+  useEffect(() => {
+    if (!activeProjectId || !hydratedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    const id = activeProjectId;
+    const snapshot = history;
+    saveTimerRef.current = setTimeout(() => {
+      void saveHistory(id, snapshot);
+    }, 800);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [activeProjectId, history]);
+
+  // Switch sessions: flush the current history immediately (cancel the
+  // pending debounce so we don't lose the last edit), then load the
+  // target's history + flip the active id. The canvas remounts because
+  // TldrawClient is keyed by activeProjectId below.
+  const switchProject = useCallback(
+    (id: string) => {
+      if (id === activeProjectId) return;
+      // Flush pending save for the outgoing session.
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (activeProjectId && hydratedRef.current) {
+        void saveHistory(activeProjectId, history);
+      }
+      setActiveProjectId(id);
+      setActiveProjectIdState(id);
+      setSelected(null);
+      hydratedRef.current = false;
+      void (async () => {
+        const h = await loadHistory<HistoryEntry>(id);
+        setHistory(h);
+        hydratedRef.current = true;
+      })();
+    },
+    [activeProjectId, history],
+  );
+
+  const handleCreateProject = useCallback(() => {
+    void (async () => {
+      const p = await createProject();
+      setProjects(await listProjects());
+      switchProject(p.id);
+    })();
+  }, [switchProject]);
+
+  const handleRenameProject = useCallback((id: string, name: string) => {
+    void (async () => {
+      await renameProject(id, name);
+      setProjects(await listProjects());
+    })();
+  }, []);
+
+  const handleDeleteProject = useCallback(
+    (id: string) => {
+      void (async () => {
+        await deleteProject(id);
+        const remaining = await listProjects();
+        setProjects(remaining);
+        // Deleted the active session → fall back to most-recent, or a
+        // fresh one if none remain.
+        if (id === activeProjectId) {
+          const next = remaining[0] ?? (await createProject());
+          if (remaining.length === 0) setProjects(await listProjects());
+          setActiveProjectId(next.id);
+          setActiveProjectIdState(next.id);
+          setSelected(null);
+          hydratedRef.current = false;
+          const h = await loadHistory<HistoryEntry>(next.id);
+          setHistory(h);
+          hydratedRef.current = true;
+        }
+      })();
+    },
+    [activeProjectId],
+  );
+
+  // Refresh the active session's thumbnail when a generation completes
+  // (newest "done" entry with a thumbnail). Fire-and-forget; re-reads
+  // the list so the switcher preview + recency ordering stay current.
+  // Tracks the last-pushed URL in a ref to avoid redundant PATCHes on
+  // every history change.
+  const lastThumbRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeProjectId || !hydratedRef.current) return;
+    const newestDone = history.find(
+      (h) => h.status === "done" && h.thumbnailUrl,
+    );
+    const url = newestDone?.thumbnailUrl;
+    if (url && url !== lastThumbRef.current) {
+      lastThumbRef.current = url;
+      void (async () => {
+        await touchThumbnail(activeProjectId, url);
+        setProjects(await listProjects());
+      })();
+    }
+  }, [activeProjectId, history]);
+
+  // ─── Memory (BB) — silent, no user-facing panel ───────────────────
+  // Memory works entirely in the background: it's saved + injected into
+  // every generation server-side, but never surfaced in the UI. After a
+  // generation completes we run the mem0-style extract+consolidate pass
+  // (debounced, fire-and-forget) to learn durable cross-session facts.
+  // The user never sees or manages these — the orchestrator just uses
+  // them to keep output consistent.
+  const doneCountRef = useRef(0);
+  const extractTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!hydratedRef.current) return;
+    const doneCount = history.filter((h) => h.status === "done").length;
+    // Only when a NEW generation just completed (done-count grew).
+    if (doneCount <= doneCountRef.current) {
+      doneCountRef.current = doneCount;
+      return;
+    }
+    doneCountRef.current = doneCount;
+    if (extractTimerRef.current) clearTimeout(extractTimerRef.current);
+    // Snapshot the recent prompts (newest last) the pass should learn from.
+    const recent = history
+      .slice(0, 8)
+      .map((h) => h.prompt)
+      .filter((p) => p && p !== "(no prompt recorded)")
+      .reverse();
+    extractTimerRef.current = setTimeout(() => {
+      void extractDesignMemory(recent).catch(() => {
+        /* best-effort — memory is a silent enhancement */
+      });
+    }, 1500);
+    return () => {
+      if (extractTimerRef.current) clearTimeout(extractTimerRef.current);
+    };
+  }, [history]);
+
+  // "remember: X" / "记住：X" chat shortcut — pin a fact the assistant
+  // should keep in mind. Saved silently (no panel); the only feedback is
+  // the chat's "Got it" toast. Returns true when it handled the input so
+  // the chat skips its normal generate path.
+  const handleRememberFact = useCallback((content: string): boolean => {
+    const m = content.match(/^\s*(?:remember|记住)\s*[:：]\s*(.+)$/i);
+    if (!m) return false;
+    const fact = m[1].trim();
+    if (!fact) return false;
+    void addDesignMemory(fact).catch(() => {
+      /* best-effort */
+    });
+    return true;
   }, []);
 
   // Chrome-only entrance. Header settles from above, the design
@@ -217,13 +394,28 @@ export default function DesignPage() {
       ref={mainRef}
       className="flex h-screen flex-col bg-zinc-50 text-zinc-900"
     >
-      <header className="dw-design-header z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-6 py-2">
-        <Link
-          href="/"
-          className="inline-flex items-baseline gap-2 text-xs text-zinc-500 hover:text-zinc-800"
-        >
-          <ArrowLeft size={12} /> Dream-Waver
-        </Link>
+      <header className="dw-design-header z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-2">
+        {/* Left group — back link + project switcher. The switcher is the
+            "which canvas am I on" anchor; the back link drops to a bare
+            arrow to make room. */}
+        <div className="inline-flex items-center gap-2">
+          <Link
+            href="/"
+            title="Back to Dream-Waver"
+            className="inline-flex items-center text-zinc-400 hover:text-zinc-800"
+          >
+            <ArrowLeft size={14} />
+          </Link>
+          <div className="h-4 w-px bg-zinc-200" />
+          <ProjectSwitcher
+            projects={projects}
+            activeId={activeProjectId}
+            onSwitch={switchProject}
+            onCreate={handleCreateProject}
+            onRename={handleRenameProject}
+            onDelete={handleDeleteProject}
+          />
+        </div>
 
         {/* Centre group — undo / redo. Lives on the controller because
             TLDraw owns the history stack; pressing these is identical
@@ -252,11 +444,20 @@ export default function DesignPage() {
 
       <div className="relative flex flex-1 overflow-hidden">
         <div className="relative flex-1 overflow-hidden">
-          <TldrawClient
-            onReady={handleReady}
-            onSelectionChange={setSelected}
-            onHistoryFlagsChange={setHistoryFlags}
-          />
+          {/* key={activeProjectId} forces a full remount on project
+              switch so TLDraw tears down the old document and boots the
+              new one under its persistenceKey. Rendered only once the
+              active project resolves (post-mount) to avoid a flash of
+              an unkeyed canvas. */}
+          {activeProjectId && (
+            <TldrawClient
+              key={activeProjectId}
+              persistenceKey={`dw-design-${activeProjectId}`}
+              onReady={handleReady}
+              onSelectionChange={setSelected}
+              onHistoryFlagsChange={setHistoryFlags}
+            />
+          )}
 
           {/* Empty-canvas hint — fades out once the first generation
               lands in history. pointer-events-none so it doesn't
@@ -330,6 +531,7 @@ export default function DesignPage() {
               startGeneration,
             })
           }
+          onRememberFact={handleRememberFact}
           onReplace={(entry) => {
             // Hydrated history rows have no live shape — drop a fresh
             // image at the viewport centre using the asset URL.
@@ -1245,25 +1447,6 @@ const ASPECT_TO_WH: Record<Aspect, [number, number]> = {
   "9:16": [720, 1280],
   "4:3": [1024, 768],
 };
-
-/**
- * toHistoryEntry projects a server-side DesignAsset into the chat's
- * HistoryEntry shape. shapeId is intentionally undefined — the canvas
- * shape that produced this asset is long gone (closed tab / different
- * device / etc.). The chat's thumbnail click handler watches for
- * undefined shapeId and re-places the image instead of attempting to
- * focus a non-existent shape.
- */
-function toHistoryEntry(asset: DesignAsset): HistoryEntry {
-  return {
-    id: asset.id,
-    prompt: asset.prompt || "(no prompt recorded)",
-    thumbnailUrl: asset.image_url,
-    shapeId: undefined,
-    status: "done",
-    createdAt: new Date(asset.created_at).getTime(),
-  };
-}
 
 function aspectW(a: Aspect): number {
   return ASPECT_TO_WH[a][0];

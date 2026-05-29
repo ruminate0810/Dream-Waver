@@ -169,12 +169,19 @@ export type TldrawCanvasProps = {
    *  React's setState — calling this with the same {canUndo, canRedo}
    *  is cheap. */
   onHistoryFlagsChange?: (flags: CanvasHistoryFlags) => void;
+  /** TLDraw document key — each distinct key is a separate persisted
+   *  canvas (IndexedDB). Drives the design-projects multi-canvas
+   *  feature: switching the active project remounts this component
+   *  with a new key, loading that project's canvas. The parent forces
+   *  the remount via a React `key` on the dynamic import wrapper. */
+  persistenceKey?: string;
 };
 
 export function TldrawCanvas({
   onReady,
   onSelectionChange,
   onHistoryFlagsChange,
+  persistenceKey,
 }: TldrawCanvasProps) {
   const editorRef = useRef<Editor | null>(null);
   // selectionCallback held in a ref so the store-listen subscription
@@ -263,7 +270,13 @@ export function TldrawCanvas({
     [onReady],
   );
 
-  return <Tldraw onMount={handleMount} components={TLDRAW_COMPONENTS} />;
+  return (
+    <Tldraw
+      onMount={handleMount}
+      components={TLDRAW_COMPONENTS}
+      persistenceKey={persistenceKey}
+    />
+  );
 }
 
 // TLDraw chrome overrides. We hide the style/menu panels that fight
