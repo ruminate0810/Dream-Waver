@@ -49,6 +49,10 @@ from dreamapi_client import (
     DreamAPIClient,
     DreamAPIError,
 )
+from df_ability_client import (
+    DFAbilityClient,
+    DFAbilityError,
+)
 
 
 # ─── App + dependencies ────────────────────────────────────────────
@@ -85,6 +89,20 @@ def get_client() -> DreamAPIClient:
     except DreamAPIError as exc:
         # Convert auth failures into a clean 503 so the Go bridge can
         # mirror it to the browser with a setup hint instead of a 500.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+
+def get_df_client() -> DFAbilityClient:
+    """Same per-request construction pattern as get_client, but for the
+    df-ability-server internal API (NanoBanana + Seedance i2v). 503s
+    when the access/secret env vars aren't set so the Go bridge can
+    show a setup hint to the user."""
+    try:
+        return DFAbilityClient()
+    except DFAbilityError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
@@ -480,6 +498,304 @@ def edit_image2image(
         width=body.width,
         height=body.height,
         task_id=out.get("task_id", ""),
+    )
+
+
+# ─── POST /edit/colorize (B&W → color) ────────────────────────────
+
+
+@app.post(
+    "/edit/colorize",
+    response_model=EditImageResponse,
+    responses={
+        503: {"description": "DreamAPI key not configured"},
+        502: {"description": "DreamAPI upstream error"},
+        504: {"description": "DreamAPI task did not finish in time"},
+    },
+)
+def edit_colorize(
+    body: EditImageRequest,
+    client: DreamAPIClient = Depends(get_client),
+) -> EditImageResponse:
+    """Add realistic colours to a B&W photo. DreamAPI requires the image
+    to contain at least one human face; the upstream surface returns a
+    400 with a clear message when it doesn't, which the bridge mirrors
+    back as a 4xx so the canvas can show the hint inline."""
+    try:
+        data = client.run(
+            "/api/async/colorize",
+            {"url": str(body.image_url)},
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DreamAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    out = client.extract_output(data)
+    url = out.get("output_url")
+    if not url:
+        raise HTTPException(status_code=502, detail="colorize returned no image")
+    return EditImageResponse(url=url, task_id=out.get("task_id", ""))
+
+
+# ─── POST /generate/nano_banana (Google Gemini image) ─────────────
+
+
+class NanoBananaRequest(BaseModel):
+    """Body for `POST /generate/nano_banana`.
+
+    Wraps the df-ability-server `df-ability-google-gemini` endpoint —
+    Google Gemini image generation. The biggest differentiator vs Flux
+    is reference-image support: the canvas can pass up to 4 existing
+    image URLs (typically previously-generated AI images on the canvas)
+    so the model riffs on them instead of starting from a blank latent.
+
+    Model variants:
+      - "nano-banana-2"   → gemini-3.1-flash-image-preview (cheap, fast)
+      - "nano-banana-pro" → gemini-3-pro-image-preview     (higher fidelity)
+
+    image_size / aspect_ratio are accepted for forward-compat but are
+    NOT forwarded to the upstream — the documented contract is `model`
+    + `contents[].parts[]` only. The canvas keeps sending them so we
+    can wire them up once the gateway supports `generationConfig`.
+    """
+
+    prompt: str = Field(..., min_length=1)
+    model: str = Field("nano-banana-2", description="nano-banana-2 | nano-banana-pro")
+    image_size: Optional[str] = Field(
+        None,
+        description="Reserved — gateway doesn't yet accept generationConfig",
+    )
+    aspect_ratio: Optional[str] = Field(
+        None,
+        description="Reserved — gateway doesn't yet accept generationConfig",
+    )
+    # 4 references max — past that the prompt steers more than refs and
+    # response payloads balloon. df-ability accepts more in theory.
+    # Accepts either an http(s) URL (gateway fetches it) OR a base64
+    # data URL `data:image/<type>;base64,<payload>` (forwarded as a
+    # proper Gemini-native inlineData with mimeType). The dual-mode
+    # is what lets user-uploaded files participate as references
+    # without us hosting them anywhere.
+    images: Optional[list[str]] = Field(
+        None,
+        max_length=4,
+        description="Up to 4 reference images — http(s) URL or data:image/...;base64,... data URL",
+    )
+
+
+_NANO_BANANA_MODELS = {
+    "nano-banana-2": "gemini-3.1-flash-image-preview",
+    "nano-banana-pro": "gemini-3-pro-image-preview",
+}
+
+# data URL parser: matches `data:image/<subtype>;base64,<payload>` and
+# captures the subtype + payload. Anything else (e.g. `data:image/<x>;`
+# without base64 encoding) we treat as malformed and skip with a log.
+import re as _re  # local-only import alias to avoid colliding with re elsewhere
+_DATA_URL_RE = _re.compile(r"^data:(image/[A-Za-z0-9.+-]+);base64,(.+)$", _re.DOTALL)
+
+
+def _build_ref_part(img: str) -> Optional[dict[str, Any]]:
+    """Convert one reference (URL or data URL) into a Gemini parts entry.
+
+    Returns None for malformed inputs (caller skips silently — better
+    UX than 422'ing the whole generation when one ref is bad).
+    """
+    if not isinstance(img, str) or not img:
+        return None
+    s = img.strip()
+    if s.startswith("data:"):
+        m = _DATA_URL_RE.match(s)
+        if m is None:
+            return None
+        mime_type, payload = m.group(1), m.group(2)
+        # Gateway upstream Gemini requires mimeType when data is base64.
+        return {"inlineData": {"mimeType": mime_type, "data": payload}}
+    if s.startswith("http://") or s.startswith("https://"):
+        # Gateway-specific: it accepts a URL string in inlineData.data
+        # and fetches the image itself before forwarding to Gemini.
+        return {"inlineData": {"data": s}}
+    return None
+
+# df-ability paths for the google-gemini ability. Per the doc the
+# google-gemini endpoint is under /df-ability-server/...; seedance is
+# at /task/... — kept distinct so the gateway routes correctly.
+_NANO_BANANA_ABILITY = "df-ability-google-gemini"
+_NANO_BANANA_SUBMIT = "/df-ability-server/task/v1/submit"
+_NANO_BANANA_STATUS = "/df-ability-server/task/v1/status"
+
+
+@app.post(
+    "/generate/nano_banana",
+    response_model=GenerateImageResponse,
+    responses={
+        503: {"description": "DF_ABILITY_* env vars not configured"},
+        502: {"description": "df-ability upstream error"},
+        504: {"description": "df-ability task did not finish in time"},
+    },
+)
+def generate_nano_banana(
+    body: NanoBananaRequest,
+    client: DFAbilityClient = Depends(get_df_client),
+) -> GenerateImageResponse:
+    """Generate via Google Gemini through the df-ability-server gateway.
+
+    Returns width/height of 0 — the gateway returns just a `result` URL
+    without echoed dimensions. The canvas measures the loaded <img>.
+    """
+    upstream_model = _NANO_BANANA_MODELS.get(body.model)
+    if upstream_model is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown model {body.model!r}; expected one of {list(_NANO_BANANA_MODELS)}",
+        )
+
+    # Build the Gemini-native body. Two transport modes per reference:
+    #
+    #   http(s)://...               → {inlineData: {data: <url>}}
+    #                                  Non-standard vs native Gemini, but
+    #                                  the gateway documents URLs in
+    #                                  inlineData.data and accepts them.
+    #
+    #   data:image/<type>;base64,X  → {inlineData: {mimeType, data: X}}
+    #                                  Proper native Gemini shape. The
+    #                                  gateway proxies straight to upstream;
+    #                                  this lets user-uploaded files
+    #                                  participate as references without
+    #                                  any hosting on our side.
+    #
+    # Important: the mimeType field is REQUIRED for base64 — sending
+    # base64 without it causes a 500 from upstream Gemini (verified
+    # empirically by curl test before this code landed).
+    parts: list[dict[str, Any]] = [{"text": body.prompt}]
+    if body.images:
+        for img in body.images:
+            ref_part = _build_ref_part(img)
+            if ref_part is not None:
+                parts.append(ref_part)
+
+    upstream_body = {
+        "model": upstream_model,
+        "contents": [{"parts": parts}],
+    }
+
+    try:
+        data = client.run(
+            ability=_NANO_BANANA_ABILITY,
+            submit_path=_NANO_BANANA_SUBMIT,
+            status_path_base=_NANO_BANANA_STATUS,
+            body=upstream_body,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DFAbilityError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    url = data.get("result")
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=502, detail="nano_banana returned no image URL")
+    return GenerateImageResponse(
+        url=url,
+        width=0,
+        height=0,
+        task_id=str(data.get("task_id") or ""),
+    )
+
+
+# ─── POST /video/seedance_i2v (image-to-video) ────────────────────
+
+
+class SeedanceI2VRequest(BaseModel):
+    """Body for `POST /video/seedance_i2v`.
+
+    Submits an image-to-video task to df-ability `seedance-image-to-video`
+    (doubao-seedance-1-5-pro). Output is an MP4 URL; the canvas drops
+    it into a video shape (TLDraw natively supports video assets).
+    """
+
+    image_url: HttpUrl = Field(..., description="Reference image URL")
+    prompt: str = Field(..., min_length=1, max_length=1500)
+    # Gateway accepts 480p / 720p / 1080p. 720p is the doc default —
+    # we mirror that. 1080p is 3-4× the cost of 720p.
+    resolution: str = Field("720p", pattern=r"^(480p|720p|1080p)$")
+    # adaptive lets the model match the source's ratio — usually what
+    # the canvas wants. Other options: 16:9 / 9:16 / 1:1 / 4:3.
+    ratio: str = Field("adaptive", description="adaptive / 16:9 / 9:16 / 1:1 / 4:3")
+    # 4-12 s is the documented sweet spot; 5s is the default.
+    duration: int = Field(5, ge=4, le=12)
+    seed: Optional[int] = Field(None, description="-1 = random")
+
+
+class SeedanceI2VResponse(BaseModel):
+    """The realised MP4 URL. We don't echo back the chosen resolution —
+    the canvas needs only the URL; reuse the request payload if you
+    want to surface "720p / 5s" in the UI."""
+
+    video_url: str
+    task_id: str
+
+
+# df-ability paths for seedance. The seedance doc shows `/task/v1/submit`
+# (no /df-ability-server prefix) but the live gateway 404s on that path;
+# in practice the prefix is required, same as the google-gemini ability.
+# Confirmed empirically — keep this in sync if the gateway ever fixes
+# its routing.
+_SEEDANCE_ABILITY = "df-ability-seedance-image-to-video"
+_SEEDANCE_SUBMIT = "/df-ability-server/task/v1/submit"
+_SEEDANCE_STATUS = "/df-ability-server/task/v1/status"
+_SEEDANCE_MODEL = "doubao-seedance-1-5-pro-251215"
+
+
+@app.post(
+    "/video/seedance_i2v",
+    response_model=SeedanceI2VResponse,
+    responses={
+        503: {"description": "DF_ABILITY_* env vars not configured"},
+        502: {"description": "df-ability upstream error"},
+        504: {"description": "df-ability task did not finish in time"},
+    },
+)
+def video_seedance_i2v(
+    body: SeedanceI2VRequest,
+    client: DFAbilityClient = Depends(get_df_client),
+) -> SeedanceI2VResponse:
+    """Submit a Seedance image-to-video task and block until the MP4
+    is ready. Typical wall-clock 60-120s for 720p/5s; we hold the
+    connection open the whole time (matches the synchronous shape of
+    every other sidecar endpoint)."""
+    upstream_body: dict[str, Any] = {
+        "model": _SEEDANCE_MODEL,
+        "prompt": body.prompt,
+        "image_url": str(body.image_url),
+        "resolution": body.resolution,
+        "ratio": body.ratio,
+        "duration": body.duration,
+    }
+    if body.seed is not None:
+        upstream_body["seed"] = body.seed
+
+    try:
+        # Seedance i2v takes longer than image gen; bump the per-poll
+        # interval to 6s and keep the 10-min cap (matches DFAbility default).
+        data = client.run(
+            ability=_SEEDANCE_ABILITY,
+            submit_path=_SEEDANCE_SUBMIT,
+            status_path_base=_SEEDANCE_STATUS,
+            body=upstream_body,
+            interval=6.0,
+        )
+    except TimeoutError as exc:
+        raise HTTPException(status_code=504, detail=str(exc)) from exc
+    except DFAbilityError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    video_url = data.get("result")
+    if not video_url or not isinstance(video_url, str):
+        raise HTTPException(status_code=502, detail="seedance_i2v returned no video URL")
+    return SeedanceI2VResponse(
+        video_url=video_url,
+        task_id=str(data.get("task_id") or ""),
     )
 
 
