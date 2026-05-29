@@ -21,6 +21,7 @@ func NewMemory() *Store {
 		CreditLedger:    newMemCreditLedger(),
 		ToolCalls:       newMemToolCalls(),
 		UserTemplates:   newMemUserTemplates(),
+		ChatEvents:      newMemChatEvents(), // AA.1
 	}
 }
 

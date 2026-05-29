@@ -387,14 +387,40 @@ func (c *ChanEmitter) Emit(ctx context.Context, ev Event) {
 func (c *ChanEmitter) Channel() <-chan Event { return c.ch }
 func (c *ChanEmitter) Close()                { close(c.ch) }
 
+// Persister is an optional sink the Hub fan-outs each emit to, in
+// addition to the live WebSocket subscribers. Sprint AA.1 wires a
+// store-backed implementation so the per-session event log survives
+// a page refresh / WS reconnect / orchestrator restart. The store
+// package can't be imported here (import cycle: store imports nothing
+// app-level, event is leaf), so the bridge is defined in main.go and
+// injected via SetPersister. nil = no persistence (tests, dev without
+// DB).
+//
+// Persist runs on a detached goroutine inside Hub.Emit so a slow /
+// failing DB write NEVER blocks the live broadcast — UX > durability
+// for progress events.
+type Persister interface {
+	Persist(ev Event)
+}
+
 // Hub multiplexes events across many sessions. The WebSocket handler subscribes
 // to a single session ID.
 type Hub struct {
-	mu   sync.RWMutex
-	subs map[string][]*ChanEmitter
+	mu        sync.RWMutex
+	subs      map[string][]*ChanEmitter
+	persister Persister
 }
 
 func NewHub() *Hub { return &Hub{subs: make(map[string][]*ChanEmitter)} }
+
+// SetPersister attaches the optional durable sink. Called once at boot
+// from main.go after the store is constructed. Safe to call with nil
+// (no-op persistence).
+func (h *Hub) SetPersister(p Persister) {
+	h.mu.Lock()
+	h.persister = p
+	h.mu.Unlock()
+}
 
 func (h *Hub) Subscribe(sessionID string, bufSize int) *ChanEmitter {
 	em := NewChanEmitter(bufSize)
@@ -423,9 +449,22 @@ func (h *Hub) Emit(ctx context.Context, ev Event) {
 	if ev.SessionID == "" {
 		return // nothing to route to
 	}
+	if ev.At.IsZero() {
+		ev.At = time.Now().UTC()
+	}
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for _, em := range h.subs[ev.SessionID] {
+	subs := h.subs[ev.SessionID]
+	persister := h.persister
+	h.mu.RUnlock()
+
+	for _, em := range subs {
 		em.Emit(ctx, ev)
+	}
+
+	// Sprint AA.1 — mirror to the durable log. Detached so a slow PG
+	// write can't stall the live broadcast; the persister handles its
+	// own seq allocation + error logging.
+	if persister != nil {
+		persister.Persist(ev)
 	}
 }

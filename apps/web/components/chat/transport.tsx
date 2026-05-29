@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { eventsURL } from "@/lib/api";
+import { eventsURL, listSessionEvents } from "@/lib/api";
 
 // transport.ts owns the single WebSocket connection per slide session.
 //
@@ -232,7 +232,67 @@ export function AgentSessionProvider({
   // stable for the lifetime of the provider; we mutate in place.
   const listenersRef = useRef<Set<(ev: AgentEvent) => void>>(new Set());
 
+  // Sprint AA.2 — replay buffer. On cold mount we fetch the persisted
+  // chat_events log and stash it here. Every event is also broadcast
+  // to already-registered listeners; and `subscribe` flushes the
+  // buffer to any listener that registers LATER (so mount-order between
+  // provider hydrate and consumer subscribe doesn't matter — every
+  // subscriber sees full history then live events). Live WS frames
+  // are also appended so a late subscriber gets the whole story.
+  const replayBufferRef = useRef<AgentEvent[]>([]);
+  const hydratedRef = useRef(false);
+
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
+
+  // Stable broadcast — appends to the replay buffer THEN fans out to
+  // live listeners. Stable identity so the hydrate effect + WS effect
+  // + subscribe all share one implementation.
+  const broadcast = useCallback((ev: AgentEvent) => {
+    replayBufferRef.current.push(ev);
+    listenersRef.current.forEach((l) => {
+      try {
+        l(ev);
+      } catch (err) {
+        // A listener throwing must not break fan-out for siblings.
+        // eslint-disable-next-line no-console
+        console.error("[AgentEventStream] listener threw:", err);
+      }
+    });
+  }, []);
+
+  // Sprint AA.2 — cold-mount hydrate. Fetch the persisted log once and
+  // replay each event through broadcast so session.ts folds them into
+  // Turn[] exactly like live events. Runs before / in parallel with the
+  // WS connect; live events that arrive during hydrate are appended
+  // after (WS frames also go through broadcast → buffer), so ordering
+  // stays consistent. NOTE: we don't dedup against live events because
+  // on a fresh page load the WS only delivers NEW events (post-load),
+  // while hydrate delivers the historical ones — no overlap.
+  useEffect(() => {
+    if (!sessionId || hydratedRef.current) return;
+    hydratedRef.current = true;
+    let alive = true;
+    listSessionEvents(sessionId, 0)
+      .then((rows) => {
+        if (!alive || rows.length === 0) return;
+        for (const r of rows) {
+          broadcast({
+            session_id: r.session_id,
+            kind: r.kind as EventKind,
+            at: r.at,
+            data: r.data as EventData,
+          });
+        }
+      })
+      .catch(() => {
+        // Replay is best-effort — a failed fetch just means no history
+        // restore; live WS still works. Reset the flag so a later
+        // re-render can retry if the session id changes.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [sessionId, broadcast]);
 
   // The connection + reconnect lifecycle. Mirrors the previously-proven
   // backoff logic that LivePreviewStack used in isolation, but lives
@@ -247,19 +307,6 @@ export function AgentSessionProvider({
     let ws: WebSocket | null = null;
     let attempt = 0;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const broadcast = (ev: AgentEvent) => {
-      listenersRef.current.forEach((l) => {
-        try {
-          l(ev);
-        } catch (err) {
-          // A listener throwing must not break the fan-out for siblings.
-          // Surface to the dev console; production builds drop it.
-          // eslint-disable-next-line no-console
-          console.error("[AgentEventStream] listener threw:", err);
-        }
-      });
-    };
 
     const handleMessage = (m: MessageEvent) => {
       if (!alive) return;
@@ -322,7 +369,22 @@ export function AgentSessionProvider({
 
   // subscribe is stable across renders so consumers can pass it to
   // useEffect's deps without re-subscribing on every state change.
+  //
+  // Sprint AA.2 — on register, FIRST flush the replay buffer to the
+  // new listener (so a consumer that mounts after hydrate / after some
+  // live events still gets the full history), THEN add it to the live
+  // set. This makes mount-order between provider hydrate and consumer
+  // subscribe irrelevant: every subscriber sees full history → live.
   const subscribe = useCallback((listener: (ev: AgentEvent) => void) => {
+    const buffered = replayBufferRef.current;
+    for (const ev of buffered) {
+      try {
+        listener(ev);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[AgentEventStream] replay listener threw:", err);
+      }
+    }
     listenersRef.current.add(listener);
     return () => {
       listenersRef.current.delete(listener);

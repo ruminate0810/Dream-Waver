@@ -359,6 +359,31 @@ export async function getSlideJob(id: string): Promise<SlideJob> {
   return unwrap<SlideJob>(res);
 }
 
+// Sprint AA.2 — replay log fetch. Returns the persisted chat_events
+// for a session (the durable mirror of the WS stream). The transport
+// provider calls this on cold mount to rebuild the conversation that
+// React state lost on refresh. `since` is the seq cursor (0 = full).
+// Each element mirrors a live WS frame + a `seq` field.
+export type ReplayedEvent = {
+  seq: number;
+  session_id: string;
+  kind: string;
+  at: string;
+  data: Record<string, unknown>;
+};
+
+export async function listSessionEvents(
+  sessionId: string,
+  since = 0,
+  limit = 1000,
+): Promise<ReplayedEvent[]> {
+  const res = await fetch(
+    `/api/v1/sessions/${sessionId}/log?since=${since}&limit=${limit}`,
+  );
+  const body = await unwrap<{ events: ReplayedEvent[] }>(res);
+  return body.events ?? [];
+}
+
 // WebSocket URL for an existing session.
 export function eventsURL(sessionId: string): string {
   const base = process.env.NEXT_PUBLIC_WS_BASE || (typeof window !== "undefined"
@@ -874,6 +899,78 @@ export async function image2imageDesignImage(
 // The canvas uses this to render a placeholder shape immediately on
 // submit and swap it for the real image on `done` — turns 30-60 s
 // of blank wait into "queued / 8 s / 24 s / done" feedback.
+
+// ─── Design chat routing (smart intent classification) ───────────────
+//
+// One-shot LLM call that classifies the user's chat message into one
+// of six design tools, returning structured args. The frontend then
+// dispatches to the corresponding endpoint. Routing failures fall
+// back to {tool: "generate"} so the chat never breaks on a bad
+// classification.
+
+export type DesignIntentTool =
+  | "generate"
+  | "variants"
+  | "reimagine"
+  | "animate"
+  | "quick_edit"
+  | "extend_canvas";
+
+export type DesignIntent = {
+  tool: DesignIntentTool;
+  args: Record<string, unknown>;
+  confidence: number;
+  rationale: string;
+};
+
+export type RouteDesignChatRequest = {
+  message: string;
+  selected_url?: string;
+  recent_prompts?: string[];
+  /** When the chat has an active skill, send its id + hint so the
+   *  planner LLM sees the skill context and routes accordingly.
+   *  Hint is the skill.routerHint string (no separate skill fetch). */
+  active_skill_id?: string;
+  skill_hint?: string;
+};
+
+export async function routeDesignChat(
+  body: RouteDesignChatRequest,
+): Promise<DesignIntent> {
+  const res = await fetch("/api/v1/design/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await unwrap<{ intent: DesignIntent }>(res);
+  return data.intent;
+}
+
+// ─── Design history (server-side hydrate) ─────────────────────────────
+//
+// On chat mount we ask the orchestrator for the workspace's prior
+// design_assets. The chat renders one HistoryEntry per row so prior
+// generations survive page reloads + cross-device. Each row's prompt
+// (when present in metadata) is hoisted into a top-level field so
+// the client doesn't re-parse JSON.
+
+export type DesignAsset = {
+  id: string;
+  kind: string; // "generate" | "variants" | "edit" | "upload" | "video"
+  image_url: string;
+  width: number;
+  height: number;
+  prompt?: string;
+  task_id?: string;
+  created_at: string;
+};
+
+export async function listDesignAssets(limit?: number): Promise<DesignAsset[]> {
+  const qs = limit ? `?limit=${limit}` : "";
+  const res = await apiFetch(`/api/v1/design/assets${qs}`);
+  const data = await unwrap<{ assets: DesignAsset[] }>(res);
+  return data.assets ?? [];
+}
 
 export type SubmitDesignGenerateResponse = {
   task_id: string;

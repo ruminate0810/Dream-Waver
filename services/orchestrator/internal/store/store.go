@@ -335,6 +335,42 @@ type IdempotencyKeys interface {
 	Put(ctx context.Context, workspaceID uuid.UUID, toolName string, argsHash []byte, result json.RawMessage, ttl time.Time) error
 }
 
+// ─── Chat events ────────────────────────────────────────────────────
+
+// ChatEvent is one append-only entry in the per-session event log.
+// Mirrors event.Event but stays string-typed (Kind) and uses
+// json.RawMessage for Data so the store layer doesn't depend on the
+// event package (which would import cycle).
+type ChatEvent struct {
+	SessionID uuid.UUID       `json:"session_id"`
+	Seq       int64           `json:"seq"`
+	Kind      string          `json:"kind"`
+	Data      json.RawMessage `json:"data"`
+	At        time.Time       `json:"at"`
+}
+
+// ChatEvents is the persistence boundary for the WS event log. Sprint
+// AA introduces this so /slides/[id] can render the full chat history
+// on cold load (Turn[] was previously in-memory React state, lost on
+// refresh) AND so WS reconnects can fetch the gap they missed instead
+// of going stale.
+type ChatEvents interface {
+	// Append a single event. The seq must be the next monotonic
+	// value for the session — callers compute it via NextSeq below.
+	// Failure is non-fatal at the call site (Hub.Emit logs and
+	// continues so live WS broadcast isn't blocked by DB hiccups).
+	Append(ctx context.Context, ev ChatEvent) error
+	// NextSeq returns the next seq value to use for this session.
+	// Implemented as `coalesce(max(seq), 0) + 1` per session — small
+	// race window if two writers contend, but Append's primary-key
+	// constraint catches conflicts and the caller retries.
+	NextSeq(ctx context.Context, sessionID uuid.UUID) (int64, error)
+	// ListSince returns events strictly greater than `since`, ordered
+	// by seq ascending, capped at `limit`. `since=0` returns the full
+	// history.
+	ListSince(ctx context.Context, sessionID uuid.UUID, since int64, limit int) ([]ChatEvent, error)
+}
+
 // ─── Aggregate Store ────────────────────────────────────────────────
 
 // Store is the single dependency main.go threads into api.Dependencies.
@@ -351,6 +387,7 @@ type Store struct {
 	CreditLedger    CreditLedger // X3a
 	ToolCalls       ToolCalls    // X3a
 	UserTemplates   UserTemplates // T2 — user-saved theme/brand presets
+	ChatEvents      ChatEvents    // AA.1 — WS event log for replay + persistence
 
 	// closer is set by the constructor that owns external resources
 	// (e.g. the pgx pool). main.go defers Close on shutdown.
