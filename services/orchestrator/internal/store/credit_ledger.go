@@ -51,6 +51,11 @@ func (s *pgxCreditLedger) InsertDebit(ctx context.Context, workspaceID uuid.UUID
 	//
 	// On insufficient funds the CTE produces zero rows → Scan
 	// returns pgx.ErrNoRows → we map to ErrInsufficient.
+	// $2 carries explicit ::bigint casts everywhere it's used in
+	// arithmetic / comparison. Without them pgx sends the param as an
+	// untyped "unknown", and Postgres can't resolve the unary/binary
+	// `-` or `>=` operator against unknown → "operator is not unique:
+	// - unknown (SQLSTATE 42725)". Casting once at each site fixes it.
 	const q = `
 		with bal as (
 			select coalesce(sum(amount_micro), 0)::bigint as current
@@ -58,13 +63,13 @@ func (s *pgxCreditLedger) InsertDebit(ctx context.Context, workspaceID uuid.UUID
 			where workspace_id = $1
 		)
 		insert into credit_ledger (workspace_id, amount_micro, reason, meta)
-		select $1, -$2, $3, $4
+		select $1, -$2::bigint, $3, $4
 		from bal
-		where current >= $2
+		where current >= $2::bigint
 		returning
 			id,
 			created_at,
-			(select current from bal) - $2 as balance_after
+			(select current from bal) - $2::bigint as balance_after
 	`
 	row := s.pool.QueryRow(ctx, q, workspaceID, amount, reason, nullableJSONBytes(metaJSON))
 	entry := &CreditLedgerEntry{
