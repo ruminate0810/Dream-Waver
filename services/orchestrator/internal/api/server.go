@@ -17,6 +17,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/auth"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/billing"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
@@ -80,6 +81,13 @@ type Dependencies struct {
 	// present, passes anonymous traffic through otherwise. Routes
 	// that require auth wrap with `r.With(auth.Required)`.
 	AuthMiddleware func(http.Handler) http.Handler
+
+	// LLM is the multi-tier router (planner / worker / critic) used
+	// by routes that need a one-shot LLM call. Today: smart chat
+	// routing on /design (classifies "make this darker" → reimagine
+	// tool call). Optional — when nil, the design /chat route falls
+	// back to the trivial generate-intent path.
+	LLM llm.Router
 }
 
 func NewServer(deps Dependencies, addr string) *http.Server {
@@ -167,6 +175,9 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/games/{id}/messages", h.PostGameMessage)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
+		// Sprint AA.2 — replay log (JSON, not WS). FE hydrates on cold
+		// mount + back-fills the gap on reconnect via ?since=<seq>.
+		r.Get("/sessions/{id}/log", h.SessionEventLog)
 
 		// Video — bridge to the Opendream FastAPI iteration backend.
 		// Every route 503s when VideoBridge is nil so the surface is
@@ -184,6 +195,14 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		// video above: route exists unconditionally, 503s with a
 		// setup hint when the bridge isn't wired.
 		r.Route("/design", func(r chi.Router) {
+			// History hydration for the right-side chat — DesignAssets
+			// rows newest-first. Anonymous gets empty list (200, not 401)
+			// so the empty-state path on the frontend stays clean.
+			r.Get("/assets", h.ListDesignAssets)
+			// Smart chat routing — classifies a user chat message into
+			// one of the design tool intents so the frontend dispatches
+			// to the right endpoint. Falls back to generate on failure.
+			r.Post("/chat", h.RouteDesignChat)
 			r.Post("/images/generate", h.GenerateDesignImage)
 			r.Post("/images/generate/submit", h.SubmitDesignGenerate)
 			// Note the trailing path segment ordering: `/{task_id}/events`
@@ -192,10 +211,17 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 			// `/images/jobs/{task_id}` sub-route avoids the ambiguity.
 			r.Get("/images/jobs/{task_id}/events", h.StreamDesignGenerateEvents)
 			r.Post("/images/variants", h.GenerateDesignVariants)
+			r.Post("/images/nano_banana", h.GenerateDesignNanoBanana)
 			r.Post("/images/remove_bg", h.RemoveDesignImageBG)
 			r.Post("/images/enhance", h.EnhanceDesignImage)
+			r.Post("/images/colorize", h.ColorizeDesignImage)
 			r.Post("/images/outpaint", h.OutpaintDesignImage)
 			r.Post("/images/image2image", h.Image2ImageDesignImage)
+			// Image-to-video — Seedance 1.5 Pro via df-ability gateway.
+			// Lives under /videos/* (not /images/*) so the URL reflects
+			// the output media kind; the underlying skill is still
+			// part of the design surface.
+			r.Post("/videos/seedance_i2v", h.SeedanceI2VDesign)
 		})
 
 		// AI-generated image assets. NanoBanana writes PNGs into

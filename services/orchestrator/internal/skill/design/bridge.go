@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Bridge is the typed HTTP client to dreamapi-sidecar.
@@ -120,6 +121,85 @@ func (b *Bridge) Image2Image(ctx context.Context, req Image2ImageRequest) (*Gene
 	var out GenerateImageResponse
 	if err := b.do(ctx, http.MethodPost, "/edit/image2image", req, &out); err != nil {
 		return nil, err
+	}
+	return &out, nil
+}
+
+// Colorize calls POST /edit/colorize upstream. DreamAPI returns a 4xx
+// when the source image has no detectable human face; the bridge mirrors
+// that status so the canvas can show the hint inline.
+func (b *Bridge) Colorize(ctx context.Context, req EditImageRequest) (*EditImageResponse, error) {
+	if strings.TrimSpace(req.ImageURL) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "image_url is required"}
+	}
+	var out EditImageResponse
+	if err := b.do(ctx, http.MethodPost, "/edit/colorize", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// NanoBanana calls POST /generate/nano_banana upstream — Google Gemini
+// image generation with optional reference images. Sidecar caps refs
+// at 4, model at the two known variants; the bridge fast-fails on the
+// missing prompt to skip a round trip.
+func (b *Bridge) NanoBanana(ctx context.Context, req NanoBananaRequest) (*GenerateImageResponse, error) {
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "prompt is required"}
+	}
+	var out GenerateImageResponse
+	if err := b.do(ctx, http.MethodPost, "/generate/nano_banana", req, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SeedanceI2V calls POST /video/seedance_i2v upstream — Seedance 1.5 Pro
+// image-to-video. 60-120s latency for 720p/5s; the default Bridge client
+// timeout (2 min) is the conservative cap. The sidecar holds the
+// connection open for the whole polled wait.
+//
+// Bridge-side fast-fails on missing image_url / prompt save a round
+// trip and let the API layer mirror the exact validation message back
+// to the canvas.
+func (b *Bridge) SeedanceI2V(ctx context.Context, req SeedanceI2VRequest) (*SeedanceI2VResponse, error) {
+	if strings.TrimSpace(req.ImageURL) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "image_url is required"}
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, &BridgeError{Status: http.StatusBadRequest, Body: "prompt is required"}
+	}
+	// Seedance i2v varies wildly with resolution × duration × upstream
+	// load — 720p/5s lands in ~60s on a good day, 1080p/12s can push
+	// past 240s. 15 min is the per-request cap; Seedance tasks past
+	// that are almost certainly stuck and worth surfacing as timeouts.
+	// Re-uses the default Bridge client's transport so dialler / TLS
+	// caches stay shared; only the Timeout differs.
+	endpoint := b.BaseURL + "/video/seedance_i2v"
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal body: %w", err)
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json")
+	c := &http.Client{Transport: b.Client.Transport, Timeout: 15 * time.Minute}
+	resp, err := c.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, &BridgeError{Status: resp.StatusCode, Body: string(raw)}
+	}
+	var out SeedanceI2VResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
 	return &out, nil
 }

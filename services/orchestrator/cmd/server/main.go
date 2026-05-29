@@ -133,6 +133,13 @@ func main() {
 	}
 	defer func() { _ = dataStore.Close() }()
 
+	// Sprint AA.1 — mirror every WS event to the durable chat_events
+	// log so /slides/[id] can replay the full conversation on cold
+	// load + WS reconnect can back-fill the gap. Best-effort: the
+	// persister writes on a detached goroutine, never blocking the
+	// live broadcast.
+	hub.SetPersister(newChatEventPersister(dataStore.ChatEvents))
+
 	sessions := slides.NewSessionStoreWithDB(dataStore.SlideJobs)
 	pipeline := &slides.Pipeline{
 		Router:      router,
@@ -258,6 +265,9 @@ func main() {
 		Store:          dataStore,
 		Billing:        billingSvc,
 		AuthMiddleware: authMW,
+		// LLM is reused for the design chat's intent-routing call.
+		// Same multi-tier router that powers slides/games/video.
+		LLM: router,
 	}, ":"+cfg.HTTPPort)
 
 	// Graceful shutdown

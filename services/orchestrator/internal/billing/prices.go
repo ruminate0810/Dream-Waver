@@ -14,13 +14,34 @@ package billing
 // negative when DeepSeek tokens + DreamAPI fees + Fly compute stack.
 // Sharper unit economics is a Phase 6 problem, not an MVP one.
 var Prices = map[string]int64{
-	// ─── Design (DreamAPI Flux) ──────────────────────────────────
+	// ─── Design (DreamAPI Flux + Gemini) ─────────────────────────
 	"generate_image":      5_000,  // $0.005 — DreamAPI Flux text2image ≈ $0.002/call
 	"generate_variants":   18_000, // $0.018 — 4 variants in one call; pricing reflects 4 outputs
 	"edit_remove_bg":      6_000,  // $0.006 — DreamAPI matting ≈ $0.003
 	"edit_enhance":        8_000,  // $0.008 — super-resolution ≈ $0.004
 	"edit_outpaint":       8_000,  // $0.008 — same cost band as enhance
 	"edit_image2image":    6_000,  // $0.006 — Flux i2i similar to text2image
+	"edit_colorize":       4_000,  // $0.004 — DreamAPI colorize ≈ $0.002
+	// NanoBanana — Gemini 3.1 Flash Image Preview. ~$0.005 cost via the
+	// df-ability gateway; price at ~2× margin.
+	"generate_nano_banana":     10_000, // $0.010 — Gemini Flash w/ optional refs
+	// NanoBanana Pro — Gemini 3 Pro Image Preview ≈ $0.012 cost.
+	"generate_nano_banana_pro": 25_000, // $0.025 — Gemini Pro
+
+	// Smart chat routing — planner-tier LLM classification call.
+	// Tiny by design (~150-token completion, prompt is small) so the
+	// per-message cost stays well under 1% of the eventual image-gen
+	// fee that the routed action triggers.
+	"chat_route": 200, // $0.0002
+
+	// Seedance 1.5 Pro image-to-video — three resolution tiers. Costs
+	// scale roughly with output pixel-seconds; the table reflects
+	// 5s/720p as the baseline (≈ $0.06 cost), with ½ for 480p and 3×
+	// for 1080p. Frontend caps duration at 12s so worst-case spend
+	// is 12s/1080p ≈ $0.36 / call billed at $0.60 (1.6× margin).
+	"video_seedance_480p":  30_000,  // $0.030 — 5s/480p baseline
+	"video_seedance_720p":  100_000, // $0.100 — 5s/720p baseline
+	"video_seedance_1080p": 300_000, // $0.300 — 5s/1080p baseline
 
 	// ─── Slides ──────────────────────────────────────────────────
 	// outline + content are pure LLM (DeepSeek); per-token billing

@@ -87,6 +87,40 @@ type SubmitGenerateResponse struct {
 	TaskID string `json:"task_id"`
 }
 
+// NanoBananaRequest mirrors sidecar's google_gemini_image wrapper. The
+// canvas picks `model` between "nano-banana-2" (cheap/fast Gemini Flash)
+// and "nano-banana-pro" (higher-fidelity Gemini Pro). Images carries up
+// to 4 reference URLs — already-hosted canvas images the model riffs
+// on. ImageSize / AspectRatio are reserved fields the sidecar accepts
+// but doesn't yet forward (the df-ability gateway is documented as
+// model + contents only).
+type NanoBananaRequest struct {
+	Prompt      string   `json:"prompt"`
+	Model       string   `json:"model,omitempty"`
+	ImageSize   string   `json:"image_size,omitempty"`
+	AspectRatio string   `json:"aspect_ratio,omitempty"`
+	Images      []string `json:"images,omitempty"`
+}
+
+// SeedanceI2VRequest mirrors sidecar's image-to-video wrapper.
+// Resolution: 480p / 720p / 1080p (default 720p).
+// Ratio:      adaptive (match source) / 16:9 / 9:16 / 1:1 / 4:3.
+// Duration:   4-12 s (sidecar enforces).
+// Seed:       *int so 0 / -1 / unset are distinguishable; -1 = random.
+type SeedanceI2VRequest struct {
+	ImageURL   string `json:"image_url"`
+	Prompt     string `json:"prompt"`
+	Resolution string `json:"resolution,omitempty"`
+	Ratio      string `json:"ratio,omitempty"`
+	Duration   int    `json:"duration,omitempty"`
+	Seed       *int   `json:"seed,omitempty"`
+}
+
+type SeedanceI2VResponse struct {
+	VideoURL string `json:"video_url"`
+	TaskID   string `json:"task_id"`
+}
+
 // EditImageResponse — width/height are pointer-int so the JSON omits
 // them when DreamAPI doesn't echo dimensions (which it often doesn't
 // for edit endpoints). The canvas falls back to natural image size
@@ -112,10 +146,11 @@ func (e *BridgeError) Error() string {
 	return e.Body
 }
 
-// HTTPClientTimeout — DreamAPI Flux text2image typically completes in
-// 30-60 s and the sidecar holds the connection open the whole time.
-// 2 minutes is the conservative upper bound that still trips before a
-// browser fetch would (most browsers + LB pairs cap at ~5 min). When
-// the sidecar grows an SSE/streaming variant we'll keep this for the
-// synchronous fallback.
-const HTTPClientTimeout = 120 * time.Second
+// HTTPClientTimeout caps the default Bridge HTTP client lifetime.
+// Covers NanoBanana (typically 30s, spikes to 60s+) and any other
+// synchronous sidecar call. Seedance i2v has its own per-request
+// client below — much longer because the upstream is slower.
+// 10 min is comfortably above the slowest real call we've seen
+// (~90s for NanoBanana Pro on a heavy load) while still tripping
+// well before a browser-level fetch would.
+const HTTPClientTimeout = 10 * time.Minute

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -152,6 +153,10 @@ func (h *handlers) EnhanceDesignImage(w http.ResponseWriter, r *http.Request) {
 	h.editImageHandler(w, r, "enhance", h.deps.designBridgeEnhance)
 }
 
+func (h *handlers) ColorizeDesignImage(w http.ResponseWriter, r *http.Request) {
+	h.editImageHandler(w, r, "colorize", h.deps.designBridgeColorize)
+}
+
 // editImageFn matches the signature of Bridge.RemoveBG / Bridge.Enhance.
 type editImageFn func(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error)
 
@@ -163,6 +168,9 @@ func (d Dependencies) designBridgeRemoveBG(ctx context.Context, req design.EditI
 }
 func (d Dependencies) designBridgeEnhance(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error) {
 	return d.DesignBridge.Enhance(ctx, req)
+}
+func (d Dependencies) designBridgeColorize(ctx context.Context, req design.EditImageRequest) (*design.EditImageResponse, error) {
+	return d.DesignBridge.Colorize(ctx, req)
 }
 
 func (h *handlers) editImageHandler(w http.ResponseWriter, r *http.Request, op string, call editImageFn) {
@@ -268,6 +276,148 @@ func (h *handlers) OutpaintDesignImage(w http.ResponseWriter, r *http.Request) {
 				"left": body.Left, "right": body.Right,
 				"top": body.Top, "bottom": body.Bottom,
 			},
+		})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// --- POST /api/v1/design/images/nano_banana -----------------------------
+
+type nanoBananaBody struct {
+	Prompt      string   `json:"prompt"`
+	Model       string   `json:"model,omitempty"`
+	ImageSize   string   `json:"image_size,omitempty"`
+	AspectRatio string   `json:"aspect_ratio,omitempty"`
+	Images      []string `json:"images,omitempty"`
+}
+
+func (h *handlers) GenerateDesignNanoBanana(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	var body nanoBananaBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Prompt) == "" {
+		errorJSON(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	// Two price tiers: nano-banana-pro routes to the more expensive
+	// Gemini Pro model; default (or nano-banana-2) pays the cheaper rate.
+	priceKey := "generate_nano_banana"
+	if body.Model == "nano-banana-pro" {
+		priceKey = "generate_nano_banana_pro"
+	}
+	debited, ok := h.chargeOrReject(w, r.Context(), priceKey)
+	if !ok {
+		return
+	}
+	start := time.Now()
+
+	resp, err := h.deps.DesignBridge.NanoBanana(r.Context(), design.NanoBananaRequest{
+		Prompt:      body.Prompt,
+		Model:       body.Model,
+		ImageSize:   body.ImageSize,
+		AspectRatio: body.AspectRatio,
+		Images:      body.Images,
+	})
+	if err != nil {
+		h.refundOnFailure(r.Context(), priceKey, debited, err)
+		writeDesignBridgeError(w, "nano_banana", err)
+		return
+	}
+	h.recordSuccess(r.Context(), priceKey, debited, resp.URL, time.Since(start))
+	h.recordDesignAsset(r.Context(), "generate", resp.URL, resp.Width, resp.Height, resp.TaskID,
+		map[string]any{
+			"prompt":       body.Prompt,
+			"model":        firstNonEmpty(body.Model, "nano-banana-2"),
+			"image_size":   body.ImageSize,
+			"aspect_ratio": body.AspectRatio,
+			"refs":         len(body.Images),
+		})
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
+}
+
+// --- POST /api/v1/design/videos/seedance_i2v ----------------------------
+
+type seedanceI2VBody struct {
+	ImageURL   string `json:"image_url"`
+	Prompt     string `json:"prompt"`
+	Resolution string `json:"resolution,omitempty"`
+	Ratio      string `json:"ratio,omitempty"`
+	Duration   int    `json:"duration,omitempty"`
+	Seed       *int   `json:"seed,omitempty"`
+}
+
+func (h *handlers) SeedanceI2VDesign(w http.ResponseWriter, r *http.Request) {
+	if h.deps.DesignBridge == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "design skill is not configured (set DREAMAPI_SIDECAR_URL)")
+		return
+	}
+	var body seedanceI2VBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.ImageURL) == "" {
+		errorJSON(w, http.StatusBadRequest, "image_url is required")
+		return
+	}
+	if strings.TrimSpace(body.Prompt) == "" {
+		errorJSON(w, http.StatusBadRequest, "prompt is required")
+		return
+	}
+	// Price by resolution tier — 720p is the standard rate, 1080p is
+	// roughly 3× cost upstream, 480p is half. Default unmatched values
+	// to 720p so a missing field doesn't accidentally cap revenue.
+	priceKey := "video_seedance_720p"
+	switch body.Resolution {
+	case "480p":
+		priceKey = "video_seedance_480p"
+	case "1080p":
+		priceKey = "video_seedance_1080p"
+	}
+	debited, ok := h.chargeOrReject(w, r.Context(), priceKey)
+	if !ok {
+		return
+	}
+	start := time.Now()
+
+	resp, err := h.deps.DesignBridge.SeedanceI2V(r.Context(), design.SeedanceI2VRequest{
+		ImageURL:   body.ImageURL,
+		Prompt:     body.Prompt,
+		Resolution: body.Resolution,
+		Ratio:      body.Ratio,
+		Duration:   body.Duration,
+		Seed:       body.Seed,
+	})
+	if err != nil {
+		h.refundOnFailure(r.Context(), priceKey, debited, err)
+		writeDesignBridgeError(w, "seedance_i2v", err)
+		return
+	}
+	h.recordSuccess(r.Context(), priceKey, debited, resp.VideoURL, time.Since(start))
+	// Treat as a design_asset row with kind="video" so the workspace
+	// history (Phase 2b) can mix images + videos in one list. Width
+	// and height are 0 — Seedance doesn't echo dimensions and the
+	// canvas reads them off the loaded <video> element instead.
+	h.recordDesignAsset(r.Context(), "video", resp.VideoURL, 0, 0, resp.TaskID,
+		map[string]any{
+			"op":               "seedance_i2v",
+			"source_image_url": body.ImageURL,
+			"prompt":           body.Prompt,
+			"resolution":       body.Resolution,
+			"ratio":            body.Ratio,
+			"duration":         body.Duration,
 		})
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -449,11 +599,159 @@ func designJSONEscape(s string) string {
 
 // --- Helpers ------------------------------------------------------------
 
-// writeDesignBridgeError follows the same shape as writeBridgeError
-// in routes_video.go: mirror 4xx codes verbatim, fold 5xx into 502,
-// log transport failures. Lifted to a per-package helper so a future
-// refactor can merge them into a shared `bridgehttp` package without
-// touching either routes file.
+// --- POST /api/v1/design/chat (smart intent routing) -------------------
+//
+// One-shot intent classification on top of the LLM router. The chat
+// sends the user message + selection context; we return a structured
+// `{tool, args, confidence, rationale}` envelope the frontend
+// dispatches against (calling /generate, /reimagine, /animate, etc.).
+//
+// Routing decision is auditable on the client — we do NOT execute the
+// chosen tool here, so the frontend can show "Routed to: Reimagine"
+// chip and the user can override. Failures silently fall back to the
+// "generate" intent — the chat is never broken by a routing miss.
+
+type designChatBody struct {
+	Message       string   `json:"message"`
+	SelectedURL   string   `json:"selected_url,omitempty"`
+	RecentPrompts []string `json:"recent_prompts,omitempty"`
+	// Skill context — when the frontend has an active "design task"
+	// (one of the SKILLS catalogue entries), send the id + hint so
+	// the router classifies in-context. Backend doesn't need the
+	// full skill data — the hint is enough to scope the LLM's call.
+	ActiveSkillID string `json:"active_skill_id,omitempty"`
+	SkillHint     string `json:"skill_hint,omitempty"`
+}
+
+type designChatResponse struct {
+	Intent design.DesignIntent `json:"intent"`
+}
+
+func (h *handlers) RouteDesignChat(w http.ResponseWriter, r *http.Request) {
+	var body designChatBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if strings.TrimSpace(body.Message) == "" {
+		errorJSON(w, http.StatusBadRequest, "message is required")
+		return
+	}
+
+	// Pre-debit a tiny fee — this is a planner-tier LLM call (cheap)
+	// but we still want it surfaced in the usage audit. Anonymous
+	// workspaces pass through free (chargeOrReject's existing path).
+	debited, ok := h.chargeOrReject(w, r.Context(), "chat_route")
+	if !ok {
+		return
+	}
+
+	intent := design.RouteMessage(r.Context(), h.deps.LLM, design.RouteContext{
+		Message:       body.Message,
+		SelectedURL:   body.SelectedURL,
+		RecentPrompts: body.RecentPrompts,
+		ActiveSkillID: body.ActiveSkillID,
+		SkillHint:     body.SkillHint,
+	})
+
+	h.recordSuccess(r.Context(), "chat_route", debited, intent.Tool, 0)
+	writeJSON(w, http.StatusOK, designChatResponse{Intent: intent})
+}
+
+// --- GET /api/v1/design/assets (history for chat hydration) ------------
+//
+// Lists the workspace's design_assets newest-first so the right-side
+// chat can rebuild its history on mount instead of starting empty
+// after every reload. Each entry projects to a frontend-friendly
+// shape: `{id, kind, image_url, width, height, prompt?, created_at}`
+// — the metadata blob's `prompt` field is hoisted into top-level
+// `prompt` for convenience (avoids the client re-parsing JSON).
+//
+// Anonymous requests (no workspace on ctx) return an empty list
+// rather than 401 so the chat just renders the empty state. List
+// is capped at 200 entries — older history is reachable via the
+// soon-to-come ?cursor= pagination (not in scope here).
+
+type designAssetItem struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	ImageURL  string `json:"image_url"`
+	Width     int    `json:"width"`
+	Height    int    `json:"height"`
+	Prompt    string `json:"prompt,omitempty"`
+	TaskID    string `json:"task_id,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+type listDesignAssetsResponse struct {
+	Assets []designAssetItem `json:"assets"`
+}
+
+func (h *handlers) ListDesignAssets(w http.ResponseWriter, r *http.Request) {
+	wsID := workspaceIDFromCtx(r.Context())
+	if wsID == uuid.Nil {
+		writeJSON(w, http.StatusOK, listDesignAssetsResponse{Assets: []designAssetItem{}})
+		return
+	}
+	if h.deps.Store == nil || h.deps.Store.DesignAssets == nil {
+		writeJSON(w, http.StatusOK, listDesignAssetsResponse{Assets: []designAssetItem{}})
+		return
+	}
+
+	// ?limit param — default 100, cap 200 to keep response payload bounded.
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	rows, err := h.deps.Store.DesignAssets.List(r.Context(), wsID, limit)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "design assets list", "workspace_id", wsID, "err", err)
+		errorJSON(w, http.StatusInternalServerError, "list failed")
+		return
+	}
+
+	out := make([]designAssetItem, 0, len(rows))
+	for _, a := range rows {
+		item := designAssetItem{
+			ID:        a.ID.String(),
+			Kind:      a.Kind,
+			ImageURL:  a.ImageURL,
+			Width:     a.Width,
+			Height:    a.Height,
+			TaskID:    a.TaskID,
+			CreatedAt: a.CreatedAt.UTC().Format(time.RFC3339),
+		}
+		// Hoist metadata.prompt to the top level so the client doesn't
+		// have to unmarshal the JSON blob just to render a label.
+		if len(a.Metadata) > 0 {
+			var meta map[string]any
+			if json.Unmarshal(a.Metadata, &meta) == nil {
+				if p, ok := meta["prompt"].(string); ok {
+					item.Prompt = p
+				}
+			}
+		}
+		out = append(out, item)
+	}
+	writeJSON(w, http.StatusOK, listDesignAssetsResponse{Assets: out})
+}
+
+// writeDesignBridgeError mirrors 4xx codes verbatim. For 5xx, when the
+// body is a FastAPI-shaped `{detail: "..."}` envelope (which is what
+// the sidecar produces via HTTPException), we surface the detail
+// string so actionable upstream errors — e.g. "DREAMAPI_API_KEY env
+// var unset" — reach the browser instead of a flat "upstream error".
+// Unstructured 5xx still collapse into the generic message so we
+// don't leak panic stacks or raw Python tracebacks.
+//
+// Sibling of writeBridgeError in routes_video.go; they'll fold into
+// a shared bridgehttp package once a third skill establishes the pattern.
 func writeDesignBridgeError(w http.ResponseWriter, op string, err error) {
 	var be *design.BridgeError
 	if errors.As(err, &be) {
@@ -468,12 +766,33 @@ func writeDesignBridgeError(w http.ResponseWriter, op string, err error) {
 			errorJSON(w, be.Status, be.Body)
 			return
 		}
+		// 5xx — log internally, then try to pull a useful detail out
+		// of FastAPI's `{detail: "..."}` envelope. The detail is what
+		// the user needs to act on; the surrounding wrapper is plumbing.
 		slog.Error("dreamapi-sidecar upstream 5xx", "op", op, "status", be.Status, "body", be.Body)
+		if detail := extractFastAPIDetail(be.Body); detail != "" {
+			errorJSON(w, http.StatusBadGateway, "dreamapi-sidecar: "+detail)
+			return
+		}
 		errorJSON(w, http.StatusBadGateway, "dreamapi-sidecar upstream error")
 		return
 	}
 	slog.Error("dreamapi-sidecar transport", "op", op, "err", err)
 	errorJSON(w, http.StatusBadGateway, "dreamapi-sidecar unreachable: "+err.Error())
+}
+
+// extractFastAPIDetail pulls the human-readable `detail` field out of
+// a FastAPI HTTPException response body. Returns "" when the body
+// isn't JSON or doesn't have a string detail.
+func extractFastAPIDetail(body string) string {
+	var raw map[string]any
+	if json.Unmarshal([]byte(body), &raw) != nil {
+		return ""
+	}
+	if d, ok := raw["detail"].(string); ok {
+		return d
+	}
+	return ""
 }
 
 // ─── design_assets persistence ──────────────────────────────────────
