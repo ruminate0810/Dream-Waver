@@ -1,0 +1,204 @@
+/* azure.css — bold enterprise blue (Sprint AZ).
+ *
+ * The consulting-deck / B2B-SaaS-keynote register: a full-bleed deep
+ * royal-blue ground, crisp white type, a high-contrast Didone display
+ * face (DM Serif Display) for headlines, and a signature motif of
+ * overlapping translucent circles painted into the slide background.
+ *
+ * Distinct from the other blues in the set:
+ *   - `corporate`  → white canvas + navy header bar + amber accent
+ *   - `pitch-deck` → near-black radial-gradient, neon-ish
+ *   - `azure`      → SATURATED full-bleed blue, white Didone, circle
+ *                     geometry. McKinsey / Stripe-keynote energy.
+ *
+ * White-on-blue throughout, so every token that's normally dark-on-
+ * light is inverted here. The decorative circles live as a composite
+ * background on .slide (no extra HTML), mirroring the noir approach.
+ */
+
+.theme-azure {
+  --bg: #16357E;            /* deep royal/enterprise blue ground */
+  --fg: #FFFFFF;            /* crisp white — this deck is high-contrast */
+  --fg-muted: #C2D2F2;      /* desaturated sky for secondary text */
+  --fg-faint: #7E96C8;      /* faded periwinkle for tertiary / rules */
+
+  /* Accent is a LIGHT blue so numbers / kickers pop off the dark
+     ground without fighting the white body. Brand override still
+     wins (apply_brand swaps --brand-primary). */
+  --accent: var(--brand-primary, #9DBDF5);
+  --accent-2: var(--brand-accent, #FFFFFF);
+  --accent-glow: rgba(157, 189, 245, 0.35);
+
+  --font-body: var(--brand-font, 'Manrope', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif);
+  --font-display: 'DM Serif Display', 'Noto Serif SC', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --pad-x: 130px;
+  --pad-y: 96px;
+  --bullet-size: 0;          /* custom bullet markers below */
+}
+
+/* ─── Composite slide background — overlapping circle geometry ──────
+ * Three translucent white circles of decreasing size, anchored at the
+ * corners so each slide reads as a fragment of one big concentric
+ * field (like the screenshot's Table-of-Contents spread). Painted as
+ * stacked radial-gradients so there's zero extra HTML. The base blue
+ * fill is the last layer.
+ *
+ * Each radial-gradient = one circle: `radial-gradient(circle at X Y,
+ * white α up-to-R, transparent past-R)`. Keeping α low (4-9%) means
+ * they read as a tonal wash on the blue, not as opaque discs.
+ */
+.theme-azure .slide {
+  background-color: var(--bg);
+  background-image:
+    /* big circle, bottom-left, ~9% */
+    radial-gradient(circle at -8% 118%, rgba(255, 255, 255, 0.10) 0, rgba(255, 255, 255, 0.10) 38%, transparent 38.4%),
+    /* medium circle, top-right, ~6% */
+    radial-gradient(circle at 112% -12%, rgba(255, 255, 255, 0.07) 0, rgba(255, 255, 255, 0.07) 30%, transparent 30.4%),
+    /* small inner ring echo, bottom-left, ~5% */
+    radial-gradient(circle at 6% 104%, rgba(255, 255, 255, 0.06) 0, rgba(255, 255, 255, 0.06) 20%, transparent 20.4%);
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+/* ─── Top running-head rail ────────────────────────────────────────
+ * Thin hairline + tracking-wide folio at the very top, evoking the
+ * screenshot's "Sterling & Partners · date · @handle" masthead. Drawn
+ * with ::before so no HTML changes. We only show the rule line; the
+ * folio number rides bottom-right via the shared folio chrome.
+ */
+.theme-azure .slide::before {
+  content: "";
+  position: absolute;
+  top: 56px;
+  left: var(--pad-x);
+  right: var(--pad-x);
+  height: 1px;
+  background: rgba(255, 255, 255, 0.22);
+  z-index: 1;
+}
+
+/* Folio numeral bottom-right (Roman, matching minimalist's folio
+ * convention but in light-on-dark). */
+.theme-azure .slide::after {
+  content: attr(data-folio-roman);
+  position: absolute;
+  bottom: 48px;
+  right: var(--pad-x);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.28em;
+  color: var(--fg-faint);
+  z-index: 1;
+}
+
+/* ─── Display type ─────────────────────────────────────────────────
+ * DM Serif Display is already high-contrast; we just size it big and
+ * keep it pure white. The opening title / section / closing slides
+ * get the oversized treatment via base.css's .title-block etc. */
+.theme-azure .display,
+.theme-azure .title,
+.theme-azure .toc-headline .title {
+  color: var(--fg);
+}
+.theme-azure .kicker {
+  color: var(--accent);
+  letter-spacing: 0.36em;
+}
+.theme-azure .subtitle {
+  color: var(--fg-muted);
+}
+.theme-azure .body-text,
+.theme-azure .two-column {
+  color: var(--fg-muted);
+}
+
+/* ─── Bullets — light ring marker on the blue ground ───────────────*/
+.theme-azure .bullet { color: var(--fg); }
+.theme-azure .bullet::before {
+  content: "";
+  width: 11px;
+  height: 11px;
+  margin-top: 20px;
+  border-radius: 999px;
+  background: transparent;
+  border: 2px solid var(--accent);
+  flex-shrink: 0;
+}
+
+/* ─── TOC — the signature layout from the reference ────────────────
+ * base.css already lays out .toc-shell / .toc-list / .toc-number. We
+ * just paint it for the dark ground: bigger decorative circle, white
+ * entries, light-blue numerals, faint white rules. */
+.theme-azure .toc-bg {
+  background: rgba(255, 255, 255, 0.10);
+  opacity: 1;                /* alpha already baked into the colour */
+  width: 720px;
+  height: 720px;
+  bottom: -160px;
+  left: -160px;
+}
+.theme-azure .toc-label { color: var(--fg); }
+.theme-azure .toc-rule {
+  background: var(--fg-faint);
+  opacity: 0.35;
+}
+.theme-azure .toc-number {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ─── Quote — oversized opening mark in faint white ────────────────*/
+.theme-azure .quote { color: var(--fg); }
+.theme-azure .attribution { color: var(--fg-muted); }
+
+/* ─── Metric — big white number, light-blue context ────────────────*/
+.theme-azure .metric { color: var(--fg); }
+.theme-azure .metric-context { color: var(--fg-muted); }
+
+/* ─── Generic surfaces that default to dark-on-light need inverting
+ * so any layout we didn't special-case still reads on the blue. Cards
+ * / panels get a subtle white surface; their borders go faint-white.
+ * These selectors are broad on purpose — a catch-all so a layout we
+ * forgot doesn't render dark-text-on-dark-blue (invisible). */
+.theme-azure .card,
+.theme-azure .panel,
+.theme-azure .bento-card,
+.theme-azure .metric-card,
+.theme-azure .feature,
+.theme-azure .event,
+.theme-azure .swot-cell,
+.theme-azure .comparison-pair > * {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--fg);
+}
+
+/* Tables (comparison-table): light-on-dark grid lines + white text. */
+.theme-azure table,
+.theme-azure th,
+.theme-azure td {
+  color: var(--fg);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.theme-azure thead th {
+  color: var(--accent);
+}
+
+/* Footer hairline + dots, light-on-dark. */
+.theme-azure .footer,
+.theme-azure .colophon {
+  color: var(--fg-faint);
+  border-top-color: rgba(255, 255, 255, 0.16);
+}
+
+/* M1 no-image deco — a faint concentric ring set, echoing the circle
+ * motif, so image-led layouts without a resolved photo still feel
+ * intentional rather than empty. */
+.theme-azure .noimg-deco {
+  background-image:
+    radial-gradient(circle at 70% 40%, transparent 0, transparent 14%, rgba(255,255,255,0.08) 14.2%, rgba(255,255,255,0.08) 15%, transparent 15.2%),
+    radial-gradient(circle at 70% 40%, transparent 0, transparent 22%, rgba(255,255,255,0.06) 22.2%, rgba(255,255,255,0.06) 23%, transparent 23.2%);
+  background-repeat: no-repeat;
+}

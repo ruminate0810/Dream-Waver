@@ -45,6 +45,7 @@ Output the bare key — no quotes, no extra words.
 - `retro`      — 80s synthwave. Magenta-purple gradient + neon cyan/pink + CRT scanlines + VT323 display. Use for game dev launches, hackathons, nostalgia-themed talks, self-consciously fun decks.
 - `zen`        — Japanese minimalism. Washi paper + sumi ink + 朱印 vermillion. Noto Serif JP, generous asymmetric padding (yohaku-no-bi). Use for wellness/meditation, design philosophy, 茶道 / 慢内容, contemplative topics.
 - `noir`       — High-contrast cinematic. Pure black canvas + Bodoni Moda thin display + single acid cadmium-yellow accent + subtle film-grain. Designed expressly to pair with B&W AI photography on photo-essay / split-image layouts. Use for fashion editorial, film/photography portfolios, couture lookbooks, moody product launches, dramatic narratives.
+- `azure`      — Bold enterprise blue. Full-bleed deep royal-blue ground + crisp white DM Serif Display headlines + overlapping translucent circle geometry. The consulting-deck / B2B-SaaS-keynote register (McKinsey / Stripe-keynote energy). Use for enterprise pitches, board presentations, strategy decks, B2B product keynotes — anywhere a confident corporate "big blue" statement beats a plain white canvas. Distinct from `corporate` (white bg) — pick azure when the user wants a STRONG branded blue look, not a neutral business doc.
 
 # Theme selection hints
 
@@ -53,7 +54,8 @@ Match the AUDIENCE field first, then content type:
 - investors / VCs / board / founders / 路演 / 融资 → `pitch-deck`
 - 小红书博主 / B 站 UP 主 / 创作者 / KOL / 短视频 → `playful`
 - 自由创作者 / 手帐 / 个人成长 / 复古品牌 / 慢内容 → `warm`
-- sales / client / consulting / enterprise / B2B → `corporate`
+- sales / client / consulting / enterprise / B2B → `corporate` (neutral white) OR `azure` (bold blue keynote — prefer when topic wants strong corporate-brand presence)
+- 大企业 / 战略 / 董事会 / 蓝色科技 / 高管汇报 / SaaS 路演 → `azure`
 - engineers / developers / 开源 / DevOps / SRE / hackathon → `tech`
 - game devs / 游戏 / 怀旧 / 复古主题 → `retro`
 - 媒体记者 / 长文 / 思想类 / 评论 / 文学 / 设计批评 → `editorial`

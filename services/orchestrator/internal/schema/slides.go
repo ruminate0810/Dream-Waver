@@ -99,6 +99,12 @@ const (
 	ThemeWarm      Theme = "warm"
 	// Sprint H11 — high-contrast cinematic, designed for B&W AI photography
 	ThemeNoir Theme = "noir"
+	// Sprint AZ — bold enterprise blue. Full-bleed deep-blue ground +
+	// white Didone display + overlapping translucent circle motif.
+	// The consulting-deck / B2B-SaaS-pitch register (McKinsey / Stripe
+	// keynote energy) — distinct from `corporate` (white-bg + accent
+	// bar) and `pitch-deck` (radial-gradient dark).
+	ThemeAzure Theme = "azure"
 )
 
 // SlideData carries every datum any layout might use. Layouts pick the

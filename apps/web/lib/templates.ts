@@ -192,6 +192,24 @@ export const TEMPLATES: Template[] = [
       "/theme-previews/noir-3.svg",
     ],
   },
+  {
+    // Sprint AZ — bold enterprise blue. Full-bleed deep royal-blue
+    // ground, white DM Serif Display headlines, overlapping translucent
+    // circle geometry. Consulting-deck / B2B-keynote register.
+    name: "azure",
+    label: "Azure",
+    description:
+      "全屏深蓝企业风。白色 Didone 大标题 + 重叠半透明圆形几何装饰。McKinsey / Stripe keynote 质感，适合咨询、B2B SaaS 路演、董事会汇报。",
+    best_for: ["enterprise pitches", "consulting decks", "B2B SaaS keynote"],
+    primary_color: "#16357E",
+    accent_color: "#9DBDF5",
+    thumbnail: "/theme-previews/azure-1.png",
+    previews: [
+      "/theme-previews/azure-1.png",
+      "/theme-previews/azure-2.png",
+      "/theme-previews/azure-3.png",
+    ],
+  },
 ];
 
 export function findTemplate(name: string): Template | undefined {

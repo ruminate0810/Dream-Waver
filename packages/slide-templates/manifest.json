@@ -5,122 +5,353 @@
       "name": "minimalist",
       "label": "Minimalist",
       "description": "Clean white canvas, single blue accent, lots of whitespace. Default fallback when the topic doesn't hint at a specific style.",
-      "best_for": ["general business", "product updates", "internal memos"],
-      "supported_layouts": ["title", "section", "bullets", "content", "quote", "data", "closing"],
+      "best_for": [
+        "general business",
+        "product updates",
+        "internal memos"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "quote",
+        "data",
+        "closing"
+      ],
       "primary_color": "#0F172A",
       "accent_color": "#2563EB",
       "thumbnail": "/theme-previews/minimalist-1.png",
-      "previews": ["/theme-previews/minimalist-1.png", "/theme-previews/minimalist-2.png", "/theme-previews/minimalist-3.png"]
+      "previews": [
+        "/theme-previews/minimalist-1.png",
+        "/theme-previews/minimalist-2.png",
+        "/theme-previews/minimalist-3.png"
+      ]
     },
     {
       "name": "corporate",
       "label": "Corporate",
       "description": "Structured business deck with header bar, accent rule, and footer metadata.",
-      "best_for": ["consulting decks", "sales proposals", "client presentations"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "data", "closing"],
+      "best_for": [
+        "consulting decks",
+        "sales proposals",
+        "client presentations"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "data",
+        "closing"
+      ],
       "primary_color": "#1E3A8A",
       "accent_color": "#F59E0B",
       "thumbnail": "/theme-previews/corporate-1.png",
-      "previews": ["/theme-previews/corporate-1.png", "/theme-previews/corporate-2.png", "/theme-previews/corporate-3.png"]
+      "previews": [
+        "/theme-previews/corporate-1.png",
+        "/theme-previews/corporate-2.png",
+        "/theme-previews/corporate-3.png"
+      ]
     },
     {
       "name": "pitch-deck",
       "label": "Pitch Deck",
       "description": "Linear/Vercel-style dark canvas, orange-to-amber gradient metric numbers, glowing dot accents. High-contrast and confident.",
-      "best_for": ["investor pitches", "fundraising", "product launches", "founders' decks"],
-      "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
+      "best_for": [
+        "investor pitches",
+        "fundraising",
+        "product launches",
+        "founders' decks"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "data",
+        "two-column",
+        "quote",
+        "closing"
+      ],
       "primary_color": "#050505",
       "accent_color": "#FF6B35",
       "thumbnail": "/theme-previews/pitch-deck-1.png",
-      "previews": ["/theme-previews/pitch-deck-1.png", "/theme-previews/pitch-deck-2.png", "/theme-previews/pitch-deck-3.png"]
+      "previews": [
+        "/theme-previews/pitch-deck-1.png",
+        "/theme-previews/pitch-deck-2.png",
+        "/theme-previews/pitch-deck-3.png"
+      ]
     },
     {
       "name": "academic",
       "label": "Academic",
       "description": "Scholarly journal aesthetic — IBM Plex Serif headlines, footnote-style numbered bullets, deep-red accent. Generous margins.",
-      "best_for": ["research talks", "lectures", "literature reviews", "white papers"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
+      "best_for": [
+        "research talks",
+        "lectures",
+        "literature reviews",
+        "white papers"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "quote",
+        "data",
+        "closing"
+      ],
       "primary_color": "#18181B",
       "accent_color": "#B91C1C",
       "thumbnail": "/theme-previews/academic-1.png",
-      "previews": ["/theme-previews/academic-1.png", "/theme-previews/academic-2.png", "/theme-previews/academic-3.png"]
+      "previews": [
+        "/theme-previews/academic-1.png",
+        "/theme-previews/academic-2.png",
+        "/theme-previews/academic-3.png"
+      ]
     },
     {
       "name": "playful",
       "label": "Playful",
       "description": "Dark Linear-style canvas with multi-color radial accents, rounded badges with emoji, big bouncy Nunito display. Built for creator content.",
-      "best_for": ["小红书 explainers", "B 站 课程", "教学课件", "social media decks", "personal brand"],
-      "supported_layouts": ["title", "section", "bullets", "data", "two-column", "quote", "closing"],
+      "best_for": [
+        "小红书 explainers",
+        "B 站 课程",
+        "教学课件",
+        "social media decks",
+        "personal brand"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "data",
+        "two-column",
+        "quote",
+        "closing"
+      ],
       "primary_color": "#0A0A0F",
       "accent_color": "#F472B6",
       "thumbnail": "/theme-previews/playful-1.png",
-      "previews": ["/theme-previews/playful-1.png", "/theme-previews/playful-2.png", "/theme-previews/playful-3.png"]
+      "previews": [
+        "/theme-previews/playful-1.png",
+        "/theme-previews/playful-2.png",
+        "/theme-previews/playful-3.png"
+      ]
     },
     {
       "name": "editorial",
       "label": "Editorial",
       "description": "Magazine-spread aesthetic — NYT/New Yorker register. Cream paper, vermillion accent, Fraunces serif, running-head folio bar, italic pull-quotes with giant opening quotation mark.",
-      "best_for": ["long-read talks", "thought leadership", "media / journalism", "literary or design criticism"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
+      "best_for": [
+        "long-read talks",
+        "thought leadership",
+        "media / journalism",
+        "literary or design criticism"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "quote",
+        "data",
+        "closing"
+      ],
       "primary_color": "#1A1614",
       "accent_color": "#B5371E",
       "thumbnail": "/theme-previews/editorial-1.png",
-      "previews": ["/theme-previews/editorial-1.png", "/theme-previews/editorial-2.png", "/theme-previews/editorial-3.png"]
+      "previews": [
+        "/theme-previews/editorial-1.png",
+        "/theme-previews/editorial-2.png",
+        "/theme-previews/editorial-3.png"
+      ]
     },
     {
       "name": "retro",
       "label": "Retro (80s)",
       "description": "Synthwave neon. Magenta-purple gradient canvas with cyan/pink accents, VT323 display font, CRT scanlines, neon-glow text shadow on titles.",
-      "best_for": ["game dev launches", "hackathons", "anything self-consciously fun", "nostalgia-themed talks"],
-      "supported_layouts": ["title", "section", "bullets", "content", "data", "quote", "two-column", "closing"],
+      "best_for": [
+        "game dev launches",
+        "hackathons",
+        "anything self-consciously fun",
+        "nostalgia-themed talks"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "data",
+        "quote",
+        "two-column",
+        "closing"
+      ],
       "primary_color": "#0F0524",
       "accent_color": "#FF2D95",
       "thumbnail": "/theme-previews/retro-1.png",
-      "previews": ["/theme-previews/retro-1.png", "/theme-previews/retro-2.png", "/theme-previews/retro-3.png"]
+      "previews": [
+        "/theme-previews/retro-1.png",
+        "/theme-previews/retro-2.png",
+        "/theme-previews/retro-3.png"
+      ]
     },
     {
       "name": "tech",
       "label": "Tech / Terminal",
       "description": "IDE-aesthetic deck. Dark zinc canvas, terminal-green prompt accents, JetBrains Mono everywhere, macOS traffic-light dots + shell-prompt chrome. Built for engineering audiences.",
-      "best_for": ["open-source releases", "infra postmortems", "dev-tool launches", "engineering team updates"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "data", "quote", "closing"],
+      "best_for": [
+        "open-source releases",
+        "infra postmortems",
+        "dev-tool launches",
+        "engineering team updates"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "data",
+        "quote",
+        "closing"
+      ],
       "primary_color": "#0B0E13",
       "accent_color": "#4ADE80",
       "thumbnail": "/theme-previews/tech-1.png",
-      "previews": ["/theme-previews/tech-1.png", "/theme-previews/tech-2.png", "/theme-previews/tech-3.png"]
+      "previews": [
+        "/theme-previews/tech-1.png",
+        "/theme-previews/tech-2.png",
+        "/theme-previews/tech-3.png"
+      ]
     },
     {
       "name": "zen",
       "label": "Zen",
       "description": "Japanese minimalism. Washi-paper canvas, sumi-black ink, 朱印 vermillion accent. Generous asymmetric padding (yohaku-no-bi 余白の美), Noto Serif JP display, vertical accent dividers.",
-      "best_for": ["wellness & meditation", "design philosophy", "茶道 / 慢内容", "spiritual or contemplative topics"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
+      "best_for": [
+        "wellness & meditation",
+        "design philosophy",
+        "茶道 / 慢内容",
+        "spiritual or contemplative topics"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "quote",
+        "data",
+        "closing"
+      ],
       "primary_color": "#1A1815",
       "accent_color": "#B5371E",
       "thumbnail": "/theme-previews/zen-1.png",
-      "previews": ["/theme-previews/zen-1.png", "/theme-previews/zen-2.png", "/theme-previews/zen-3.png"]
+      "previews": [
+        "/theme-previews/zen-1.png",
+        "/theme-previews/zen-2.png",
+        "/theme-previews/zen-3.png"
+      ]
     },
     {
       "name": "warm",
       "label": "Warm Paper",
       "description": "Vintage kraft notebook. Cream-tan gradient with SVG paper grain, cocoa ink, burnt-orange accent. EB Garamond body + Caveat handwritten kickers, hand-drawn underline rules. Built for hand-made feel.",
-      "best_for": ["personal blog talks", "手帐风课件", "vintage brands", "slow-content explainers", "creator notes"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing"],
+      "best_for": [
+        "personal blog talks",
+        "手帐风课件",
+        "vintage brands",
+        "slow-content explainers",
+        "creator notes"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "quote",
+        "data",
+        "closing"
+      ],
       "primary_color": "#3D2E1F",
       "accent_color": "#C84B1A",
       "thumbnail": "/theme-previews/warm-1.png",
-      "previews": ["/theme-previews/warm-1.png", "/theme-previews/warm-2.png", "/theme-previews/warm-3.png"]
+      "previews": [
+        "/theme-previews/warm-1.png",
+        "/theme-previews/warm-2.png",
+        "/theme-previews/warm-3.png"
+      ]
     },
     {
       "name": "noir",
       "label": "Noir",
       "description": "High-contrast cinematic. Pure black canvas, paper-white Bodoni Moda type, single acid cadmium-yellow accent. Subtle SVG film-grain noise. Built expressly to pair with nano-banana B&W AI photography on photo-essay / split-image layouts.",
-      "best_for": ["fashion editorial", "film & photography portfolios", "couture lookbooks", "moody product launches", "dramatic stories"],
-      "supported_layouts": ["title", "section", "bullets", "content", "two-column", "quote", "data", "closing", "photo-essay", "split-image", "image-grid"],
+      "best_for": [
+        "fashion editorial",
+        "film & photography portfolios",
+        "couture lookbooks",
+        "moody product launches",
+        "dramatic stories"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "quote",
+        "data",
+        "closing",
+        "photo-essay",
+        "split-image",
+        "image-grid"
+      ],
       "primary_color": "#0A0A0B",
       "accent_color": "#E8FF3C",
       "thumbnail": "/theme-previews/noir-1.svg",
-      "previews": ["/theme-previews/noir-1.svg", "/theme-previews/noir-2.svg", "/theme-previews/noir-3.svg"]
+      "previews": [
+        "/theme-previews/noir-1.svg",
+        "/theme-previews/noir-2.svg",
+        "/theme-previews/noir-3.svg"
+      ]
+    },
+    {
+      "name": "azure",
+      "label": "Azure",
+      "description": "全屏深蓝企业风：白色 Didone 大标题 + 重叠半透明圆形几何。咨询/B2B keynote 质感。",
+      "primary_color": "#16357E",
+      "accent_color": "#9DBDF5",
+      "best_for": [
+        "enterprise pitches",
+        "consulting decks",
+        "B2B SaaS keynote",
+        "board presentations"
+      ],
+      "supported_layouts": [
+        "title",
+        "section",
+        "bullets",
+        "content",
+        "two-column",
+        "data",
+        "quote",
+        "toc",
+        "comparison",
+        "multi-metric",
+        "timeline",
+        "closing"
+      ],
+      "previews": [
+        "/theme-previews/azure-1.png",
+        "/theme-previews/azure-2.png",
+        "/theme-previews/azure-3.png"
+      ],
+      "thumbnail": "/theme-previews/azure-1.png"
     }
   ]
 }

@@ -157,7 +157,7 @@ type slideAppender interface {
 func isKnownThemeName(name string) bool {
 	switch name {
 	case "minimalist", "corporate", "pitch-deck", "academic", "playful",
-		"editorial", "retro", "tech", "zen", "warm", "noir":
+		"editorial", "retro", "tech", "zen", "warm", "noir", "azure":
 		return true
 	}
 	return false
