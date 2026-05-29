@@ -1,11 +1,34 @@
-# Env / secrets
+# =============================================================================
+# Dream-Waver — root .gitignore
+#
+# Multi-stack repo: Next.js (apps/web), Go orchestrator (services/orchestrator),
+# Python sidecar (services/dreamapi-sidecar), Rust sandbox (services/sandbox),
+# slide-templates, proto bindings. Each section below names what it protects.
+#
+# Patterns are ordered:
+#   1. Secrets (highest priority — never accidentally commit credentials)
+#   2. Language-specific build outputs / dependencies
+#   3. Tooling caches (lint / test / type-check)
+#   4. Editor + OS noise
+#   5. Project-specific local artifacts
+#   6. Negate rules (LAST — they re-include things prior rules would skip)
+# =============================================================================
+
+# ─── Secrets ─────────────────────────────────────────────────────────────────
 .env
 .env.local
 .env.*.local
+.env.development.local
+.env.production.local
+.env.test.local
 *.pem
 *.key
+*.p12
+.dreamapi/
 
-# Go
+# ─── Go ──────────────────────────────────────────────────────────────────────
+# **/bin catches `go build -o ./bin/foo`; **/dist catches release tarballs.
+# vendor/ catches `go mod vendor` output — we use modules, not vendored deps.
 **/bin/
 **/dist/
 *.test
@@ -13,34 +36,103 @@
 go.work
 go.work.sum
 vendor/
+# Built binaries that sometimes end up next to source during `go build`
+services/orchestrator/cmd/server/server
+services/sandbox/cmd/sandbox/sandbox
 
-# Rust
+# ─── Rust ────────────────────────────────────────────────────────────────────
 target/
 **/target/
 Cargo.lock.bak
 
-# Node
+# ─── Node.js / Next.js / TypeScript ──────────────────────────────────────────
 node_modules/
 .next/
 out/
+build/
 .turbo/
 .pnpm-store/
+.yarn/cache
+.yarn/install-state.gz
 *.tsbuildinfo
+.eslintcache
+.parcel-cache/
+.swc/
 
-# Python (just in case)
+# ─── Python (sidecar) ────────────────────────────────────────────────────────
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .venv/
+venv/
+env/
 .uv/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pdm.toml
+pip-wheel-metadata/
+*.egg-info/
 
-# Editors / OS
+# ─── Test / coverage outputs ─────────────────────────────────────────────────
+coverage/
+.nyc_output/
+*.lcov
+htmlcov/
+.coverage
+.coverage.*
+
+# ─── Editor / IDE state ──────────────────────────────────────────────────────
 .vscode/
 .idea/
 *.swp
-.DS_Store
-Thumbs.db
+*.swo
+*~
+.#*
+\#*\#
+.history/
+*.sublime-project
+*.sublime-workspace
+.zed/
 
-# Build artifacts
+# ─── OS junk ─────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ─── Backup / patch files ────────────────────────────────────────────────────
+*.bak
+*.orig
+*.rej
+
+# ─── Logs ────────────────────────────────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── SQLite (local DBs from sidecar / open-design clones) ────────────────────
+*.sqlite
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+*.db-journal
+
+# ─── Local Docker overrides ──────────────────────────────────────────────────
+docker-compose.override.yml
+docker-compose.override.yaml
+
+# ─── Generated artifacts (per-deploy / per-run output) ───────────────────────
+# Renders + slide artifacts the orchestrator drops in working dirs. Real
+# deliverables live in object storage; on-disk copies are throwaway.
 *.pptx
 *.pdf
 .tmp/
@@ -48,11 +140,20 @@ tmp/
 /workspace/
 storage_local/
 sandbox_local/
+# open-design daemon's local data dir (if a sibling clone exists)
+.od/
+# Local AI image cache the orchestrator writes (configurable via env)
+ai-images/
+.ai-cache/
 
-# Generated protobuf code (commit explicitly)
+# ─── Claude Code — per-developer state ───────────────────────────────────────
+# .claude/ holds settings, agent transcripts, worktrees that the Claude Code
+# CLI creates locally. These are developer-specific, not part of the repo.
+.claude/
+
+# ─── Negate rules — re-include what prior rules would skip ───────────────────
+# Generated protobuf bindings live under /proto and ARE committed
+# (tracking generated code keeps `go generate` optional during checkout).
+# The negate must come AFTER the broad rules above.
 !proto/**/*.go
 !proto/**/*.rs
-
-# Logs
-*.log
-logs/

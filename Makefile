@@ -1,4 +1,11 @@
-.PHONY: help dev down proto orchestrator sandbox web test fmt lint clean
+.PHONY: help dev down proto orchestrator sidecar sandbox web test fmt lint clean
+
+# load-env sources the root .env into the recipe's shell so locally-run
+# services (orchestrator / sidecar) inherit DATABASE_URL, the sidecar
+# URL, DF_ABILITY creds, etc. `set -a` auto-exports everything sourced.
+# Guarded by `[ -f .env ]` so the targets still run with a bare env.
+# Prepend to any recipe that launches a service: `$(load-env); …`.
+load-env = set -a; [ -f .env ] && . ./.env; set +a
 
 help:
 	@echo "Dream-Waver — common commands"
@@ -6,7 +13,8 @@ help:
 	@echo "  make dev          Start full dev stack (docker-compose)"
 	@echo "  make down         Stop dev stack"
 	@echo "  make proto        Regenerate Go + Rust gRPC code from proto/"
-	@echo "  make orchestrator Run Go orchestrator locally (not in docker)"
+	@echo "  make orchestrator Run Go orchestrator locally (sources .env)"
+	@echo "  make sidecar      Run Python dreamapi-sidecar locally (sources .env)"
 	@echo "  make sandbox      Run Rust sandbox locally"
 	@echo "  make web          Run Next.js web locally"
 	@echo "  make test         Run all tests"
@@ -38,7 +46,11 @@ proto:
 	cd services/sandbox && cargo build
 
 orchestrator:
-	cd services/orchestrator && go run ./cmd/server
+	$(load-env); cd services/orchestrator && go run ./cmd/server
+
+sidecar:
+	$(load-env); cd services/dreamapi-sidecar && \
+	  python3 -m uvicorn main:app --host 127.0.0.1 --port 8091 --reload
 
 sandbox:
 	cd services/sandbox && cargo run --release
