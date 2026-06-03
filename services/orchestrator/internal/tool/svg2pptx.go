@@ -48,17 +48,25 @@ type svgShape struct {
 	strokeW float64 // px
 }
 
-// parseSVGShapes walks the SVG and returns the convertible decoration
-// shapes plus ok=true when EVERY non-text element was representable. If
-// it meets an unsupported feature it returns ok=false (caller falls back
-// to the PNG background). <text>/<tspan> are intentionally skipped — they
-// become editable text boxes via the existing overlay path.
+// parseSVGShapes walks the SVG and returns native-convertible decoration
+// shapes. Sprint SV-3b.1 — "no PNG, always SVG": this is now BEST-EFFORT
+// rather than all-or-nothing. Any element it can't represent faithfully
+// (path/polygon/gradient/transform/image/…) is SKIPPED, and the rest of
+// the slide is still emitted as native shapes — we never fall back to a
+// flat PNG background for an svg slide. The svg.md prompt forbids those
+// unsupported features at the source, so in practice nothing is skipped;
+// this skip path is just a safety net that keeps the slide vector-native
+// instead of rasterising the whole thing.
+//
+// ok reports only whether we got a usable parse (≥1 shape) — the caller
+// keeps the PNG ONLY for the degenerate empty-parse case (malformed XML)
+// to avoid a blank slide. <text>/<tspan> are skipped here (handled by
+// the editable text-box overlay).
 //
 // tok resolves the rare var(--x) colour (the LLM normally emits concrete
 // hex, but we defend against either).
 func parseSVGShapes(svg string, tok themetokens.Tokens) (shapes []svgShape, ok bool) {
 	dec := xml.NewDecoder(strings.NewReader(svg))
-	ok = true
 	for {
 		t, err := dec.Token()
 		if err != nil {
@@ -71,14 +79,13 @@ func parseSVGShapes(svg string, tok themetokens.Tokens) (shapes []svgShape, ok b
 		name := se.Name.Local
 		attr := attrMap(se)
 
-		// A transform we don't bake → bail (positions would be wrong).
+		// A transform we don't bake would misposition the element — skip
+		// just this element (still emit everything else natively).
 		if tr := strings.TrimSpace(attr["transform"]); tr != "" {
-			return shapes, false
+			continue
 		}
-		// Gradient/pattern paint we can't represent as solid → bail.
-		if strings.Contains(attr["fill"], "url(") || strings.Contains(attr["stroke"], "url(") {
-			return shapes, false
-		}
+		// Gradient/pattern paint can't be a solid fill; resolveColor maps
+		// url(...) → "" (no fill) so the shape still renders, just flat.
 
 		switch name {
 		case "svg", "g", "title", "desc", "tspan", "text":
@@ -132,11 +139,13 @@ func parseSVGShapes(svg string, tok themetokens.Tokens) (shapes []svgShape, ok b
 			})
 		default:
 			// path, polygon, polyline, image, use, defs, gradients,
-			// filters, clipPath, … — not representable. Fall back.
-			return shapes, false
+			// filters, clipPath, … — not representable as a native
+			// autoshape. Skip just this element (no whole-slide PNG
+			// fallback). The prompt forbids these, so this is rare.
+			continue
 		}
 	}
-	return shapes, ok
+	return shapes, len(shapes) > 0
 }
 
 // emitSVGShapes appends each parsed shape to the slide's shape tree as a

@@ -39,7 +39,14 @@ One entry per outline slide, in order.
 - Vary composition slide-to-slide: full-bleed giant number, asymmetric split, oversized pull-quote, edge-anchored kicker, corner folio, overlapping type, a single dominant metric. Use `<line>` / `<rect>` / `<circle>` / `<path>` for accent rules, bars, dots, geometric decoration.
 - Fill the canvas with confident type + intentional whitespace. No tiny text floating in a void; no everything-centered timidity.
 
-**Forbidden**
+**Allowed shapes (IMPORTANT — these become native editable PowerPoint shapes):**
+- ONLY use `<rect>`, `<circle>`, `<ellipse>`, `<line>`, and `<text>`/`<tspan>`.
+- For decoration, compose with these primitives — e.g. a "ring" is a `<circle>` with `fill="none"` + a `stroke`; a divider is a `<line>` or a thin `<rect>`; a badge is a `<rect rx="…">`.
+
+**Forbidden (they would NOT survive the editable-PPTX export — never use them):**
+- NO `<path>`, NO `<polygon>`, NO `<polyline>` (no bezier/freeform curves).
+- NO gradients (`<linearGradient>` / `<radialGradient>` / `fill="url(...)"`) — use a solid colour from the palette instead.
+- NO `transform=` attributes (no rotate/scale/translate) — position everything with absolute x/y/width/height.
 - NO `<image>`, NO `<foreignObject>`, NO `<script>`, NO external URLs / `@import` / web fetches.
 - NO CSS flexbox/grid (SVG has none) — position everything explicitly.
 - Keep each `<svg>` under ~1800 characters.
