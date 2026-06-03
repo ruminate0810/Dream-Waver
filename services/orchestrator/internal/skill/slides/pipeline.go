@@ -211,6 +211,13 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 	}
 	cost.add(u2)
 
+	// Sprint SV-2 — measure-repair loop. Render each slide, measure text
+	// bboxes, and ask the LLM to surgically fix any overflow/overlap.
+	// Best-effort: a slide that can't be fixed in 2 rounds ships as-is.
+	content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, func(msg string) {
+		slog.InfoContext(ctx, "svg repair", "detail", msg)
+	})
+
 	deck := stages.Assemble(outline, content)
 	deck.Theme = schema.Theme(theme)
 	// No resolveImages — SVG slides are self-contained vector (no
