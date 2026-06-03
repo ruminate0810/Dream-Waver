@@ -42,3 +42,11 @@ var Clarify string
 //
 //go:embed svg.md
 var SVG string
+
+// Sprint SV-5 — the layout-plan prompt. The LLM emits a structured
+// block tree (semantic blocks + roles + content, NO coordinates); the
+// svglayout engine computes geometry deterministically so nothing
+// overlaps. Replaces raw-SVG authoring (svg.md) for mode=svg.
+//
+//go:embed svg_plan.md
+var SVGPlan string
