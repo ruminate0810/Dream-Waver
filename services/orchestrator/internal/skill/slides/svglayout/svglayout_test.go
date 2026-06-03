@@ -91,6 +91,30 @@ func TestNoOverlap(t *testing.T) {
 	}
 }
 
+// TestMetricValueFitsColumn locks in SV-6.1: a metric value that is a long
+// CJK phrase (not a number) must be shrunk to fit its column so it can't
+// overflow into the neighbouring metric. Regression for the "消费级显卡"
+// overlapping "3-5x" bug.
+func TestMetricValueFitsColumn(t *testing.T) {
+	base := roleSpec[RoleMetricValue].size
+	const colW = 360.0 // a typical 4-up column width
+
+	// a long phrase must shrink below base and fit the column
+	long := "消费级显卡"
+	got := fitSize(long, base, colW, 40)
+	if got >= base {
+		t.Errorf("long value %q not shrunk: got %.0f, base %.0f", long, got, base)
+	}
+	if w := textWidth(long, got); w > colW+1 {
+		t.Errorf("long value %q still overflows: width %.0f > col %.0f", long, w, colW)
+	}
+
+	// a short number must NOT be shrunk
+	if got := fitSize("$0.14", base, colW, 40); got != base {
+		t.Errorf("short value shrunk unexpectedly: got %.0f, base %.0f", got, base)
+	}
+}
+
 func rectsOverlap(a, b *Block) bool {
 	// shrink by a hair so edge-touching (shared gaps) doesn't count.
 	const e = 2
@@ -99,7 +123,7 @@ func rectsOverlap(a, b *Block) bool {
 }
 
 func TestRenderProducesSVG(t *testing.T) {
-	svg := Render(threeCardDeck(), testTheme)
+	svg := Render(threeCardDeck(), testTheme, Chrome{Folio: 2, Total: 5, Footer: "测试 deck"})
 	for _, want := range []string{`<svg viewBox="0 0 1920 1080"`, `<rect x="0" y="0" width="1920" height="1080"`, "三大技术支柱", "MoE", "</svg>"} {
 		if !strings.Contains(svg, want) {
 			t.Errorf("rendered SVG missing %q", want)

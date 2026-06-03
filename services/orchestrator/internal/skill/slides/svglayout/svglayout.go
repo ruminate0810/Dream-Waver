@@ -120,6 +120,11 @@ type Block struct {
 	Pad    float64  `json:"pad,omitempty"`    // card inner padding (default 48)
 	Fill   string   `json:"fill,omitempty"`   // card fill: "surface" | "" (none) | #hex
 	Grow   bool     `json:"grow,omitempty"`   // in a col: expand to take remaining height
+	// Valign controls vertical placement of a col/card's content within
+	// its (possibly taller) box: "top" | "center" | "bottom". Cards
+	// default to "center" so grow-stretched cards don't leave an empty
+	// lower half; cols default to "top".
+	Valign string `json:"valign,omitempty"`
 
 	// text leaf
 	Role  Role   `json:"role,omitempty"`
@@ -137,10 +142,21 @@ type Block struct {
 
 // ─── public API ──────────────────────────────────────────────────────
 
+// Chrome is the deck-level furniture the engine draws identically on
+// every slide for visual coherence (Sprint SV-6.1): a folio page number
+// and a footer hairline + deck label. Injected by code, not the LLM, so
+// it's pixel-consistent across the whole deck.
+type Chrome struct {
+	Folio  int    // 1-based slide number
+	Total  int    // deck length
+	Footer string // deck short-title / brand, shown bottom-left
+	Cover  bool   // true on the cover slide → chrome suppressed (it breathes)
+}
+
 // Render lays out the block tree inside the safe area and returns a
-// complete <svg> string (full-bleed bg + positioned content). Overlaps
-// are impossible: every coordinate is computed here.
-func Render(root *Block, th Theme) string {
+// complete <svg> string (full-bleed bg + positioned content + chrome).
+// Overlaps are impossible: every coordinate is computed here.
+func Render(root *Block, th Theme, ch Chrome) string {
 	// Root always lays out inside the safe area.
 	root.x, root.y = safeL, safeT
 	root.w, root.h = safeR-safeL, safeB-safeT
@@ -151,8 +167,33 @@ func Render(root *Block, th Theme) string {
 	// full-bleed background
 	fmt.Fprintf(&b, `<rect x="0" y="0" width="1920" height="1080" fill="%s"/>`, th.BG)
 	emit(&b, root, th)
+	emitChrome(&b, ch, th)
 	b.WriteString(`</svg>`)
 	return b.String()
+}
+
+// emitChrome draws the consistent folio + footer below the content safe
+// area (y ≥ 1016, content stops at 1000 so they never collide). Skipped
+// on the cover so it stays clean.
+func emitChrome(b *strings.Builder, ch Chrome, th Theme) {
+	if ch.Cover {
+		return
+	}
+	hair := blendHex(th.BG, th.FG, 0.18)
+	// footer hairline
+	fmt.Fprintf(b, `<rect x="%.0f" y="1018" width="%.0f" height="1" fill="%s"/>`, safeL, safeR-safeL, hair)
+	// footer label bottom-left
+	if strings.TrimSpace(ch.Footer) != "" {
+		writeText(b, safeL, 1052, ch.Footer, th.FontMono, 18, 500, th.FGMuted, "start", 2)
+	}
+	// folio bottom-right
+	if ch.Folio > 0 {
+		folio := fmt.Sprintf("%02d", ch.Folio)
+		if ch.Total > 0 {
+			folio = fmt.Sprintf("%02d / %02d", ch.Folio, ch.Total)
+		}
+		writeText(b, safeR, 1052, folio, th.FontMono, 18, 600, th.FGMuted, "end", 3)
+	}
 }
 
 // ─── measurement ─────────────────────────────────────────────────────
@@ -352,8 +393,18 @@ func layoutCol(blk *Block) {
 	if growCount > 0 {
 		growEach = extra / float64(growCount)
 	}
-	// Assign y top-to-bottom.
+	// Vertical alignment: when there are no grow children, slack height
+	// can be distributed before the content (center / bottom) instead of
+	// piling up at the bottom.
 	y := blk.y
+	if growCount == 0 && extra > 0 {
+		switch blk.Valign {
+		case "center":
+			y += extra / 2
+		case "bottom":
+			y += extra
+		}
+	}
 	for i, it := range blk.Items {
 		it.x = blk.x
 		it.w = blk.w
@@ -405,7 +456,29 @@ func layoutCard(blk *Block) {
 	}
 	innerX := blk.x + pad
 	innerW := blk.w - 2*pad
+	// Measure content height to vertically place it. Cards default to
+	// "center" so a grow-stretched card doesn't strand its content at
+	// the top with an empty lower half.
+	contentH := 0.0
+	for i, it := range blk.Items {
+		it.w = innerW
+		contentH += intrinsicHeight(it)
+		if i < len(blk.Items)-1 {
+			contentH += gap
+		}
+	}
+	avail := blk.h - 2*pad
 	y := blk.y + pad
+	if slack := avail - contentH; slack > 0 {
+		switch blk.Valign {
+		case "top":
+			// leave as-is
+		case "bottom":
+			y += slack
+		default: // center (card default)
+			y += slack / 2
+		}
+	}
 	for _, it := range blk.Items {
 		it.x = innerX
 		it.w = innerW

@@ -62,12 +62,22 @@ func PlanSlideLayout(ctx context.Context, router llm.Router, outline *OutlineRes
 		if len(parsed.Slides) == 0 {
 			return fmt.Errorf("svg-plan produced 0 slides")
 		}
+		total := len(parsed.Slides)
 		for i, raw := range parsed.Slides {
 			var root svglayout.Block
 			if err := json.Unmarshal(raw, &root); err != nil {
 				return fmt.Errorf("slide %d: parse block tree: %w", i+1, err)
 			}
-			svg := svglayout.Render(&root, th)
+			// Deck chrome: code-injected folio + footer, identical on
+			// every slide for coherence. The first slide is the cover —
+			// it stays clean (no folio/footer).
+			chrome := svglayout.Chrome{
+				Folio:  i + 1,
+				Total:  total,
+				Footer: outline.Title,
+				Cover:  i == 0,
+			}
+			svg := svglayout.Render(&root, th, chrome)
 			slides = append(slides, ContentSlide{
 				Index:    i + 1,
 				Template: theme,

@@ -72,8 +72,14 @@ func emitMetric(b *strings.Builder, blk *Block, th Theme) {
 	}
 	{
 		rs := roleSpec[RoleMetricValue]
-		writeText(b, ax, y+rs.size*0.82, blk.Value, familyFor(rs.family, th), rs.size, rs.weight, colorFor(rs.color, th), anchor, rs.tracking)
-		y += rs.size * lineHeight
+		// Shrink-to-fit: a metric value is rendered on ONE line at display
+		// size (numbers shouldn't wrap). But the LLM sometimes puts a long
+		// CJK phrase here ("消费级显卡"), which would overflow the column and
+		// collide with the neighbour. Scale the font down so it always fits
+		// the block width — deterministic, so overlap is impossible.
+		fs := fitSize(blk.Value, rs.size, blk.w, 40)
+		writeText(b, ax, y+fs*0.82, blk.Value, familyFor(rs.family, th), fs, rs.weight, colorFor(rs.color, th), anchor, rs.tracking)
+		y += rs.size * lineHeight // reserve the full slot height (fs ≤ rs.size)
 	}
 	if blk.Implication != "" {
 		y += 16
@@ -83,6 +89,24 @@ func emitMetric(b *strings.Builder, blk *Block, th Theme) {
 			y += rs.size * lineHeight
 		}
 	}
+}
+
+// fitSize returns the largest font size ≤ base at which text fits within
+// maxW on a single line, never going below floor. Guarantees no
+// horizontal overflow for single-line display text (metric values).
+func fitSize(text string, base, maxW, floor float64) float64 {
+	if text == "" || maxW <= 0 {
+		return base
+	}
+	w := textWidth(text, base)
+	if w <= maxW {
+		return base
+	}
+	fs := base * maxW / w
+	if fs < floor {
+		fs = floor
+	}
+	return fs
 }
 
 func ref(s string, rs fontSpec) string {
