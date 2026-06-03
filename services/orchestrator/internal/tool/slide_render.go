@@ -195,6 +195,23 @@ const extractTextBoxesJS = `(() => {
         if (rect.width === 0 || rect.height === 0) continue;
         const cs = window.getComputedStyle(el);
 
+        // Sprint SV-3 — SVG text paints via the fill property, NOT CSS
+        // color; HTML elements use color. Detect SVG nodes and read the
+        // right paint so colored SVG text (e.g. an accent-coloured
+        // headline) extracts as its real colour instead of defaulting
+        // to black. Likewise SVG alignment is text-anchor
+        // (start/middle/end), not text-align.
+        const isSVG = el.ownerSVGElement != null ||
+                      el.namespaceURI === 'http://www.w3.org/2000/svg';
+        let colorSrc = cs.color;
+        let alignSrc = cs.textAlign || 'left';
+        if (isSVG) {
+            const f = cs.fill;
+            if (f && f !== 'none' && f !== '') colorSrc = f;
+            const anchor = cs.textAnchor || el.getAttribute('text-anchor') || 'start';
+            alignSrc = anchor === 'middle' ? 'center' : (anchor === 'end' ? 'right' : 'left');
+        }
+
         // Browser font metrics tend to be tighter than the PowerPoint
         // fallback Chinese/Latin pair, so the glyph bbox we just measured
         // is the MINIMUM the same characters need. Pad horizontally + cap
@@ -221,10 +238,10 @@ const extractTextBoxesJS = `(() => {
             // larger than the original CSS.
             font_size:   parseFloat(cs.fontSize) * 0.5,
             font_family: cs.fontFamily,
-            color:       rgbToHex(cs.color),
+            color:       rgbToHex(colorSrc),
             font_weight: parseInt(cs.fontWeight, 10) || 400,
             italic:      cs.fontStyle === 'italic',
-            text_align:  cs.textAlign || 'left',
+            text_align:  alignSrc,
         });
     }
     return out;
