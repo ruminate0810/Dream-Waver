@@ -46,6 +46,15 @@ const (
 	// inject scripts. NOT a default — outline.md tells the LLM to
 	// only pick this when other layouts honestly don't work.
 	LayoutHTML SlideLayout = "html"
+
+	// LayoutSVG (Sprint SV) — the slide IS a single raw <svg viewBox="0 0
+	// 1920 1080"> authored by the LLM. Used by the "svg" generation mode
+	// (mode=svg), where EVERY slide is bespoke SVG instead of a typed
+	// template. The renderer wraps it in a full-bleed shell (no padded
+	// .html-slide container) and rasterizes via chromedp; SV-3's
+	// svg2pptx converter turns the same SVG into native editable
+	// PowerPoint shapes. Data.SVG carries the markup.
+	LayoutSVG SlideLayout = "svg"
 )
 
 // AllSlideLayouts returns every templated layout the renderer knows
@@ -66,7 +75,7 @@ func AllSlideLayouts() []SlideLayout {
 		LayoutProcessFlow, LayoutBentoGrid, LayoutPullQuote,
 		LayoutBeforeAfter, LayoutIconGrid, LayoutTeamRoster,
 		LayoutCode, LayoutChecklist,
-		LayoutHTML,
+		LayoutHTML, LayoutSVG,
 	}
 }
 
@@ -268,6 +277,13 @@ type SlideData struct {
 	// `var(--bg/--fg/--accent/--font-*)` CSS variables so theme +
 	// brand overrides keep working.
 	HTML string `json:"html,omitempty"`
+
+	// Sprint SV — raw <svg viewBox="0 0 1920 1080"> markup for
+	// layout=svg slides (the "svg" generation mode). The renderer wraps
+	// it in a full-bleed shell (NOT the padded .html-slide container) +
+	// the theme token <style> block, then rasterizes via chromedp. The
+	// svg2pptx converter reads this to emit native PowerPoint shapes.
+	SVG string `json:"svg,omitempty"`
 
 	// Sprint AE.7 — per-slide style overrides. Nil = inherit theme
 	// defaults (the normal case). When set, the renderer emits inline

@@ -28,6 +28,7 @@ import (
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/themetokens"
 )
 
 // SlideRender is the workhorse that turns structured slide specs into a real,
@@ -523,6 +524,16 @@ func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme, folio int) 
 	if tplName == "" {
 		tplName = string(schema.ThemeMinimalist)
 	}
+	// Sprint SV-1 — svg layout bypasses the templated .html-slide
+	// container entirely. The slide IS a full-bleed 1920×1080 <svg>;
+	// we wrap it in a minimal shell carrying the theme's CSS-var <style>
+	// (so var(--bg/--fg/--accent/--font-*) inside the SVG resolves) +
+	// a margin-0 body so the SVG bleeds to the canvas edge. No
+	// chromedp/template surprises — what the LLM authored is what
+	// renders.
+	if s.Layout == schema.LayoutSVG {
+		return r.renderSVGShell(s, tplName), nil
+	}
 	// Defensive: callers are supposed to invoke loadTemplates() first, but
 	// belt-and-braces — a nil *template.Template would otherwise nil-deref
 	// inside Lookup and take the whole orchestrator down.
@@ -548,6 +559,28 @@ func (r *SlideRender) renderHTML(s schema.Slide, theme schema.Theme, folio int) 
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// renderSVGShell wraps a layout=svg slide's raw <svg> in a full-bleed
+// HTML document for chromedp rasterization (Sprint SV-1). The theme's
+// CSS-var <style> is prepended so var(--bg/--fg/--accent/--font-*)
+// inside the SVG resolve; body margin:0 lets the 1920×1080 svg bleed to
+// the canvas edge (the .html-slide padded container is deliberately
+// bypassed). No sanitization here — SV-3's converter + the LLM prompt
+// constrain SVG to vector primitives; the spike confirmed chromedp
+// renders it safely. (A future hardening pass can run an SVG-specific
+// sanitizer; for now the markup never leaves our own render sandbox.)
+func (r *SlideRender) renderSVGShell(s schema.Slide, theme string) []byte {
+	tok := themetokens.Get(theme)
+	style := tok.StyleBlock("", "", "")
+	svg := s.Data.SVG
+	if strings.TrimSpace(svg) == "" {
+		// Defensive: empty svg → a blank themed canvas rather than a
+		// broken chromedp navigate.
+		svg = `<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="` + tok.BG + `"/></svg>`
+	}
+	doc := "<!doctype html><html><head><meta charset=\"utf-8\">" + style + "</head><body>" + svg + "</body></html>"
+	return []byte(doc)
 }
 
 // templateFuncs are the helpers every slide template can call. Keep this set

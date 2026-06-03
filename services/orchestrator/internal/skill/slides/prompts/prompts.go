@@ -34,3 +34,11 @@ var CriticDeck string
 
 //go:embed clarify.md
 var Clarify string
+
+// Sprint SV — the SVG generation mode. The planner authors each slide
+// as one raw <svg viewBox="0 0 1920 1080">. The {{TOKEN}} placeholders
+// (BG/FG/ACCENT/FONT_* …) are substituted per-theme in stages/svg.go
+// before the prompt is sent.
+//
+//go:embed svg.md
+var SVG string

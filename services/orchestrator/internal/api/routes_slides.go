@@ -115,7 +115,10 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	mode := strings.ToLower(strings.TrimSpace(req.Mode))
-	if mode != "pipeline" {
+	switch mode {
+	case "pipeline", "svg":
+		// explicit non-agent paths — keep as-is
+	default:
 		mode = "agent" // default to agent flow — richer chat events
 	}
 	job := &slideJob{
@@ -208,6 +211,11 @@ func (h *handlers) runSlideJob(job *slideJob, in slides.Input, wsID uuid.UUID) {
 	switch job.Mode {
 	case "pipeline":
 		out, err = h.deps.Pipeline.Run(ctx, job.ID, in)
+	case "svg":
+		// Sprint SV-1 — SVG generation mode: outline → AuthorSVG →
+		// assemble → render. Deterministic (no agent loop, no wizard);
+		// like pipeline but every slide is bespoke LLM-authored SVG.
+		out, err = h.deps.Pipeline.RunSVG(ctx, job.ID, in)
 	default: // "agent"
 		out, err = h.deps.AgentRunner.Run(ctx, job.ID, in)
 	}

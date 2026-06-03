@@ -178,6 +178,71 @@ func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, er
 	}, nil
 }
 
+// RunSVG is the Sprint SV-1 generation path: outline → AuthorSVG →
+// assemble → render. Deterministic like Run (no agent loop, no wizard),
+// but every slide is a bespoke LLM-authored <svg> instead of a typed
+// template. Produces the same Output shape; the renderer's svg branch
+// rasterizes each slide full-bleed and assembles a PNG-background .pptx
+// (SV-3 will upgrade assembly to native editable shapes).
+func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output, error) {
+	var cost Cost
+
+	outline, u1, err := stages.Outline(ctx, p.Router, stages.OutlineParams{
+		Topic:         in.Topic,
+		Audience:      in.Audience,
+		SlideCount:    in.SlideCount,
+		Style:         in.Style,
+		ReferenceText: in.ReferenceText,
+		BlueprintID:   in.BlueprintID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("svg outline: %w", err)
+	}
+	cost.add(u1)
+	if in.ForceTheme != "" {
+		outline.Theme = schema.Theme(in.ForceTheme)
+	}
+	p.emit(ctx, event.NewOutline(outline.Title, len(outline.Slides)))
+
+	theme := string(outline.Theme)
+	content, u2, err := stages.AuthorSVG(ctx, p.Router, outline, theme)
+	if err != nil {
+		return nil, fmt.Errorf("svg author: %w", err)
+	}
+	cost.add(u2)
+
+	deck := stages.Assemble(outline, content)
+	deck.Theme = schema.Theme(theme)
+	// No resolveImages — SVG slides are self-contained vector (no
+	// ImageQuery fanout in SV-1; embedded bitmaps are out of scope).
+
+	pptxPath, err := p.Renderer.RenderDeck(ctx, deck)
+	if err != nil {
+		return nil, fmt.Errorf("svg render: %w", err)
+	}
+	cost.EstimatedUSD = estimateCost(cost)
+
+	if p.Sessions != nil && jobID != "" {
+		state := &SessionState{
+			JobID:      jobID,
+			Input:      in,
+			Outline:    outline,
+			Content:    content,
+			Deck:       &deck,
+			PptxPath:   pptxPath,
+			SlideCount: len(deck.Slides),
+		}
+		p.Sessions.Put(state)
+	}
+
+	return &Output{
+		PptxPath:   pptxPath,
+		Title:      outline.Title,
+		SlideCount: len(outline.Slides),
+		Cost:       cost,
+	}, nil
+}
+
 // resolveImages fans out parallel Unsplash searches for every slide that
 // emitted an ImageQuery. Failures degrade gracefully — the slide just
 // renders without an image. Same query across slides is deduped so we
