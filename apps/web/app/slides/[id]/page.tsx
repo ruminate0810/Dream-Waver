@@ -13,7 +13,7 @@ import { ChatThread } from "@/components/chat/ChatThread";
 import { AgentSessionProvider } from "@/components/chat/transport";
 import { ConnectionToast } from "@/components/chat/ConnectionToast";
 import { LivePreviewStack } from "@/components/slides-preview/LivePreviewStack";
-import { DeckPhaseTimeline } from "@/components/slides/DeckPhaseTimeline";
+import { SessionSwitcherPopover } from "@/components/slides/SessionSwitcherPopover";
 import { forgetDeck, updateDeckTitle } from "@/lib/recentDecks";
 import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
 
@@ -171,6 +171,14 @@ export default function SlideJobPage() {
                     ? "Withdrawn"
                     : "Loading"}
             </span>
+            {/* Sprint AF.1-v3 — session switcher pull-down. Replaces
+                the AF.1 left-rail timeline (timeline 占空间太多). */}
+            {job ? (
+              <SessionSwitcherPopover
+                currentJobId={job.job_id}
+                currentTitle={job.title || job.input?.topic}
+              />
+            ) : null}
           </div>
         </div>
       </header>
@@ -313,19 +321,8 @@ function Workspace({
       <ConnectionToast />
       <div
         ref={wsRef}
-        className="grid grid-cols-1 gap-x-6 lg:grid-cols-[200px_minmax(420px,36fr)_minmax(0,64fr)] xl:gap-x-10"
+        className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(440px,38fr)_minmax(0,62fr)] xl:gap-x-14"
       >
-        {/* ── Far-left: deck phase timeline (Sprint AF.1) ───────────────
-            Vertical 5-step indicator so the user always knows which
-            phase the deck is in (提问 / 大纲 / 撰写 / 渲染 / 完成).
-            Hidden on mobile — ChatThread's ComposeStrip carries the
-            same signal in narrower contexts. */}
-        <aside className="dw-deck-timeline hidden lg:block lg:border-r lg:border-[color:var(--rule)]">
-          <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)] lg:overflow-y-auto lg:[scrollbar-width:thin]">
-            <DeckPhaseTimeline job={job} />
-          </div>
-        </aside>
-
         {/* ── Left: chat surface (variant-selected) ─────────────────────
             Sprint U follow-up — the UiToggle used to float over the
             chat content via `lg:absolute`, which read as a floating
