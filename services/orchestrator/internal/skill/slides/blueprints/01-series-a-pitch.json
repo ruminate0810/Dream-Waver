@@ -1,0 +1,21 @@
+{
+  "id": "series-a-pitch",
+  "label": "Series A 路演",
+  "description": "经典 Series A 11 页融资框架。每一页都对应 VC 在 due-dilligence 时打钩的一项。",
+  "scenario_tags": ["pitch", "fundraising", "investor", "vc", "series a", "融资", "路演", "投资人", "startup"],
+  "target_audience": "VC / 投资人 / 战略融资方",
+  "slide_count": 11,
+  "slides": [
+    {"pos":1, "type":"title",          "layout":"title",            "headline_template":"{{公司}} — {{一句话价值主张}}", "hint":"封面：公司名 + 极简 tagline + 融资轮次/规模"},
+    {"pos":2, "type":"content",        "layout":"content",          "headline_template":"问题", "hint":"用户/市场具体痛点；要有数据或场景，避免抽象口号"},
+    {"pos":3, "type":"content",        "layout":"two-column",       "headline_template":"我们的解", "hint":"左文：解法概述；右文/数据：产品截图或核心机制示意"},
+    {"pos":4, "type":"data",           "layout":"multi-metric",     "headline_template":"市场规模", "hint":"TAM / SAM / SOM 三个数 + 来源；钱要算清"},
+    {"pos":5, "type":"content",        "layout":"content",          "headline_template":"产品", "hint":"产品如何工作（30 秒说清的版本）+ 1 张关键截图/示意"},
+    {"pos":6, "type":"data",           "layout":"multi-metric",     "headline_template":"增长 / Traction", "hint":"ARR、MAU、NRR、留存等头部指标；带 YoY 或 MoM"},
+    {"pos":7, "type":"comparison-table","layout":"comparison-table", "headline_template":"竞品对比", "hint":"我方 vs 2-3 个主要对手 × 4-5 个关键维度；自己列要赢"},
+    {"pos":8, "type":"team-roster",    "layout":"team-roster",      "headline_template":"核心团队", "hint":"3-5 位 founder/核心管理；名字 + 头衔 + 1 行履历重点"},
+    {"pos":9, "type":"content",        "layout":"content",          "headline_template":"商业模式 + 单位经济", "hint":"如何赚钱 + CAC/LTV/Payback 关键经济性"},
+    {"pos":10, "type":"content",       "layout":"content",          "headline_template":"融资计划", "hint":"本轮融多少 + 钱花在哪 (产品/市场/团队 占比) + 时间表"},
+    {"pos":11, "type":"closing",       "layout":"closing",          "headline_template":"愿景 / Vision", "hint":"3 年后我们改变了什么 + 联系方式"}
+  ]
+}

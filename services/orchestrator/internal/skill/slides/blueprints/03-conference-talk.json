@@ -1,0 +1,22 @@
+{
+  "id": "conference-talk",
+  "label": "技术大会演讲 / Research talk",
+  "description": "12 页学术或工程大会演讲框架。问题→方法→结果→讨论的经典 IMRaD 变体。",
+  "scenario_tags": ["conference", "talk", "research", "academic", "tech talk", "演讲", "技术分享", "大会", "学术"],
+  "target_audience": "技术同行 / 研究者 / 工程师",
+  "slide_count": 12,
+  "slides": [
+    {"pos":1,  "type":"title",        "layout":"title",        "headline_template":"{{演讲题目}}",            "hint":"标题 + 演讲者 + 单位 + 会议名/日期"},
+    {"pos":2,  "type":"toc",          "layout":"toc",          "headline_template":"今天的路线图",            "hint":"4-5 个章节序号 + 中文标题，让听众有预期"},
+    {"pos":3,  "type":"content",      "layout":"content",      "headline_template":"动机 / 我们为什么关心",     "hint":"3-5 个 bullet：现状、痛点、为什么现在做"},
+    {"pos":4,  "type":"content",      "layout":"content",      "headline_template":"相关工作 / 前置背景",       "hint":"3-4 条主线方法的优劣总结，帮听众对齐知识"},
+    {"pos":5,  "type":"process-flow", "layout":"process-flow", "headline_template":"我们的方法",              "hint":"3-5 个步骤的 pipeline，每步一句话"},
+    {"pos":6,  "type":"content",      "layout":"two-column",   "headline_template":"关键细节",                "hint":"左：技术核心；右：示意图或伪代码片段"},
+    {"pos":7,  "type":"data",         "layout":"multi-metric", "headline_template":"结果（1/2）",             "hint":"3-4 个硬指标，相对 baseline 的提升幅度"},
+    {"pos":8,  "type":"data",         "layout":"data",         "headline_template":"结果（2/2）",             "hint":"1 个核心 metric 大图，体现关键 finding"},
+    {"pos":9,  "type":"comparison",   "layout":"comparison",   "headline_template":"对比 / 讨论",             "hint":"左：我们；右：baseline 或 prior work；列出差异"},
+    {"pos":10, "type":"content",      "layout":"content",      "headline_template":"局限",                  "hint":"3 条诚实的 limitation；要 specific"},
+    {"pos":11, "type":"content",      "layout":"content",      "headline_template":"下一步 / Future work",   "hint":"3 条 forward-looking ideas；不要承诺"},
+    {"pos":12, "type":"closing",      "layout":"closing",      "headline_template":"谢谢 / Q&A",            "hint":"邮件/Twitter/代码仓库链接 + 联系欢迎"}
+  ]
+}

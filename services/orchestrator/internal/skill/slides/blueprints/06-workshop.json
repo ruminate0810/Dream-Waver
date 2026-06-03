@@ -1,0 +1,24 @@
+{
+  "id": "workshop",
+  "label": "培训课件 / Workshop",
+  "description": "14 页培训/课件框架。3 个 module，每个 module = 概念 + 例子 + 练习。",
+  "scenario_tags": ["workshop", "training", "course", "tutorial", "lesson", "课件", "培训", "教学", "课程", "教程"],
+  "target_audience": "学员 / 课程参与者",
+  "slide_count": 14,
+  "slides": [
+    {"pos":1,  "type":"title",     "layout":"title",     "headline_template":"{{课程名}}",       "hint":"课名 + 讲师 + 时长 + 目标受众"},
+    {"pos":2,  "type":"section",   "layout":"section",   "headline_template":"模块 1 — 基础",   "hint":"模块标题 + 一句 takeaway"},
+    {"pos":3,  "type":"content",   "layout":"content",   "headline_template":"核心概念",        "hint":"模块 1 的核心 concept + 定义 + 一图示意"},
+    {"pos":4,  "type":"content",   "layout":"content",   "headline_template":"举个例子",        "hint":"一个具体可上手的例子；不要抽象"},
+    {"pos":5,  "type":"checklist", "layout":"checklist", "headline_template":"动手练习 1",      "hint":"3-5 步可在 5 分钟内完成的小练习；带预期结果"},
+    {"pos":6,  "type":"section",   "layout":"section",   "headline_template":"模块 2 — 应用",   "hint":"模块标题 + 一句 takeaway"},
+    {"pos":7,  "type":"content",   "layout":"content",   "headline_template":"常见模式",        "hint":"3-4 个 best-practice 模式；每个一句 + 一个反例"},
+    {"pos":8,  "type":"content",   "layout":"content",   "headline_template":"反模式 / 常见错",  "hint":"2-3 个最容易踩坑的反模式 + 怎么修"},
+    {"pos":9,  "type":"checklist", "layout":"checklist", "headline_template":"动手练习 2",      "hint":"在练习 1 基础上加难度的真实小任务"},
+    {"pos":10, "type":"section",   "layout":"section",   "headline_template":"模块 3 — 实战",   "hint":"模块标题 + 一句 takeaway"},
+    {"pos":11, "type":"content",   "layout":"content",   "headline_template":"真实案例拆解",     "hint":"业内真实案例：背景 → 决策点 → 选择 → 结果"},
+    {"pos":12, "type":"checklist", "layout":"checklist", "headline_template":"综合练习 3",      "hint":"综合应用 3 个模块的开放式练习"},
+    {"pos":13, "type":"content",   "layout":"content",   "headline_template":"今日回顾",        "hint":"4-5 条最重要的 takeaway，简短"},
+    {"pos":14, "type":"closing",   "layout":"closing",   "headline_template":"延伸资源 / 联系", "hint":"书单 + 文档 + 社区 + 讲师联系方式"}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "roadmap",
+  "label": "产品路线图",
+  "description": "8 页产品 roadmap 框架。回顾过去 → 下一阶段重点 → 中长期主题 → KPI。",
+  "scenario_tags": ["roadmap", "product plan", "quarter plan", "okr", "路线图", "规划", "战略", "okr", "季度计划"],
+  "target_audience": "产品/工程/管理团队 + 合作伙伴",
+  "slide_count": 8,
+  "slides": [
+    {"pos":1, "type":"title",    "layout":"title",        "headline_template":"{{产品}} — {{周期}} Roadmap", "hint":"产品名 + 覆盖时间窗 + 制定日期"},
+    {"pos":2, "type":"content",  "layout":"content",      "headline_template":"我们要去哪 / Vision",          "hint":"3 句话讲清这个产品 12-18 个月后要变成什么"},
+    {"pos":3, "type":"timeline", "layout":"timeline",     "headline_template":"过去 6 个月做了什么",           "hint":"4-5 个 milestone：日期 + 一句话成就"},
+    {"pos":4, "type":"timeline", "layout":"timeline",     "headline_template":"下个季度",                    "hint":"4-5 个 milestone：日期 + 责任团队 + 交付物"},
+    {"pos":5, "type":"content",  "layout":"content",      "headline_template":"下季度重点",                   "hint":"挑 2 个最关键的 initiative，说清 why + scope + 风险"},
+    {"pos":6, "type":"timeline", "layout":"timeline",     "headline_template":"H2 主题",                     "hint":"3-4 个 theme（不是具体功能），代表方向"},
+    {"pos":7, "type":"data",     "layout":"multi-metric", "headline_template":"目标 KPI",                    "hint":"3 个北极星指标的目标值 + 衡量口径"},
+    {"pos":8, "type":"closing",  "layout":"closing",      "headline_template":"如何参与",                    "hint":"反馈渠道 + 公开 backlog + 定期 review 节奏"}
+  ]
+}

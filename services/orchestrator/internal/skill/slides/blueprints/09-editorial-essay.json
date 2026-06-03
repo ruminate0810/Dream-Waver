@@ -1,0 +1,18 @@
+{
+  "id": "editorial-essay",
+  "label": "深度长文 / Editorial",
+  "description": "8 页杂志风深度长读框架。论点驱动，引语 + 论述交替推进。",
+  "scenario_tags": ["editorial", "long-read", "thought leadership", "essay", "manifesto", "评论", "长文", "观点", "深度", "思辨"],
+  "target_audience": "行业读者 / 媒体 / 思想类听众",
+  "slide_count": 8,
+  "slides": [
+    {"pos":1, "type":"title",      "layout":"title",      "headline_template":"{{核心论点}}",       "hint":"大胆有立场的标题 + 作者 + 日期"},
+    {"pos":2, "type":"pull-quote", "layout":"pull-quote", "headline_template":"开篇 thesis",      "hint":"开篇巨大引语 — 你最想让读者带走的那句话；50-80 字"},
+    {"pos":3, "type":"content",    "layout":"content",    "headline_template":"第一节 — 背景",    "hint":"现状与既有观点；3-4 个 bullet 立框架"},
+    {"pos":4, "type":"content",    "layout":"content",    "headline_template":"第一节 — 论证",    "hint":"3-4 条支持论据；带具体例子或数据"},
+    {"pos":5, "type":"pull-quote", "layout":"pull-quote", "headline_template":"转折",            "hint":"承上启下的引语 — 这里观点开始转向"},
+    {"pos":6, "type":"content",    "layout":"content",    "headline_template":"第二节 — 新视角",  "hint":"提出你的不同看法 + 支持理由"},
+    {"pos":7, "type":"content",    "layout":"content",    "headline_template":"综合 / Synthesis", "hint":"把两节合一：读者读完应该带走什么；3-4 条 takeaway"},
+    {"pos":8, "type":"closing",    "layout":"closing",    "headline_template":"作者 + 延伸阅读",   "hint":"作者简介一句 + 3-5 篇 further reading"}
+  ]
+}

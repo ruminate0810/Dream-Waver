@@ -1,0 +1,20 @@
+{
+  "id": "portfolio-lookbook",
+  "label": "作品集 / Lookbook",
+  "description": "10 页设计师/摄影师/创作者作品集框架。图片驱动，文字辅助。",
+  "scenario_tags": ["portfolio", "lookbook", "showreel", "design portfolio", "photography", "creative", "作品集", "设计", "摄影", "时尚", "lookbook"],
+  "target_audience": "潜在客户 / 招聘方 / 展览策展人",
+  "slide_count": 10,
+  "slides": [
+    {"pos":1,  "type":"title",       "layout":"title",        "headline_template":"{{创作者}} — {{风格 tagline}}", "hint":"创作者名/工作室 + 极短风格描述（如「Editorial × Fashion」）"},
+    {"pos":2,  "type":"photo-essay", "layout":"photo-essay",  "headline_template":"{{代表作}}",                     "hint":"全屏 hero — 你最强的一张作品；image_query 写极具体"},
+    {"pos":3,  "type":"content",     "layout":"content",      "headline_template":"我的视角 / Statement",         "hint":"100-150 字创作宣言；不要简历式陈述"},
+    {"pos":4,  "type":"image-grid",  "layout":"image-grid",   "headline_template":"近期选作",                      "hint":"3-4 张选作 moodboard；选风格统一的"},
+    {"pos":5,  "type":"photo-essay", "layout":"photo-essay",  "headline_template":"{{项目 1}}",                    "hint":"全屏 feature shot；为下一页 storytelling 做铺垫"},
+    {"pos":6,  "type":"content",     "layout":"two-column",   "headline_template":"项目 1 — 过程",                 "hint":"左：项目背景/客户；右：你的创作过程或挑战"},
+    {"pos":7,  "type":"photo-essay", "layout":"photo-essay",  "headline_template":"{{项目 2}}",                    "hint":"全屏 feature shot — 风格与项目 1 形成对比"},
+    {"pos":8,  "type":"content",     "layout":"two-column",   "headline_template":"项目 2 — 过程",                 "hint":"左：项目背景；右：作品出版/展出地"},
+    {"pos":9,  "type":"content",     "layout":"content",      "headline_template":"客户 / 合作过",                 "hint":"4-6 个客户/品牌名 logo 列表 + 简短服务描述"},
+    {"pos":10, "type":"closing",     "layout":"closing",      "headline_template":"联系 / 委托",                   "hint":"邮件 + Instagram + 官网 + 联系窗口"}
+  ]
+}

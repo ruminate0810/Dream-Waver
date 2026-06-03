@@ -1,0 +1,19 @@
+{
+  "id": "sales-deck",
+  "label": "销售拜访 deck",
+  "description": "9 页 B2B 销售拜访框架。开场聚焦客户痛 → 我方解 → 案例 → ROI → 下一步。",
+  "scenario_tags": ["sales", "b2b", "client", "prospect", "销售", "客户", "拜访", "proposal"],
+  "target_audience": "潜在客户 / 决策者 / 评估委员会",
+  "slide_count": 9,
+  "slides": [
+    {"pos":1, "type":"title",          "layout":"title",            "headline_template":"为什么是 {{客户}}", "hint":"以客户为中心的封面；副标题写日期 + 我方公司"},
+    {"pos":2, "type":"content",        "layout":"content",          "headline_template":"我们听到的痛点",       "hint":"3-4 条客户/行业现状，明确引用客户本人在准备会上说过的话"},
+    {"pos":3, "type":"data",           "layout":"data",             "headline_template":"行业坐标",            "hint":"1 个 third-party 数据点撑住「这事很重要」"},
+    {"pos":4, "type":"content",        "layout":"two-column",       "headline_template":"我们的解决方案",       "hint":"左：30 秒说清；右：示意图或核心产品截图"},
+    {"pos":5, "type":"icon-grid",      "layout":"icon-grid",        "headline_template":"核心能力",            "hint":"4 个能力 icon + 标题 + 一句话"},
+    {"pos":6, "type":"comparison-table","layout":"comparison-table", "headline_template":"为什么选我们",         "hint":"我方 vs 1-2 个客户在评估的替代方案 × 4 个维度"},
+    {"pos":7, "type":"content",        "layout":"content",          "headline_template":"类似案例 — {{案例客户}}", "hint":"一个相似行业/规模的成功案例：背景 → 部署 → 结果"},
+    {"pos":8, "type":"data",           "layout":"multi-metric",     "headline_template":"预期 ROI",           "hint":"3 个有 conservative/likely/upside 三档的预期收益数字"},
+    {"pos":9, "type":"closing",        "layout":"closing",          "headline_template":"下一步 / 试用计划",     "hint":"3 个具体行动：试用 scope + 时间 + 联系人"}
+  ]
+}

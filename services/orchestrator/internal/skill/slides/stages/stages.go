@@ -21,6 +21,7 @@ import (
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/blueprints"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/prompts"
 )
 
@@ -88,6 +89,15 @@ type OutlineParams struct {
 	// notes to address" so the revised outline addresses each one.
 	// Empty on the first pass; populated by the revise_outline tool.
 	CriticNotes []CriticNote `json:"critic_notes,omitempty"`
+
+	// Sprint BR.1 — when non-empty, fetch this blueprint from the
+	// blueprints package and append its slide-sequence skeleton to
+	// the planner's user message as a HARD constraint (slide count +
+	// type + layout fixed; planner only fills the topic-specific
+	// content). The outline.md prompt's BLUEPRINT section teaches the
+	// LLM how to honour this. SlideCount is overridden by the
+	// blueprint's own count when set (planner won't see the mismatch).
+	BlueprintID string `json:"blueprint_id,omitempty"`
 }
 
 // OutlineSlide is one row in the deck's table of contents.
@@ -137,6 +147,23 @@ type ContentResult struct {
 // for the given topic/audience/length/style. Returns the parsed
 // OutlineResult, the LLM's token-usage stats, and any error.
 func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*OutlineResult, llm.Usage, error) {
+	// Sprint BR.1 — resolve blueprint FIRST so its slide_count overrides
+	// the user-supplied count (the blueprint is a hard constraint; we
+	// don't want the planner to honour both numbers and pick wrong).
+	// Audience falls back to the blueprint's recommended audience when
+	// caller didn't override.
+	var bpSkeleton string
+	if in.BlueprintID != "" {
+		if bp, ok := blueprints.ByID(in.BlueprintID); ok {
+			in.SlideCount = bp.SlideCount
+			if in.Audience == "" {
+				in.Audience = bp.TargetAudience
+			}
+			bpSkeleton = blueprints.FormatSkeleton(bp)
+		} else {
+			slog.Warn("stages.Outline: unknown blueprint_id, falling back to free-form", "id", in.BlueprintID)
+		}
+	}
 	if in.SlideCount <= 0 {
 		in.SlideCount = 8
 	}
@@ -151,6 +178,13 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 		defaultStr(in.Style, "auto"),
 		in.ReferenceText,
 	)
+	if bpSkeleton != "" {
+		// Place the blueprint AFTER the topic/audience block so the LLM
+		// reads the request first then learns the structural rules.
+		// The outline.md system prompt's BLUEPRINT section governs how
+		// strictly to honour this.
+		user += "\n\n" + bpSkeleton
+	}
 	if notes := formatCriticNotes(in.CriticNotes); notes != "" {
 		user += "\n\n" + notes
 	}

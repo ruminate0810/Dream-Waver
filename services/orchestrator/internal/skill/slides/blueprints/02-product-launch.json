@@ -1,0 +1,18 @@
+{
+  "id": "product-launch",
+  "label": "产品发布",
+  "description": "8 页新产品/新功能发布框架。重故事、重视觉、留 CTA。",
+  "scenario_tags": ["product launch", "release", "announcement", "feature", "新品", "发布", "上线", "产品"],
+  "target_audience": "现有用户 / 媒体 / 行业关注者",
+  "slide_count": 8,
+  "slides": [
+    {"pos":1, "type":"title",       "layout":"title",        "headline_template":"{{产品名}} — {{大胆 tagline}}", "hint":"产品名 + 一句 bold 价值主张；副标题写日期/版本"},
+    {"pos":2, "type":"quote",       "layout":"pull-quote",   "headline_template":"为什么我们要做这件事",         "hint":"创始人/产品负责人的一段引语，60-80 字，要有立场"},
+    {"pos":3, "type":"content",     "layout":"content",      "headline_template":"过去的痛点",                   "hint":"用 2-3 个真实用户故事/场景描绘问题，要具体"},
+    {"pos":4, "type":"photo-essay", "layout":"photo-essay",  "headline_template":"{{产品名}}", "hint":"产品 hero shot 全屏；image_query 写出场景+光线+材质"},
+    {"pos":5, "type":"icon-grid",   "layout":"icon-grid",    "headline_template":"核心特性",                     "hint":"3-4 个核心 feature，每个 icon + 短标题 + 一句话说明"},
+    {"pos":6, "type":"content",     "layout":"two-column",   "headline_template":"它是怎么工作的",               "hint":"左：30 秒解释如何用；右：示意图/截图/关键交互"},
+    {"pos":7, "type":"data",        "layout":"multi-metric", "headline_template":"早期数据 / 第一批反馈",         "hint":"内测数据、早期用户口碑、benchmark；3-4 个硬指标"},
+    {"pos":8, "type":"closing",     "layout":"closing",      "headline_template":"今天就开始用",                 "hint":"获取方式 + 价格 + 行动 CTA + 联系/文档链接"}
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "internal-update",
+  "label": "内部季度汇报",
+  "description": "6 页内部团队 quarterly 更新框架。简短、诚实、围绕数字 + 取舍。",
+  "scenario_tags": ["internal", "quarterly", "review", "team update", "weekly", "汇报", "内部", "复盘", "周报", "月报"],
+  "target_audience": "团队 / 直属上级 / 跨部门同事",
+  "slide_count": 6,
+  "slides": [
+    {"pos":1, "type":"title",     "layout":"title",        "headline_template":"{{团队}} — {{周期}}", "hint":"团队名 + 周期（如 Q4 2026 / Nov）+ 汇报人"},
+    {"pos":2, "type":"data",      "layout":"multi-metric", "headline_template":"关键数字",            "hint":"3-4 个最重要的 KPI；对比上周期/目标"},
+    {"pos":3, "type":"content",   "layout":"content",      "headline_template":"完成 / 上线",         "hint":"4-6 条具体交付物，每条带责任人或日期"},
+    {"pos":4, "type":"content",   "layout":"content",      "headline_template":"没完成 + 原因",       "hint":"2-3 条没做完的，说清原因（依赖/优先级/资源）"},
+    {"pos":5, "type":"checklist", "layout":"checklist",    "headline_template":"下一周期重点",         "hint":"3-5 个 P0/P1，写明负责人和截止日"},
+    {"pos":6, "type":"closing",   "layout":"closing",      "headline_template":"asks / 阻塞",         "hint":"需要谁帮忙做什么；具体到人名 + 行动"}
+  ]
+}

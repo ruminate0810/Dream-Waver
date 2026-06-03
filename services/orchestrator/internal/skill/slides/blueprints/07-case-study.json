@@ -1,0 +1,17 @@
+{
+  "id": "case-study",
+  "label": "客户成功案例",
+  "description": "7 页客户 case-study 框架。从客户视角讲挑战→方案→结果。",
+  "scenario_tags": ["case study", "customer story", "success story", "案例", "客户故事", "实战", "落地"],
+  "target_audience": "潜在客户 / 类似行业关注者 / 媒体",
+  "slide_count": 7,
+  "slides": [
+    {"pos":1, "type":"title",        "layout":"title",        "headline_template":"{{客户}} — {{核心结果}}", "hint":"客户名 + 一句话结果（如 ARR 翻倍 / 部署提速 80%）"},
+    {"pos":2, "type":"content",      "layout":"two-column",   "headline_template":"客户 profile",            "hint":"左：客户公司简介；右：规模、行业、所在阶段"},
+    {"pos":3, "type":"content",      "layout":"content",      "headline_template":"挑战",                    "hint":"3-4 条客户原本面临的具体痛点；用客户自己的描述"},
+    {"pos":4, "type":"content",      "layout":"content",      "headline_template":"解决方案",                 "hint":"我方做了什么、部署了多久、覆盖到哪些团队"},
+    {"pos":5, "type":"before-after", "layout":"before-after", "headline_template":"前后对比",                 "hint":"Before / After 视觉对比 + 一行说明"},
+    {"pos":6, "type":"data",         "layout":"multi-metric", "headline_template":"业务结果",                 "hint":"3-4 个硬指标的提升幅度 + 时间窗口"},
+    {"pos":7, "type":"quote",        "layout":"quote",        "headline_template":"客户怎么说",               "hint":"客户高管或 power user 的一段引语 + 头衔/姓名"}
+  ]
+}
