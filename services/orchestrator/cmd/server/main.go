@@ -178,6 +178,12 @@ func main() {
 		TavilyKey:     cfg.TavilyAPIKey,
 		Sessions:      sessions,
 		SandboxClient: sandboxClient,
+		// Sprint BR.3 — RAG inspiration. The adapter (defined in
+		// reference_retriever.go) wraps store.ReferenceDecks and
+		// translates between the store row shape and the planner's
+		// expected ReferenceOutline shape. Safe to wire even when the
+		// corpus is empty — Retrieve returns []; planner skips RAG.
+		References: newReferenceRetriever(dataStore.ReferenceDecks),
 	}
 
 	// ─── Games — single-shot HTML5 game generation ───────────────────

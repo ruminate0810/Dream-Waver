@@ -47,6 +47,10 @@ type AgentRunner struct {
 	// Nil means the tool is not registered — Sprint J introduces it as
 	// optional; existing deployments without a sandbox service keep working.
 	SandboxClient pb.SandboxClient
+	// References is the BR.3 reference-deck retriever. Optional —
+	// nil disables RAG inspiration entirely (e.g. tests, DB-less dev).
+	// main.go wires a thin adapter over store.ReferenceDecks.
+	References tools.ReferenceRetriever
 }
 
 // ErrSessionGone is returned by the Resume* and Continue methods when
@@ -479,7 +483,7 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 func (r *AgentRunner) runFromOutline(ctx context.Context, state *SessionState) (*Output, error) {
 	// Phase 1 — agentic outline loop.
 	registry := tool.NewRegistry(
-		&tools.PlanOutline{Router: r.Router, Emitter: r.Emitter, State: state},
+		&tools.PlanOutline{Router: r.Router, Emitter: r.Emitter, State: state, Refs: r.References},
 		&tools.CriticOutline{Router: r.Router},
 		&tools.ReviseOutline{Router: r.Router, Emitter: r.Emitter, State: state},
 		tool.Terminate{},

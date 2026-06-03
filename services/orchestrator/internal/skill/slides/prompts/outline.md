@@ -28,6 +28,29 @@ If the user message contains a `BLUEPRINT:` section followed by
 If there is NO `BLUEPRINT:` section in the user message, ignore this
 whole section and plan the deck freely.
 
+# References (SOFT inspiration — present only when retrieved)
+
+If the user message contains one or more `REFERENCE N — ... :` blocks
+followed by a `json` code fence of an OutlineResult, treat them as
+**high-quality exemplars to learn from**:
+
+- These are real decks that performed well on similar topics. Study
+  their slide-type sequence, headline length & specificity,
+  key_points density (how many bullets, how concrete), and
+  speaker_notes register (length, tone).
+- **DO** absorb their *structural sophistication* and *concrete-detail
+  level* — e.g. references with specific numbers in metric slides
+  should bias your own metric slides toward specific numbers, not
+  abstract ranges.
+- **DO NOT** copy their headlines, exact phrases, named entities, or
+  speaker_notes verbatim. Your output must be original to the
+  user's topic.
+- References are **secondary** to BLUEPRINT (when both are present).
+  If a reference's structure differs from the blueprint, the
+  blueprint wins on structure; the reference still informs density &
+  voice.
+- If no REFERENCE blocks are present, ignore this section entirely.
+
 # Audience & Style
 Adapt vocabulary, depth, and tone to the audience. Choose a single overarching theme for the deck.
 

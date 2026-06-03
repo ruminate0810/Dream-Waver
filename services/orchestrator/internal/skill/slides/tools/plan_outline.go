@@ -15,6 +15,18 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
 )
 
+// ReferenceRetriever is the minimum the PlanOutline tool needs to
+// fetch RAG inspiration. Implemented in slides/agent_runner.go as a
+// thin adapter over store.ReferenceDecks — keeps the tools package
+// import-free of internal/store.
+//
+// Returns at most K reference outlines, ordered by relevance. Empty
+// result is a normal outcome (no corpus match) and the planner falls
+// back to non-RAG generation.
+type ReferenceRetriever interface {
+	RetrieveOutlines(ctx context.Context, topic, scenario, blueprintID string, k int) ([]stages.ReferenceOutline, error)
+}
+
 // PlanOutline is the first tool the agent calls. It runs stages.Outline,
 // emits a slides.outline event so the frontend can flip the Composition
 // phase to "done", persists the outline on SessionState so follow-up
@@ -23,7 +35,8 @@ import (
 type PlanOutline struct {
 	Router  llm.Router
 	Emitter event.Emitter
-	State   SessionAccessor // optional; if set, the outline is also saved here
+	State   SessionAccessor    // optional; if set, the outline is also saved here
+	Refs    ReferenceRetriever // optional (BR.3); when set, retrieves top-K reference outlines
 }
 
 func (*PlanOutline) Name() string { return "plan_outline" }
@@ -78,9 +91,41 @@ func (t *PlanOutline) Execute(ctx context.Context, args json.RawMessage) (schema
 		}
 	}
 
+	// Sprint BR.3 — RAG inspiration. Fetch top-2 reference outlines
+	// matching the topic + scenario + blueprint and let stages.Outline
+	// inject them as soft inspiration. Retrieval failure is non-fatal
+	// — the planner just runs without RAG context.
+	var refSlugs []string
+	if t.Refs != nil {
+		// Use the blueprint id as the scenario hint too; reference rows'
+		// scenario field is typically the same vocabulary
+		// (e.g. "pitch"). Keep K small — the planner prompt budget is
+		// already crowded with blueprint + critic notes.
+		refs, rerr := t.Refs.RetrieveOutlines(ctx, p.Topic, p.BlueprintID, p.BlueprintID, 2)
+		if rerr != nil {
+			// Log but proceed — references are advisory.
+			// (no slog import in this file; the adapter logs detail.)
+			refs = nil
+		}
+		if len(refs) > 0 {
+			p.References = refs
+			for _, r := range refs {
+				refSlugs = append(refSlugs, r.Slug)
+			}
+		}
+	}
+
 	outline, _, err := stages.Outline(ctx, t.Router, p)
 	if err != nil {
 		return schema.ToolResult{Error: err.Error()}, nil
+	}
+	// Attach attribution AFTER the LLM returns — the LLM didn't see
+	// these fields (BR.3) and they're for the FE/critic only.
+	if len(refSlugs) > 0 {
+		outline.ReferenceSlugs = refSlugs
+	}
+	if p.BlueprintID != "" {
+		outline.BlueprintID = p.BlueprintID
 	}
 
 	// Surface the high-level signal the frontend uses to transition phases

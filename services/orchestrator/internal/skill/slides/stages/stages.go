@@ -98,6 +98,26 @@ type OutlineParams struct {
 	// LLM how to honour this. SlideCount is overridden by the
 	// blueprint's own count when set (planner won't see the mismatch).
 	BlueprintID string `json:"blueprint_id,omitempty"`
+
+	// Sprint BR.3 — when non-nil, 1–N high-quality exemplar outlines
+	// retrieved from the reference_decks corpus get serialised into
+	// the planner's user message as INSPIRATION (not a hard constraint
+	// like blueprint). The outline.md prompt's REFERENCE section
+	// teaches the LLM to learn structure & density from them without
+	// copying headlines verbatim. plan_outline.go does the retrieval
+	// + injection; stages.Outline just formats whatever it's given.
+	References []ReferenceOutline `json:"references,omitempty"`
+}
+
+// ReferenceOutline is the subset of a reference deck we actually feed
+// into the planner — slug for attribution, title + the full outline
+// JSON. Kept separate from store.ReferenceDeck so the stages package
+// stays a leaf of the import graph (stages → store would create a
+// cycle with the future RAG-aware tools).
+type ReferenceOutline struct {
+	Slug     string `json:"slug"`
+	Title    string `json:"title"`
+	Outline  []byte `json:"outline"` // raw OutlineResult JSON; ≤ ~3K tokens each
 }
 
 // OutlineSlide is one row in the deck's table of contents.
@@ -123,6 +143,17 @@ type OutlineResult struct {
 	Subtitle string         `json:"subtitle"`
 	Theme    schema.Theme   `json:"theme"`
 	Slides   []OutlineSlide `json:"slides"`
+
+	// Sprint BR.3 — attribution for the references that informed this
+	// outline (when planner used the RAG path). Slugs map to
+	// reference_decks.slug. The FE renders these as a "灵感来自:" line
+	// on the outline review card. Populated by tools/plan_outline.go
+	// AFTER stages.Outline returns — the LLM never sees this field.
+	ReferenceSlugs []string `json:"reference_slugs,omitempty"`
+
+	// Sprint BR.1 — which blueprint was used (if any). Populated by
+	// tools/plan_outline.go for transparency / debugging.
+	BlueprintID string `json:"blueprint_id,omitempty"`
 }
 
 // ContentSlide is the per-page payload the worker LLM produces. Layout is
@@ -184,6 +215,13 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 		// The outline.md system prompt's BLUEPRINT section governs how
 		// strictly to honour this.
 		user += "\n\n" + bpSkeleton
+	}
+	// Sprint BR.3 — RAG inspiration. Inject 1-N reference outlines as
+	// numbered blocks for the planner to learn structure/density from.
+	// The outline.md prompt's REFERENCE section governs how strictly
+	// to honour this (soft inspiration, NOT copy-verbatim).
+	if refBlock := formatReferences(in.References); refBlock != "" {
+		user += "\n\n" + refBlock
 	}
 	if notes := formatCriticNotes(in.CriticNotes); notes != "" {
 		user += "\n\n" + notes
@@ -388,4 +426,26 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// formatReferences renders the BR.3 reference outlines as a single
+// markdown block the planner reads as "look at these — match their
+// density and structural sophistication, don't copy headlines".
+// Returns "" for empty input so callers can simply concatenate the
+// result.
+//
+// Each reference is numbered + introduced with its slug + title, then
+// the full outline JSON is embedded as a fenced code block. Total
+// payload caps at ~3K tokens per reference × N; the
+// outline.md REFERENCE section instructs the LLM how to consume it.
+func formatReferences(refs []ReferenceOutline) string {
+	if len(refs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("REFERENCE OUTLINES (inspiration ONLY — learn structure, density, type-sequence; do NOT copy headlines or speaker notes verbatim):")
+	for i, r := range refs {
+		fmt.Fprintf(&sb, "\n\nREFERENCE %d — %s (%s):\n```json\n%s\n```", i+1, r.Title, r.Slug, string(r.Outline))
+	}
+	return sb.String()
 }

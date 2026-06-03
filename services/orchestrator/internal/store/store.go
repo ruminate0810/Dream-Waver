@@ -441,6 +441,7 @@ type Store struct {
 	ToolCalls       ToolCalls    // X3a
 	UserTemplates   UserTemplates // T2 — user-saved theme/brand presets
 	ChatEvents      ChatEvents    // AA.1 — WS event log for replay + persistence
+	ReferenceDecks  ReferenceDecks // BR.3 — RAG corpus for outline planning
 
 	// closer is set by the constructor that owns external resources
 	// (e.g. the pgx pool). main.go defers Close on shutdown.

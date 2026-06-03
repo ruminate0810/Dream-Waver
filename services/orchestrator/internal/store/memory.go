@@ -23,7 +23,8 @@ func NewMemory() *Store {
 		CreditLedger:    newMemCreditLedger(),
 		ToolCalls:       newMemToolCalls(),
 		UserTemplates:   newMemUserTemplates(),
-		ChatEvents:      newMemChatEvents(), // AA.1
+		ChatEvents:      newMemChatEvents(),     // AA.1
+		ReferenceDecks:  newMemReferenceDecks(), // BR.3
 	}
 }
 
