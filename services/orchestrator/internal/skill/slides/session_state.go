@@ -161,6 +161,17 @@ func (s *SessionState) Title() string {
 	return s.Deck.Title
 }
 
+// BlueprintID exposes the user-picked blueprint id (BR.2) so the
+// PlanOutline tool can defensively override its blueprint_id arg from
+// session state, in case the LLM forgets to pass it. Empty when the
+// user skipped the blueprint pick / chose "free-form" — falls back to
+// unconstrained outline planning.
+func (s *SessionState) BlueprintID() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.Input.BlueprintID
+}
+
 // UpdateSlide applies the given mutator to slide [index] under the
 // state's lock. Returns an error if the index is out of range. Edit
 // tools call this to keep mutations atomic relative to other tools that

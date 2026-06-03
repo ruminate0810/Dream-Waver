@@ -78,10 +78,18 @@ func buildWizardStepView(step, total int, q stages.ClarificationQuestion, priorA
 		Optional:    q.Optional,
 		CanGoBack:   step > 1,
 	}
-	if q.Kind == "select" {
+	// Sprint BR.2 — "blueprint-pick" renders like a select but with a
+	// distinct value/label split (Value=blueprint.ID, Label=human-readable
+	// "Series A 路演 · 11 页"). Frontend QuestionBubble already submits
+	// opt.value distinct from opt.label so no FE change is needed.
+	if q.Kind == "select" || q.Kind == "blueprint-pick" {
 		opts := make([]ScenarioOption, 0, len(q.Options))
-		for _, o := range q.Options {
-			opts = append(opts, ScenarioOption{Value: o, Label: o})
+		for i, o := range q.Options {
+			val := o
+			if i < len(q.OptionValues) {
+				val = q.OptionValues[i]
+			}
+			opts = append(opts, ScenarioOption{Value: val, Label: o})
 		}
 		v.Options = opts
 	}

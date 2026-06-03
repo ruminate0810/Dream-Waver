@@ -43,9 +43,19 @@ func (*PlanOutline) Parameters() json.RawMessage {
 			"audience":       {"type": "string", "description": "Who is reading the deck (e.g. 'VC 投资人', 'undergrad students')."},
 			"slide_count":    {"type": "integer", "minimum": 3, "maximum": 40, "description": "How many slides total. Defaults to 8."},
 			"style":          {"type": "string", "description": "Style hint, e.g. 'minimalist', 'corporate', 'pitch-deck', 'academic', 'playful'."},
-			"reference_text": {"type": "string", "description": "Optional source material the planner should anchor the outline to."}
+			"reference_text": {"type": "string", "description": "Optional source material the planner should anchor the outline to."},
+			"blueprint_id":   {"type": "string", "description": "Optional blueprint id (e.g. 'series-a-pitch') to use as a fixed slide-sequence skeleton. Must come from the user's wizard pick; do not invent. The tool ALSO reads this from session state and will override args if the user picked one — passing it explicitly is best practice but not required."}
 		}
 	}`)
+}
+
+// blueprintProvider is an optional interface extension for SessionAccessor.
+// SessionState implements it (Sprint BR.2). Lets the tool defensively
+// override blueprint_id from session state in case the LLM forgets to
+// pass it on the JSON args — the user-picked blueprint must apply
+// regardless of LLM compliance.
+type blueprintProvider interface {
+	BlueprintID() string
 }
 
 func (t *PlanOutline) Execute(ctx context.Context, args json.RawMessage) (schema.ToolResult, error) {
@@ -55,6 +65,17 @@ func (t *PlanOutline) Execute(ctx context.Context, args json.RawMessage) (schema
 	}
 	if p.Topic == "" {
 		return schema.ToolResult{Error: "topic is required"}, nil
+	}
+	// Sprint BR.2 — defensive blueprint override from session state.
+	// If the user picked a blueprint at the wizard gate, we MUST honour
+	// it regardless of whether the LLM remembered to pass blueprint_id
+	// in args. Session state is the source of truth.
+	if t.State != nil {
+		if bp, ok := t.State.(blueprintProvider); ok {
+			if id := bp.BlueprintID(); id != "" {
+				p.BlueprintID = id
+			}
+		}
 	}
 
 	outline, _, err := stages.Outline(ctx, t.Router, p)

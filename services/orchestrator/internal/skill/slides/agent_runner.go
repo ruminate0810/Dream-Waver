@@ -14,6 +14,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/blueprints"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/stages"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/tools"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/tool"
@@ -436,8 +437,21 @@ func (r *AgentRunner) Run(ctx context.Context, jobID string, in Input) (*Output,
 		r.emit(ctx, event.NewError("clarify", err))
 		script = nil
 	}
+
+	// Sprint BR.2 — always offer a blueprint pick as the LAST wizard
+	// step (optional, may be skipped). Recommend ranks the 10 blueprints
+	// by keyword overlap with topic + audience; we surface the top-3 +
+	// a "free-form" escape hatch. When the user has not provided a
+	// topic at all (shouldn't happen, defensive) the helper returns
+	// hasBP=false and we skip the append.
+	if bpStep, hasBP := buildBlueprintPickStep(in.Topic, in.Audience); hasBP {
+		script = append(script, bpStep)
+	}
+
 	if len(script) == 0 {
-		// No clarification needed — go straight to outline planning.
+		// No clarification AND no blueprint candidates (shouldn't happen
+		// — blueprints.Recommend always returns >=1) — go straight to
+		// outline planning.
 		return r.runFromOutline(ctx, state)
 	}
 
@@ -646,6 +660,12 @@ func (r *AgentRunner) ResumeFromWizardStep(
 
 	// Wizard complete — fold all Q&A pairs into Input and run outline.
 	mergeWizardAnswersIntoInput(&state.Input, script, answers)
+	// Sprint BR.2 — extract user-picked blueprint (if any) and stash on
+	// Input. Empty result means free-form (user skipped OR explicitly
+	// picked "free-form"). Done AFTER mergeWizardAnswers so the blueprint
+	// step's "answer" (which is the blueprint ID, not free text) doesn't
+	// pollute ReferenceText with a stray "Q: ... A: series-a-pitch" line.
+	state.Input.BlueprintID = extractBlueprintIDFromWizard(script, answers)
 	state.ClearPending()
 	return r.runFromOutline(ctx, state)
 }
@@ -688,6 +708,13 @@ func mergeWizardAnswersIntoInput(in *Input, script []stages.ClarificationQuestio
 	wrote := false
 	for i, a := range answers {
 		if i >= len(script) || a == "" {
+			continue
+		}
+		// Sprint BR.2 — skip the blueprint-pick step. Its answer is a
+		// blueprint ID (e.g. "series-a-pitch"), not a natural-language
+		// reply; we handle it separately via extractBlueprintIDFromWizard.
+		// Folding it into ReferenceText would mislead the planner.
+		if script[i].Kind == "blueprint-pick" {
 			continue
 		}
 		q := script[i].Question
@@ -1042,10 +1069,75 @@ func buildUserPrompt(in Input) string {
 	if in.ForceTheme != "" {
 		fmt.Fprintf(&b, "Theme (pass as force_theme to render_deck): %s\n", in.ForceTheme)
 	}
+	// Sprint BR.2 — surface the user-picked blueprint to the agent so
+	// plan_outline knows to invoke its blueprint_id arg. PlanOutline
+	// also defensively overrides from session state (belt-and-
+	// suspenders against the LLM forgetting), but having it in the
+	// user prompt makes the agent's reasoning trace explicit.
+	if in.BlueprintID != "" {
+		fmt.Fprintf(&b, "Blueprint (REQUIRED — pass as blueprint_id to plan_outline): %s\n", in.BlueprintID)
+	}
 	if in.ReferenceText != "" {
 		fmt.Fprintf(&b, "\nReference material:\n%s\n", in.ReferenceText)
 	}
 	return b.String()
+}
+
+// buildBlueprintPickStep synthesises the BR.2 wizard step that lets the
+// user pick a blueprint from blueprints.Recommend's top-3 candidates +
+// a "free-form" escape hatch. The step is always OPTIONAL — skipping
+// it leaves Input.BlueprintID empty, which falls back to free-form
+// outline planning.
+//
+// The label-vs-value split (OptionValues) lets QuestionBubble chips
+// display "Series A 路演 · 11 页" while sending the clean ID
+// "series-a-pitch" back to the resume handler.
+func buildBlueprintPickStep(topic, audience string) (stages.ClarificationQuestion, bool) {
+	cands, err := blueprints.Recommend(topic, audience, 3)
+	if err != nil || len(cands) == 0 {
+		return stages.ClarificationQuestion{}, false
+	}
+	labels := make([]string, 0, len(cands)+1)
+	values := make([]string, 0, len(cands)+1)
+	for _, c := range cands {
+		bp := c.Blueprint
+		labels = append(labels, fmt.Sprintf("%s · %d 页", bp.Label, bp.SlideCount))
+		values = append(values, bp.ID)
+	}
+	// Free-form escape hatch — empty string for BlueprintID skips the
+	// hard constraint and falls back to free-form outline planning.
+	labels = append(labels, "自由生成（不使用框架）")
+	values = append(values, "")
+	return stages.ClarificationQuestion{
+		Kind:         "blueprint-pick",
+		Question:     "想用一个 deck 框架吗？（可选 — 选一个会用更结构化的页面顺序）",
+		Options:      labels,
+		OptionValues: values,
+		Optional:     true,
+	}, true
+}
+
+// extractBlueprintIDFromWizard scans the completed wizard script/answers
+// for the blueprint-pick step (kind=="blueprint-pick") and returns the
+// user's picked blueprint ID. Returns "" if no blueprint step exists OR
+// the user picked "free-form" / skipped. Called from
+// ResumeFromWizardStep right before runFromOutline so Input.BlueprintID
+// flows through PlanOutline → stages.Outline.
+func extractBlueprintIDFromWizard(script []stages.ClarificationQuestion, answers []string) string {
+	for i, q := range script {
+		if q.Kind != "blueprint-pick" {
+			continue
+		}
+		if i >= len(answers) {
+			return ""
+		}
+		// answers[i] is already the OptionValue (the blueprint ID) —
+		// QuestionBubble submits opt.value not opt.label. Skipped /
+		// free-form pick comes back as "" which is exactly what we
+		// want (no blueprint).
+		return answers[i]
+	}
+	return ""
 }
 
 // findRenderResult walks the agent's memory looking for the most recent

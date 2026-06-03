@@ -35,11 +35,21 @@ import (
 // Optional flag enables the 跳过 button (typical for free-text;
 // rare for select).
 type ClarificationQuestion struct {
-	Kind        string   `json:"kind"`        // "select" | "free-text"
+	Kind        string   `json:"kind"`        // "select" | "free-text" | "blueprint-pick" (BR.2 synthesised)
 	Question    string   `json:"question"`    // headline copy, in the user's language
-	Options     []string `json:"options,omitempty"`     // for kind=select
+	Options     []string `json:"options,omitempty"`     // for kind=select — chip labels (what user sees)
 	Placeholder string   `json:"placeholder,omitempty"` // for kind=free-text
 	Optional    bool     `json:"optional"`
+
+	// Sprint BR.2 — when non-nil and same length as Options, the
+	// frontend's wizard chip submits OptionValues[i] (e.g. the
+	// blueprint ID "series-a-pitch") rather than Options[i] (the
+	// human-readable label). Used by the synthesised blueprint-pick
+	// step in agent_runner.go to surface labels like "Series A 路演 ·
+	// 11 页" while feeding the runtime a clean enum value. LLM never
+	// populates this; the LLM-facing prompts/clarify.md doesn't
+	// mention it.
+	OptionValues []string `json:"option_values,omitempty"`
 }
 
 // PlanClarification asks the planner LLM to read the topic + audience

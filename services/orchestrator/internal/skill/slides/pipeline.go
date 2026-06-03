@@ -68,6 +68,11 @@ type Input struct {
 	ReferenceText string        `json:"reference_text,omitempty"`
 	ForceTheme    string        `json:"force_theme,omitempty"`
 	Brand         *schema.Brand `json:"brand,omitempty"`
+	// Sprint BR.2 — when set, the user has picked this blueprint at the
+	// wizard's blueprint-pick step. Threaded through agent_runner →
+	// PlanOutline tool → stages.Outline as a HARD slide-sequence
+	// constraint. Empty = free-form generation (no blueprint).
+	BlueprintID string `json:"blueprint_id,omitempty"`
 }
 
 // Output is the shared result envelope. Both runners write the same shape
@@ -112,6 +117,7 @@ func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, er
 		SlideCount:    in.SlideCount,
 		Style:         in.Style,
 		ReferenceText: in.ReferenceText,
+		BlueprintID:   in.BlueprintID, // BR.2 — pipeline mode honours blueprint too
 	})
 	if err != nil {
 		return nil, fmt.Errorf("outline: %w", err)
