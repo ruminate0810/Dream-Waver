@@ -40,6 +40,14 @@ type SessionState struct {
 	// lives only in process memory.
 	WorkspaceID uuid.UUID
 
+	// Sprint BR.3 — attribution captured by plan_outline.go when it
+	// retrieved references from the RAG corpus. Survives the
+	// critic-revise loop (which would otherwise zero outline.ReferenceSlugs
+	// since the LLM doesn't know about that omitempty field). runFromOutline
+	// re-attaches these onto state.Outline right before the L1 outline-
+	// review gate fires so the FE attribution row renders correctly.
+	ReferenceSlugs []string
+
 	// Last successfully rendered representations. Outline + Content are
 	// the LLM-produced JSON; Deck is the assembled, image-resolved view
 	// that the renderer actually consumed. Edit tools may mutate any of
@@ -170,6 +178,33 @@ func (s *SessionState) BlueprintID() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.Input.BlueprintID
+}
+
+// SetReferenceSlugs captures the slugs that informed the planner so
+// runFromOutline can re-attach them after the critic-revise loop wipes
+// the outline's own omitempty fields. Sprint BR.3 attribution.
+func (s *SessionState) SetReferenceSlugs(slugs []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(slugs) == 0 {
+		s.ReferenceSlugs = nil
+		return
+	}
+	cp := make([]string, len(slugs))
+	copy(cp, slugs)
+	s.ReferenceSlugs = cp
+}
+
+// GetReferenceSlugs returns the captured slugs under the lock.
+func (s *SessionState) GetReferenceSlugs() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(s.ReferenceSlugs) == 0 {
+		return nil
+	}
+	cp := make([]string, len(s.ReferenceSlugs))
+	copy(cp, s.ReferenceSlugs)
+	return cp
 }
 
 // UpdateSlide applies the given mutator to slide [index] under the

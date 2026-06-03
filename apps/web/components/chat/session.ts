@@ -134,6 +134,11 @@ export type OutlineForReview = {
     key_points?: string[];
     speaker_notes?: string;
   }>;
+  // Sprint BR — attribution fields populated by the planner. Both
+  // optional — empty/missing means the outline ran free-form (no
+  // blueprint, no RAG).
+  reference_slugs?: string[]; // BR.3
+  blueprint_id?: string;      // BR.1
 };
 
 // Sprint O.5 — compose-phase checklist. Populated on

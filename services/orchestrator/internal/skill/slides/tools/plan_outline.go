@@ -71,6 +71,15 @@ type blueprintProvider interface {
 	BlueprintID() string
 }
 
+// refStasher is an optional interface extension on SessionAccessor.
+// SessionState implements it (Sprint BR.3). Lets the tool stash the
+// retrieved reference slugs so runFromOutline can re-attach them on
+// state.Outline after the critic-revise loop wipes the omitempty
+// fields (revise_outline's LLM doesn't know about ReferenceSlugs).
+type refStasher interface {
+	SetReferenceSlugs(slugs []string)
+}
+
 func (t *PlanOutline) Execute(ctx context.Context, args json.RawMessage) (schema.ToolResult, error) {
 	var p stages.OutlineParams
 	if err := json.Unmarshal(args, &p); err != nil {
@@ -111,6 +120,15 @@ func (t *PlanOutline) Execute(ctx context.Context, args json.RawMessage) (schema
 			p.References = refs
 			for _, r := range refs {
 				refSlugs = append(refSlugs, r.Slug)
+			}
+			// Stash on session state so runFromOutline can re-attach
+			// after the critic-revise loop — the LLM doesn't know about
+			// the OutlineResult.ReferenceSlugs field and would otherwise
+			// emit an outline JSON that drops it.
+			if t.State != nil {
+				if rs, ok := t.State.(refStasher); ok {
+					rs.SetReferenceSlugs(refSlugs)
+				}
 			}
 		}
 	}

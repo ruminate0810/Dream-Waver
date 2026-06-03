@@ -509,6 +509,19 @@ func (r *AgentRunner) runFromOutline(ctx context.Context, state *SessionState) (
 		outline.Theme = schema.Theme(state.Input.ForceTheme)
 		state.SetOutline(outline)
 	}
+	// Sprint BR — re-attach attribution that the critic-revise loop wipes.
+	// LLM revisions emit fresh outline JSON without the omitempty
+	// ReferenceSlugs / BlueprintID fields, so they're zero by the time
+	// we get here even though the planner did use them. Read from
+	// state.Input (blueprint, user-picked) and state.ReferenceSlugs
+	// (stashed by plan_outline.go).
+	if state.Input.BlueprintID != "" {
+		outline.BlueprintID = state.Input.BlueprintID
+	}
+	if slugs := state.GetReferenceSlugs(); len(slugs) > 0 {
+		outline.ReferenceSlugs = slugs
+	}
+	state.SetOutline(outline)
 
 	// Save the augmented memory so Phase 3 (which runs in a fresh
 	// ToolCallAgent) doesn't lose what just happened. Not strictly

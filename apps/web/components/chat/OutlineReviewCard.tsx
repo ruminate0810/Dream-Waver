@@ -225,12 +225,31 @@ export function OutlineReviewCard({
           {outline.title}
         </h3>
         {outline.subtitle ? (
-          <p className="mb-5 font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
+          <p className="mb-3 font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
             {outline.subtitle}
           </p>
         ) : (
-          <div className="mb-5" />
+          <div className="mb-3" />
         )}
+
+        {/* Sprint BR.5 — attribution row. Shows which blueprint
+            structured the deck and which references (if any) inspired
+            its density/voice. Hidden entirely when neither is set, so
+            free-form decks read unchanged. */}
+        {(outline.blueprint_id || (outline.reference_slugs && outline.reference_slugs.length > 0)) ? (
+          <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            {outline.blueprint_id ? (
+              <span>
+                框架 <span className="text-[color:var(--ink-soft)] normal-case tracking-normal">· {outline.blueprint_id}</span>
+              </span>
+            ) : null}
+            {outline.reference_slugs && outline.reference_slugs.length > 0 ? (
+              <span>
+                灵感来自 <span className="text-[color:var(--ink-soft)] normal-case tracking-normal">· {outline.reference_slugs.join(' · ')}</span>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* ─── Theme picker — visual chips ─────────────────────────── */}
         <div className="mb-5 border-y border-[color:var(--ink)]/10 py-3">
