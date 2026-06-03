@@ -65,10 +65,23 @@ func emitText(b *strings.Builder, text string, role Role, x, y, w float64, align
 func emitMetric(b *strings.Builder, blk *Block, th Theme) {
 	anchor, ax := anchorFor(blk.Align, blk.x, blk.w)
 	y := blk.y
+	// A metric block in a grow:true row gets the full row height (blk.h),
+	// but its stacked content is much shorter — left at the top it leaves
+	// a big empty band below (the "too much whitespace" look). Center the
+	// content within its allocated cell so the metrics sit in the optical
+	// middle of the lower canvas and the slide reads balanced.
+	if ch := metricContentHeight(blk); blk.h > ch {
+		y += (blk.h - ch) / 2
+	}
 	if blk.Reference != "" {
 		rs := roleSpec[RoleMetricRef]
-		writeText(b, ax, y+rs.size*0.82, ref(blk.Reference, rs), familyFor(rs.family, th), rs.size, rs.weight, colorFor(rs.color, th), anchor, rs.tracking)
-		y += rs.size*lineHeight + 14
+		// Wrap long reference labels (e.g. "API 价格（输入/输出每百万 tokens）")
+		// so they don't overflow the card width and clip.
+		for _, ln := range wrapText(ref(blk.Reference, rs), rs.size, blk.w) {
+			writeText(b, ax, y+rs.size*0.82, ln, familyFor(rs.family, th), rs.size, rs.weight, colorFor(rs.color, th), anchor, rs.tracking)
+			y += rs.size * lineHeight
+		}
+		y += 14
 	}
 	{
 		rs := roleSpec[RoleMetricValue]

@@ -34,7 +34,7 @@ Leaves (content):
 - **cover / closing (breathing)**: a `col` with `"valign":"center"` holding a `kicker`, a `display` headline, a `rule`, maybe one `subtitle`. Few elements, big, lots of air, optically centered.
 - **section divider (the act break — make it DRAMATIC)**: a `col` with `"valign":"center"` holding a BIG faint `numeral` (the act number, e.g. "02"), then a `display` headline naming the act as a story beat ("从成本困境到架构突破", not "第二部分"), then a `rule`, optionally one `subtitle` foreshadowing what's next. This is a deliberate pause in the narrative — keep it sparse and large so it reads as a chapter title, clearly different from a dense content slide.
 - **content (dense)**: `col` → [ `kicker`(optional), `title`, `rule`, then a `row` of 2-4 `card`s OR a `col` of points, with `"grow":true` on that content block so it FILLS the lower canvas ]. Each card: a `numeral` or `card-label`, then 1-3 `body` lines.
-- **data / metrics (dense)**: `col` → [ `title`, `rule`, a `row` of 2-4 `metric` blocks with `"grow":true` ]. Use the `metric` block for every number.
+- **data / metrics (dense)**: `col` → [ `title`, `rule`, a `row` (`"grow":true`) of 2-4 `card`s (`"fill":"surface"`), each card holding ONE `metric` block ]. Wrapping each metric in a surface card gives it visual mass and the cards stretch to FILL the canvas — bare metrics on the background float in the upper third and leave a big empty band below. Use the `metric` block for every number.
 
 # Narrative coherence across the deck
 The slides arrive as a sequence — design them as ONE story, not isolated cards:
@@ -85,5 +85,22 @@ The slides arrive as a sequence — design them as ONE story, not isolated cards
 ]}
 
 (Note: `align` is per-leaf — set `"align":"center"` on EACH text/numeral you want centered, not just the parent col.)
+
+# Example (data / metrics slide — cards fill the canvas)
+{"type":"col","gap":40,"items":[
+  {"type":"text","role":"title","text":"推理成本砍到行业 1/10"},
+  {"type":"rule"},
+  {"type":"row","grow":true,"gap":36,"items":[
+    {"type":"card","fill":"surface","items":[
+      {"type":"metric","value":"$0.14","reference":"每百万 Token","implication":"成本仅为 GPT-4o 的约 3%"}
+    ]},
+    {"type":"card","fill":"surface","items":[
+      {"type":"metric","value":"8%","reference":"推理成本仅为 GPT-4o 的","implication":"商业竞争力冠绝行业"}
+    ]},
+    {"type":"card","fill":"surface","items":[
+      {"type":"metric","value":"已开放","reference":"API 即时可用","implication":"中小企业亦可轻松接入"}
+    ]}
+  ]}
+]}
 
 Produce one such tree per slide. Structure + content only — the engine does the rest.

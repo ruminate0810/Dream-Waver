@@ -138,6 +138,12 @@ type Block struct {
 
 	// computed geometry (filled by Layout)
 	x, y, w, h float64
+	// groupContentH: when cards sit side-by-side in a row, this is the
+	// MAX content height among the row's cards. layoutCard centers each
+	// card's content as if it were this tall, so all cards in the row
+	// start their content at the same y (numerals line up) while staying
+	// vertically centered (balanced, not top-heavy). 0 = use own height.
+	groupContentH float64
 }
 
 // ─── public API ──────────────────────────────────────────────────────
@@ -276,18 +282,7 @@ func intrinsicHeight(blk *Block) float64 {
 	case "numeral":
 		return roleSpec[RoleNumeral].size * lineHeight
 	case "metric":
-		// stacked: ref (above) + value + implication (below), with gaps.
-		h := 0.0
-		if blk.Reference != "" {
-			h += roleSpec[RoleMetricRef].size*lineHeight + 14
-		}
-		h += roleSpec[RoleMetricValue].size * lineHeight
-		if blk.Implication != "" {
-			rs := roleSpec[RoleMetricImpl]
-			lines := wrapText(blk.Implication, rs.size, blk.w)
-			h += 16 + float64(max(1, len(lines)))*rs.size*lineHeight
-		}
-		return h
+		return metricContentHeight(blk)
 	case "card":
 		pad := blk.Pad
 		if pad == 0 {
@@ -440,18 +435,58 @@ func layoutRow(blk *Block) {
 		it.y = blk.y
 		it.w = w
 		it.h = blk.h // items fill the row height (cards stretch)
-		// Cards SIDE BY SIDE in a row must top-align their content so the
-		// first element (numeral / label) lines up across all cards —
-		// otherwise uneven content heights (one card wraps to 2 lines)
-		// makes the centred cards' numerals sit at different heights,
-		// which reads as misalignment. A standalone card (col child) keeps
-		// the center default. Explicit valign always wins.
-		if it.Type == "card" && it.Valign == "" {
-			it.Valign = "top"
-		}
-		layout(it)
 		x += w + gap
 	}
+	// Row-uniform card centering: give every card in the row the SAME
+	// content height (the tallest card's) so they all center their
+	// content on a common top. Result: cards stay stretched (canvas
+	// stays full, in-card padding reads as deliberate), content sits in
+	// the optical middle (not top-heavy), and the first element (numeral
+	// / label) lines up across all cards even when one wraps an extra
+	// line. Must run BEFORE layout(card) so the value is in place.
+	maxCardH := 0.0
+	anyCard := false
+	for _, it := range blk.Items {
+		if it.Type == "card" && it.Valign == "" {
+			anyCard = true
+			if ch := cardContentHeight(it); ch > maxCardH {
+				maxCardH = ch
+			}
+		}
+	}
+	if anyCard {
+		for _, it := range blk.Items {
+			if it.Type == "card" && it.Valign == "" {
+				it.groupContentH = maxCardH
+			}
+		}
+	}
+	for _, it := range blk.Items {
+		layout(it)
+	}
+}
+
+// cardContentHeight returns the stacked height of a card's children
+// (the same sum layoutCard computes), used to align sibling cards.
+func cardContentHeight(blk *Block) float64 {
+	pad := blk.Pad
+	if pad == 0 {
+		pad = 48
+	}
+	gap := blk.Gap
+	if gap == 0 {
+		gap = 18
+	}
+	innerW := blk.w - 2*pad
+	h := 0.0
+	for i, it := range blk.Items {
+		it.w = innerW
+		h += intrinsicHeight(it)
+		if i < len(blk.Items)-1 {
+			h += gap
+		}
+	}
+	return h
 }
 
 func layoutCard(blk *Block) {
@@ -478,7 +513,13 @@ func layoutCard(blk *Block) {
 	}
 	avail := blk.h - 2*pad
 	y := blk.y + pad
-	if slack := avail - contentH; slack > 0 {
+	// Center on the row-uniform height when set (so sibling cards align
+	// their first element), else on this card's own content height.
+	slackBasis := contentH
+	if blk.groupContentH > contentH {
+		slackBasis = blk.groupContentH
+	}
+	if slack := avail - slackBasis; slack > 0 {
 		switch blk.Valign {
 		case "top":
 			// leave as-is
@@ -496,6 +537,25 @@ func layoutCard(blk *Block) {
 		layout(it)
 		y += it.h + gap
 	}
+}
+
+// metricContentHeight is the height of a metric's stacked content
+// (ref above + value + implication below, with gaps). Shared by
+// intrinsicHeight and emit so vertical-centering math stays consistent.
+func metricContentHeight(blk *Block) float64 {
+	h := 0.0
+	if blk.Reference != "" {
+		rs := roleSpec[RoleMetricRef]
+		lines := wrapText(blk.Reference, rs.size, blk.w)
+		h += float64(max(1, len(lines)))*rs.size*lineHeight + 14
+	}
+	h += roleSpec[RoleMetricValue].size * lineHeight
+	if blk.Implication != "" {
+		rs := roleSpec[RoleMetricImpl]
+		lines := wrapText(blk.Implication, rs.size, blk.w)
+		h += 16 + float64(max(1, len(lines)))*rs.size*lineHeight
+	}
+	return h
 }
 
 func weightOf(b *Block) float64 {
