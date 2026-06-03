@@ -11,6 +11,8 @@ Containers (hold "items"):
 - `{"type":"row","gap":N,"items":[...],"grow":true}` — split horizontally into columns. Put `"grow":true` on the ONE row/block that should expand to fill leftover vertical space (this is how you FILL THE CANVAS — see below).
 - `{"type":"card","fill":"surface","items":[...]}` — a padded panel (rounded). `"fill":"surface"` gives a subtle tint; omit fill for no panel.
 
+Optional on a `col` or `card`: `"valign":"top|center|bottom"` — where the content sits when there's extra vertical space. Cards default to `center`. For **cover / section / closing** slides set the root `col` to `"valign":"center"` so the few big elements sit in the OPTICAL CENTER of the slide (this is what makes a divider feel deliberate, not stranded at the top).
+
 Leaves (content):
 - `{"type":"text","role":"<role>","text":"...","align":"left|center"}`
 - `{"type":"numeral","text":"01"}` — big mono numeral (use INSTEAD of emoji icons)
@@ -29,9 +31,16 @@ Leaves (content):
 (metric value/reference/implication are handled by the `metric` block, not roles.)
 
 # Per-slide composition (match density to slide TYPE)
-- **cover / section / closing (breathing)**: a `col` (often `align:"center"`) with a `kicker`, a `display` headline, a `rule`, maybe one `subtitle`. Few elements, big, lots of air.
+- **cover / closing (breathing)**: a `col` with `"valign":"center"` holding a `kicker`, a `display` headline, a `rule`, maybe one `subtitle`. Few elements, big, lots of air, optically centered.
+- **section divider (the act break — make it DRAMATIC)**: a `col` with `"valign":"center"` holding a BIG faint `numeral` (the act number, e.g. "02"), then a `display` headline naming the act as a story beat ("从成本困境到架构突破", not "第二部分"), then a `rule`, optionally one `subtitle` foreshadowing what's next. This is a deliberate pause in the narrative — keep it sparse and large so it reads as a chapter title, clearly different from a dense content slide.
 - **content (dense)**: `col` → [ `kicker`(optional), `title`, `rule`, then a `row` of 2-4 `card`s OR a `col` of points, with `"grow":true` on that content block so it FILLS the lower canvas ]. Each card: a `numeral` or `card-label`, then 1-3 `body` lines.
 - **data / metrics (dense)**: `col` → [ `title`, `rule`, a `row` of 2-4 `metric` blocks with `"grow":true` ]. Use the `metric` block for every number.
+
+# Narrative coherence across the deck
+The slides arrive as a sequence — design them as ONE story, not isolated cards:
+- The cover headline states the thesis; the closing headline pays it off. Make them rhyme.
+- Section dividers mark act transitions — render them sparse + centered so the audience feels the deck "turn a page".
+- Keep visual rhythm: dense content slides should be broken up by the breathing section/cover/closing slides, so the deck breathes in and out rather than being a wall of dense pages.
 
 # Content rules (this is what makes it look premium)
 1. **Titles are ASSERTIONS, not topics**: "推理成本砍到行业 1/10", not "成本". The reader gets the "so what" from the title alone.
@@ -66,5 +75,15 @@ Leaves (content):
     ]}
   ]}
 ]}
+
+# Example (section divider — sparse, centered, dramatic)
+{"type":"col","valign":"center","gap":28,"items":[
+  {"type":"numeral","text":"02","align":"center"},
+  {"type":"text","role":"display","text":"从成本困境到架构突破","align":"center"},
+  {"type":"rule"},
+  {"type":"text","role":"subtitle","text":"接下来看支撑极致成本的三项核心设计","align":"center"}
+]}
+
+(Note: `align` is per-leaf — set `"align":"center"` on EACH text/numeral you want centered, not just the parent col.)
 
 Produce one such tree per slide. Structure + content only — the engine does the rest.

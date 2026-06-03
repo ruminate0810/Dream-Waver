@@ -440,6 +440,15 @@ func layoutRow(blk *Block) {
 		it.y = blk.y
 		it.w = w
 		it.h = blk.h // items fill the row height (cards stretch)
+		// Cards SIDE BY SIDE in a row must top-align their content so the
+		// first element (numeral / label) lines up across all cards —
+		// otherwise uneven content heights (one card wraps to 2 lines)
+		// makes the centred cards' numerals sit at different heights,
+		// which reads as misalignment. A standalone card (col child) keeps
+		// the center default. Explicit valign always wins.
+		if it.Type == "card" && it.Valign == "" {
+			it.Valign = "top"
+		}
 		layout(it)
 		x += w + gap
 	}
