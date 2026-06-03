@@ -889,30 +889,50 @@ func (r *SlideRender) assemblePPTX(_ context.Context, deck schema.Deck, assets [
 	}()
 
 	for i, asset := range assets {
-		tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("dw-slide-%s-%d.png", uuid.NewString()[:8], i))
-		if err := os.WriteFile(tmpFile, asset.BgPNG, 0o644); err != nil {
-			return "", fmt.Errorf("write tmp png: %w", err)
-		}
-		tmpImgs = append(tmpImgs, tmpFile)
-
-		img, err := common.ImageFromFile(tmpFile)
-		if err != nil {
-			return "", fmt.Errorf("load image into pptx: %w", err)
-		}
-		ref, err := ppt.AddImage(img)
-		if err != nil {
-			return "", fmt.Errorf("add image: %w", err)
-		}
 		slide, err := ppt.AddDefaultSlideWithLayout(layout)
 		if err != nil {
 			return "", fmt.Errorf("add slide %d: %w", i, err)
 		}
-		ph := slide.AddImage(ref)
-		ph.Properties().SetWidth(slideWidthInches * measurement.Inch)
-		ph.Properties().SetHeight(slideHeightInches * measurement.Inch)
-		ph.Properties().SetPosition(0, 0)
 
-		// Overlay editable text boxes on top of the background image.
+		// Sprint SV-3b — for svg-layout slides, try converting the
+		// decoration (rect/circle/line) to native editable shapes. When
+		// the whole SVG is representable we emit shapes + skip the PNG
+		// background, so the deck is fully vector-editable in PowerPoint.
+		// Anything we can't represent (path/gradient/transform) makes
+		// parseSVGShapes return ok=false → we keep the PNG background
+		// (full visual fidelity, just not vector). Text is overlaid
+		// either way via addTextBox below.
+		native := false
+		if i < len(deck.Slides) && deck.Slides[i].Layout == schema.LayoutSVG {
+			tok := themetokens.Get(string(deck.Slides[i].Template))
+			if shapes, ok := parseSVGShapes(deck.Slides[i].Data.SVG, tok); ok && len(shapes) > 0 {
+				emitSVGShapes(slide, shapes)
+				native = true
+			}
+		}
+
+		if !native {
+			tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("dw-slide-%s-%d.png", uuid.NewString()[:8], i))
+			if err := os.WriteFile(tmpFile, asset.BgPNG, 0o644); err != nil {
+				return "", fmt.Errorf("write tmp png: %w", err)
+			}
+			tmpImgs = append(tmpImgs, tmpFile)
+
+			img, err := common.ImageFromFile(tmpFile)
+			if err != nil {
+				return "", fmt.Errorf("load image into pptx: %w", err)
+			}
+			ref, err := ppt.AddImage(img)
+			if err != nil {
+				return "", fmt.Errorf("add image: %w", err)
+			}
+			ph := slide.AddImage(ref)
+			ph.Properties().SetWidth(slideWidthInches * measurement.Inch)
+			ph.Properties().SetHeight(slideHeightInches * measurement.Inch)
+			ph.Properties().SetPosition(0, 0)
+		}
+
+		// Overlay editable text boxes (on top of native shapes or PNG).
 		for _, tb := range asset.TextBoxes {
 			addTextBox(slide, tb)
 		}
