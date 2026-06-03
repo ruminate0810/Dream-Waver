@@ -53,7 +53,10 @@ export type EventKind =
   // Sprint O.5 — plan-execute visibility
   | "slides.compose.start"
   | "slides.compose.end"
-  | "game.plan";
+  | "game.plan"
+  // Sprint AA.3 — user's wizard / clarification reply mirrored into
+  // the persisted event stream so chat history replays as a dialogue.
+  | "user.answer";
 
 export type Tokens = {
   input: number;
@@ -106,6 +109,14 @@ export type EventData = {
   // Sprint O.5 — games plan payload. JSON-serialised GamePlanView
   // from skill/games/plan.go. session.ts parses into a typed shape.
   game_plan_json?: string;
+
+  // Sprint AA.3 — user.answer payload. answer_to_step pairs the
+  // answer with the matching wizard.step (or 1-based clarification
+  // question index). answer_text is the literal reply, with
+  // human-readable placeholders for skip / back so replay reads as a
+  // real dialogue.
+  answer_to_step?: number;
+  answer_text?: string;
 };
 
 // ─── Sprint O.5 — games plan typed envelope ──────────────────────────

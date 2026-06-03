@@ -419,6 +419,36 @@ func (h *handlers) PostSlideMessage(w http.ResponseWriter, r *http.Request) {
 	// no-op for anonymous sessions.
 	wsID := workspaceIDFromCtx(r.Context())
 
+	// Sprint AA.3 — mirror the user's wizard answer (or clarification
+	// answers) into the persisted event stream BEFORE the resume
+	// goroutine fires so the reply lands ordered just before the next
+	// wizard.step the resume will emit. On replay this makes the
+	// chat thread read "agent asked → user answered → agent asked next".
+	// Skip / back actions get human-readable placeholders so the
+	// dialogue reads sensibly. Hub.Emit is cheap (sync subscriber
+	// fan-out + detached persister) so this is safe inline.
+	if h.deps.Hub != nil {
+		emitCtx := event.WithSessionID(r.Context(), job.SessionID)
+		switch req.Action {
+		case "wizard_step":
+			ans := req.WizardAnswer
+			if req.WizardSkip {
+				ans = "（跳过）"
+			} else if req.WizardBack {
+				ans = "（返回上一步）"
+			}
+			h.deps.Hub.Emit(emitCtx, event.NewUserAnswer(req.WizardStep, ans))
+		case "clarify":
+			// Encode each clarification answer as its own user.answer,
+			// indexed 1-based against the question list. Lets the FE
+			// re-pair them with the question array from the original
+			// clarification_required event.
+			for i, a := range req.Answers {
+				h.deps.Hub.Emit(emitCtx, event.NewUserAnswer(i+1, a))
+			}
+		}
+	}
+
 	switch req.Action {
 	case "wizard_step":
 		go h.resumeWizardStep(job, req.WizardStep, req.WizardAnswer, req.WizardSkip, req.WizardBack, wsID)

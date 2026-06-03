@@ -35,7 +35,10 @@ import { ClarificationCard } from "./ClarificationCard";
 import { ComposeStrip } from "./ComposeStrip";
 import { GamePlanCard } from "./GamePlanCard";
 import { OutlineReviewCard } from "./OutlineReviewCard";
-import { WizardCard } from "./WizardCard";
+// Sprint AA.4 — WizardCard retired from the chat thread in favour of
+// the inline QuestionBubble dialogue. The file remains in-tree as a
+// fallback / legacy reference; nothing in production mounts it.
+import { QuestionBubble, UserAnswerBubble } from "./QuestionBubble";
 import { ErrorCallout } from "../ui/ErrorCallout";
 
 // ChatThread is the production chat surface: vertical stack of role-
@@ -125,11 +128,56 @@ export function ChatThread({
             );
           })()}
 
-          {/* Sprint L1 — HILT pause gates. Render the active turn's
-              `pending` payload as the matching interactive card. The
-              optimistic dispatch in session.ts flips the turn back to
-              "running" the moment the user clicks submit, so these
-              cards auto-vanish without round-trip wait. */}
+          {/* Sprint AA.4 — wizard dialogue rendered inline as a
+              chronological message stream (replaces the floating
+              WizardCard modal). Each agent-question bubble is paired
+              with its user-answer (when given). The LATEST question
+              with no matching answer is interactive; older entries
+              collapse to "answered" form so the user can scroll back
+              through the conversation. Persists across page refresh
+              via Sprint AA.1 chat_events replay. */}
+          {(() => {
+            const lastTurn = session.turns[session.turns.length - 1];
+            if (!lastTurn || lastTurn.messages.length === 0) return null;
+            // Build a map of answered steps so each question bubble
+            // can decide collapsed-vs-active without scanning the
+            // whole array per-render.
+            const answeredSteps = new Set<number>();
+            for (const m of lastTurn.messages) {
+              if (m.role === "user-answer") answeredSteps.add(m.step);
+            }
+            return (
+              <div className="flex flex-col gap-4">
+                {lastTurn.messages.map((m) => {
+                  if (m.role === "agent-question") {
+                    const answerMsg = lastTurn.messages.find(
+                      (x) => x.role === "user-answer" && x.step === m.step,
+                    );
+                    const isAnswered = answeredSteps.has(m.step);
+                    return (
+                      <QuestionBubble
+                        key={m.id}
+                        view={m.view}
+                        answered={isAnswered}
+                        answerText={
+                          answerMsg && answerMsg.role === "user-answer"
+                            ? answerMsg.text
+                            : undefined
+                        }
+                        busy={session.busy && !isAnswered}
+                        onSubmit={session.dispatchWizardStep}
+                      />
+                    );
+                  }
+                  return <UserAnswerBubble key={m.id} text={m.text} />;
+                })}
+              </div>
+            );
+          })()}
+
+          {/* Sprint L1 — HILT pause gates (clarification + outline
+              review only — wizard moved to inline message stream above
+              in Sprint AA.4). */}
           {(() => {
             const lastTurn = session.turns[session.turns.length - 1];
             const pending = lastTurn?.pending;
@@ -152,16 +200,11 @@ export function ChatThread({
                 />
               );
             }
-            // Sprint N1 — multi-step wizard.
-            if (pending.kind === "wizard") {
-              return (
-                <WizardCard
-                  view={pending.view}
-                  busy={session.busy}
-                  onSubmit={session.dispatchWizardStep}
-                />
-              );
-            }
+            // wizard pending is intentionally NOT rendered here — the
+            // inline dialogue above is the production surface. We keep
+            // pending.kind === "wizard" in state because the hydration
+            // and replay paths still set it (harmless: it just isn't
+            // rendered).
             return null;
           })()}
 

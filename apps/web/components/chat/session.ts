@@ -151,11 +151,42 @@ export type ComposeProgress = {
   durationMs?: number;
 };
 
+// Sprint AA.4 — dialogue messages folded into a Turn's `messages`
+// timeline. Each `wizard.step` becomes an "agent-question"; each
+// `user.answer` (emitted by the backend in AA.3 OR optimistically by
+// the FE dispatcher before POST) becomes a "user-answer". The chat
+// thread renders these as bubbles so the wizard reads as a real
+// dialogue instead of a single floating modal.
+//
+// `id` is deterministic — agent-question uses `q-${step}-${total}` and
+// user-answer uses `a-${step}` — so re-emits from a replay or a backend
+// re-issue dedupe by-key in the reducer. `optimistic: true` marks a
+// locally-appended user-answer so a subsequent backend `user.answer`
+// event replaces it without flashing two bubbles.
+export type ConversationMessage =
+  | {
+      role: "agent-question";
+      id: string;
+      step: number;
+      total: number;
+      view: WizardStepView;
+    }
+  | {
+      role: "user-answer";
+      id: string;
+      step: number;
+      text: string;
+      optimistic?: boolean;
+    };
+
 export type Turn = {
   id: string;
   kind: TurnKind;
   userMessage?: string;
   steps: Step[];
+  // Sprint AA.4 — wizard / clarification dialogue messages threaded
+  // into the chat in chronological order. Empty for edit turns.
+  messages: ConversationMessage[];
   // Slides-skill annotations attached to *this* turn — only Turn 0
   // typically populates them, but a regenerate_slide turn could too.
   outlineTitle?: string;
@@ -231,6 +262,12 @@ type Action =
   | { type: "post_error"; turnId: string; err: string }
   | { type: "queue"; text: string }
   | { type: "unqueue" }
+  // Sprint AA.4 — optimistically append a user-answer message right
+  // when the user clicks a chip / submits a free-text answer, before
+  // the backend echo arrives. The reducer's user.answer case
+  // upserts-by-id, so the backend event harmlessly replaces this one
+  // when it lands (no flicker — same id, same key).
+  | { type: "optimistic_answer"; step: number; text: string }
   // Optimistic clear of the active turn's HILT gate, fired by the
   // dispatchers (clarification / outline_approval / wizard_step) the
   // moment the user submits. The card disappears immediately and we
@@ -257,10 +294,27 @@ function emptyTurn(id: string, kind: TurnKind, userMessage?: string): Turn {
     kind,
     userMessage,
     steps: [],
+    messages: [],
     slidesRendered: 0,
     slidesTotal: 0,
     status: "running",
   };
+}
+
+// Sprint AA.4 — append-or-replace a conversation message by id. Used
+// by the wizard.step / user.answer reducer cases so a re-emit (replay,
+// resume, backend retry) updates in place rather than stacking dupes.
+// Replacing also lets a backend `user.answer` overwrite an optimistic
+// local one with the authoritative copy (server may have post-processed
+// the text — e.g. trimmed whitespace).
+function upsertMessage(messages: ConversationMessage[], msg: ConversationMessage): ConversationMessage[] {
+  const idx = messages.findIndex((m) => m.id === msg.id);
+  if (idx >= 0) {
+    const next = messages.slice();
+    next[idx] = msg;
+    return next;
+  }
+  return [...messages, msg];
 }
 
 // Turn 0 is implicit — it exists from page load whether or not the
@@ -396,6 +450,32 @@ function reduce(state: State, action: Action): State {
           pending: undefined,
           status: "running" as TurnStatus,
           busyHint: { kind: "preparing", at: Date.now() },
+        })),
+      };
+    }
+    case "optimistic_answer": {
+      // Sprint AA.4 — append the user's reply to the active turn's
+      // dialogue timeline the moment the chip / submit is clicked,
+      // before the POST round-trips. The backend's authoritative
+      // user.answer event will upsert-by-id (a-${step}) so when it
+      // arrives there's no duplicate and no flash. We DO NOT mutate
+      // any other turn state here — the existing gate_submitted
+      // action (fired separately by dispatchWizardStep) handles
+      // pending / busyHint / status flips.
+      const lastIdx = state.turns.length - 1;
+      if (lastIdx < 0) return state;
+      const msg: ConversationMessage = {
+        role: "user-answer",
+        id: `a-${action.step}`,
+        step: action.step,
+        text: action.text,
+        optimistic: true,
+      };
+      return {
+        ...state,
+        turns: patchTurn(state.turns, lastIdx, (t) => ({
+          ...t,
+          messages: upsertMessage(t.messages, msg),
         })),
       };
     }
@@ -730,11 +810,24 @@ function reduceWS(state: State, ev: AgentEvent): State {
       // exists yet — the wizard event arrived before any step.start —
       // synthesise a Turn 0 here so the card can attach to it.
       const target = latestTurnIdx(state.turns);
+      // Sprint AA.4 — also fold the step into the dialogue timeline so
+      // the chat renders it as an inline agent-question bubble (the
+      // floating-modal WizardCard is being retired). `pending` is kept
+      // for backward compat with hydration / L1 fallbacks but the
+      // primary surface is now the messages array.
+      const qMsg: ConversationMessage = {
+        role: "agent-question",
+        id: `q-${view.step}-${view.total}`,
+        step: view.step,
+        total: view.total,
+        view,
+      };
       if (target < 0) {
         const t: Turn = {
           id: "t0",
           kind: "initial",
           steps: [],
+          messages: [qMsg],
           slidesRendered: 0,
           slidesTotal: 0,
           status: "awaiting_user",
@@ -747,10 +840,35 @@ function reduceWS(state: State, ev: AgentEvent): State {
         turns: patchTurn(state.turns, target, (t) => ({
           ...t,
           pending: { kind: "wizard", view },
-          // A new wizard step replaces the busy chip — the card itself
-          // is the in-flight UI now.
+          messages: upsertMessage(t.messages, qMsg),
+          // A new wizard step replaces the busy chip — the question
+          // bubble itself is the in-flight UI now.
           busyHint: undefined,
           status: "awaiting_user" as TurnStatus,
+        })),
+      };
+    }
+
+    // ─── Sprint AA.4 — user's wizard / clarification reply ─────────
+    case "user.answer": {
+      const target = latestTurnIdx(state.turns);
+      if (target < 0) return state;
+      const step = data.answer_to_step ?? 0;
+      const text = data.answer_text ?? "";
+      const aMsg: ConversationMessage = {
+        role: "user-answer",
+        id: `a-${step}`,
+        step,
+        text,
+        // The backend echo always overrides any local optimistic flag
+        // — server text is authoritative.
+        optimistic: false,
+      };
+      return {
+        ...state,
+        turns: patchTurn(state.turns, target, (t) => ({
+          ...t,
+          messages: upsertMessage(t.messages, aMsg),
         })),
       };
     }
@@ -1039,6 +1157,14 @@ export function useAgentSession(job: SlideJob): AgentSession {
       // wizard's Turn 0 state and feel jarring; back is just a quick
       // re-render of the previous step's view.
       if (!back) {
+        // Sprint AA.4 — also append the user's reply to the dialogue
+        // timeline immediately. The backend's user.answer echo
+        // (Sprint AA.3) upserts by `a-${step}`, so when it lands the
+        // local message is replaced atomically — no flicker. We
+        // mirror the backend's placeholder for skip so the bubble
+        // reads as a real choice rather than going blank.
+        const optimisticText = skip ? "（跳过）" : answer;
+        dispatch({ type: "optimistic_answer", step, text: optimisticText });
         dispatch({ type: "gate_submitted" });
         dispatch({
           type: "ws",

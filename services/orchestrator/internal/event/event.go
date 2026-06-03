@@ -71,6 +71,15 @@ const (
 	// continues straight after. Adding a gate would mean copying
 	// slides' PendingUserAction machinery into games (separate sprint).
 	KindGamePlan Kind = "game.plan"
+
+	// Sprint AA.3 — emitted from the API handler whenever the user
+	// submits a wizard step answer (or clarification answers). Mirrors
+	// each user reply into the persisted event stream so a page refresh
+	// can replay the conversation as "agent asked → user answered →
+	// agent asked next…". Without this, only the agent's wizard.step
+	// emissions land in chat_events; the user side of the dialogue
+	// would disappear on reload.
+	KindUserAnswer Kind = "user.answer"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -139,6 +148,16 @@ type EventData struct {
 	// from skill/games/plan.go. Same string-marshal trick as the
 	// wizard payload — keeps event package free of skill imports.
 	GamePlanJSON string `json:"game_plan_json,omitempty"`
+
+	// Sprint AA.3 — user-answer payload. AnswerToStep is the 1-based
+	// wizard step the answer addresses (so the FE can pair the answer
+	// with the matching wizard.step question on replay). AnswerText
+	// is the literal user reply ("跳过" is sent for skipped optional
+	// steps so it round-trips intelligibly). For clarification
+	// (Sprint L1) we encode the index in AnswerToStep too — same shape
+	// keeps reducer cases minimal.
+	AnswerToStep int    `json:"answer_to_step,omitempty"`
+	AnswerText   string `json:"answer_text,omitempty"`
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -325,6 +344,19 @@ func NewSlidesComposeEnd(slideCount int, durationMs int64) Event {
 	return Event{Kind: KindSlidesComposeEnd, Data: EventData{
 		SlideCount: slideCount,
 		DurationMs: durationMs,
+	}}
+}
+
+// NewUserAnswer mirrors a user-supplied wizard / clarification reply
+// into the persisted event stream (Sprint AA.3). Call this from the
+// API handler right when /messages dispatches a wizard_step action so
+// the answer lands BEFORE the next wizard.step (which the resume
+// goroutine will emit). On replay the chat renders the dialogue in
+// order: question → answer → next question.
+func NewUserAnswer(step int, text string) Event {
+	return Event{Kind: KindUserAnswer, Data: EventData{
+		AnswerToStep: step,
+		AnswerText:   text,
 	}}
 }
 
