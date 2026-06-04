@@ -65,6 +65,26 @@ type svgShape struct {
 //
 // tok resolves the rare var(--x) colour (the LLM normally emits concrete
 // hex, but we defend against either).
+// isRichSVG reports whether the SVG uses features the native-shape
+// converter cannot represent faithfully (gradients, filters, custom
+// paths/polygons, patterns, embedded images, icon <use>, transforms).
+// Sprint PM-5: such slides take the double-layer route instead (a
+// text-hidden BgPNG of the full rich decoration + editable text-box
+// overlay), so the .pptx matches the preview pixel-for-pixel. The
+// simpler SV-5 deterministic SVG (pure rect/circle/line/text) returns
+// false here and still converts to fully vector-editable native shapes.
+func isRichSVG(svg string) bool {
+	for _, marker := range []string{
+		"Gradient", "url(#", "<filter", "<path", "<polygon", "<polyline",
+		"<pattern", "<image", "<use", "transform=", "clip-path",
+	} {
+		if strings.Contains(svg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 func parseSVGShapes(svg string, tok themetokens.Tokens) (shapes []svgShape, ok bool) {
 	dec := xml.NewDecoder(strings.NewReader(svg))
 	for {

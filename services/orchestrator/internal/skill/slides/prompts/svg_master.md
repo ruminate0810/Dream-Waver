@@ -33,6 +33,31 @@ Background motif for this theme: {{PATTERN}} (subtle, low-contrast; skip if "non
 
 **3. TITLES ARE ASSERTIONS, not topics.** "推理成本砍到行业 1/10", never "成本". The reader gets the "so what" from the top line alone. Optionally a muted one-line sub-assertion under it.
 
+# LAYOUT LIBRARY — pick the skeleton that fits each slide (this is what fixes inconsistent 排版)
+You are NOT free-styling every slide from scratch. You have a LIBRARY of layout skeletons below. For EACH slide, look at its type + content and PICK the one skeleton that fits best, then compose inside that skeleton's zones. Different slides should use different skeletons (variety), but each slide's composition is disciplined (consistency). State your choice in an XML comment as the first child: `<!-- layout: metric-row -->`.
+
+THE SHARED RULER (the coordinate system most skeletons sit on):
+- HEADER band  y:[110 → 300]  — kicker (optional) + assertion title + a short accent rule. Left-aligned x=120.
+- CONTENT band y:[340 → 900]  — the body. **This 560px-tall band MUST be filled top-to-bottom** — if you have 3 cards, make each ≈ 460–520px tall, NOT 200px floating up top. Vertically center the content group in the band. (Kills the "floats in the upper half, empty bottom" failure.)
+- FOOTER band  y:[940 → 1000] — thin hairline + deck short-title (left) + page number (right), muted/mono. Identical on every slide.
+- 12-column horizontal grid: margins 120, content x:[120,1800]=1680px, gutter 32. N-up card widths: 2-up 824 (x=120,976) · 3-up 538 (x=120,690,1260) · 4-up 396 (x=120,548,976,1404). NEVER more than 4 cards in a row — 5+ → 2 rows (3+2) or cut to the 4 strongest.
+
+THE SKELETONS (pick ONE per slide):
+1. **cover-hero-left** — cover. Oversized display title block left-anchored mid-canvas, one-line subtitle, single accent rule, a faint full-bleed gradient or a tall accent panel on the right third. Lots of air. (No three-band grid.)
+2. **cover-hero-center** — cover/opening. Everything centered on the vertical midline; giant title, kicker above, rule + subtitle below.
+3. **section-divider** — chapter break. A huge faint section numeral + a display act-title + rule + one foreshadowing line, centered in the MIDDLE third. Sparse, large. (No grid.)
+4. **metric-row** — data with 2–4 KPIs. Header band + N metric blocks across the content band on the grid; each = small reference / huge value / muted implication, vertically centered in the band.
+5. **metric-hero** — ONE headline number. Header band + one giant value (160–240px) anchored left or center of the content band, with its reference + implication stacked beside/below, and a supporting visual (ring, bar, sparkline) balancing the empty side.
+6. **card-row** — 2–4 parallel points/pillars. Header band + a row of surface cards filling the content band; each card a numeral/label + 1–3 lines, content centered in the card.
+7. **bento** — overview / "everything at a glance". An asymmetric grid in the content band: one large feature cell + 2–4 smaller cells of mixed type (a metric, a label+line, an accent block). Modern, Apple-keynote feel.
+8. **two-col-compare** — A vs B. Header band + two columns split 50/50 (x=120 w=800 · x=976 w=824) with a hairline/gap between; each column a header + bullet/checklist; optionally green-check left / muted-X right.
+9. **flow-diagram** — process / architecture / pipeline. Header band + nodes placed across the FULL content band width+height with connector lines/arrows between; highlight the focal node (accent border/glow), fade inactive ones. Use the whole band — never shrink into a corner.
+10. **timeline** — chronology / roadmap. Header band + a horizontal spine across the content band with 3–6 evenly-spaced nodes; each node a date/step label above + description below, alternating up/down optional.
+11. **list-with-rail** — sequential or annotated list. A narrow left rail (x=120 w≈420) holding the assertion + a vertical accent line; the right area (x=600→1800) holds 3–5 stacked rows each with a numeral/icon + title + one line.
+12. **quote-statement** — breathing / big idea. One large centered statement (with an oversized opening quotation mark or accent bracket) + attribution, vast negative space. (No grid.)
+
+ALIGNMENT: everything in a column shares one left x; sibling cards share the same y/width/height; baselines of parallel labels align. Ragged edges + uneven gaps are the #1 amateur tell — snap to the grid.
+
 # VISUAL VOCABULARY — USE THESE to make it rich (this is what separates premium from flat)
 You have a full SVG toolkit. Reach for depth, not flatness:
 

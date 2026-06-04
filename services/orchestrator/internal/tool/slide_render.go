@@ -904,10 +904,21 @@ func (r *SlideRender) assemblePPTX(_ context.Context, deck schema.Deck, assets [
 		// either way via addTextBox below.
 		native := false
 		if i < len(deck.Slides) && deck.Slides[i].Layout == schema.LayoutSVG {
-			tok := themetokens.Get(string(deck.Slides[i].Template))
-			if shapes, ok := parseSVGShapes(deck.Slides[i].Data.SVG, tok); ok && len(shapes) > 0 {
-				emitSVGShapes(slide, shapes)
-				native = true
+			// Sprint PM-5 — rich ppt-master SVG uses gradients / filters /
+			// paths / patterns the native-shape converter can't represent;
+			// converting it loses the depth and looks flatter than the
+			// preview. For rich SVG, take the faithful double-layer route
+			// instead: the text-hidden BgPNG (full rich decoration) becomes
+			// the slide background and editable TextBoxes overlay on top, so
+			// the .pptx is pixel-identical to the preview AND text-editable.
+			// Only the simpler SV-5 deterministic SVG goes native (fully
+			// vector-editable shapes).
+			if !isRichSVG(deck.Slides[i].Data.SVG) {
+				tok := themetokens.Get(string(deck.Slides[i].Template))
+				if shapes, ok := parseSVGShapes(deck.Slides[i].Data.SVG, tok); ok && len(shapes) > 0 {
+					emitSVGShapes(slide, shapes)
+					native = true
+				}
 			}
 		}
 
