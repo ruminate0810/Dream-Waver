@@ -9,6 +9,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/prompts"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/svgicons"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/themetokens"
 )
 
@@ -69,6 +70,7 @@ func AuthorSVG(ctx context.Context, router llm.Router, outline *OutlineResult, t
 			if svg == "" {
 				return fmt.Errorf("slide %d: empty svg", i+1)
 			}
+			svg = svgicons.Inline(svg, tok.FGMuted) // PM-1: resolve <use data-icon>
 			slides = append(slides, ContentSlide{
 				Index:    i + 1,
 				Template: theme,

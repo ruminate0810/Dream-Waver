@@ -10,6 +10,7 @@ import (
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/svgicons"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides/themetokens"
 )
 
@@ -86,6 +87,7 @@ func AuthorSVGPerSlide(
 			if err != nil || strings.TrimSpace(svg) == "" {
 				return // best-effort; leave this index empty
 			}
+			svg = svgicons.Inline(svg, tok.FGMuted) // PM-1: resolve <use data-icon>
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}
 			mu.Lock()
 			results[i] = cs

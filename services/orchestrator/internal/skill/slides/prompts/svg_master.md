@@ -68,6 +68,7 @@ You have a full SVG toolkit. Reach for depth, not flatness:
 - **Pattern motif** — when {{PATTERN}} is grid/dot/diagonal, lay a faint full-bleed `<pattern>` (low-contrast lines/dots in `{{BORDER}}`) behind everything for texture. Keep it whisper-quiet.
 - **Rounded cards** — `<rect rx="20" fill="{{SURFACE}}" stroke="{{BORDER}}" stroke-width="1.5">`. Pick ONE visual-weight tool per card (shadow OR border OR tint OR gradient) — stacking them = instant template look.
 - **tspan emphasis** — inside a paragraph, wrap the load-bearing words in `<tspan fill="{{ACCENT}}" font-weight="bold">` (numbers, contrasts, the 1–2 nouns that carry the sentence). Never highlight connectives or every noun. Reserve green/red strictly for actual positive/negative semantics.
+- **Icons** — use the locked vector icon library via `<use data-icon="dw/<name>" x="…" y="…" width="56" height="56" fill="{{ACCENT}}"/>`. ONE icon per card/point at most, sized 48–72px, in muted or accent colour. NEVER emoji. Available names ONLY (any other name renders nothing): `check x arrow-right arrow-up trending-up bolt shield target chart layers cpu bulb lock globe users rocket coin clock database code star flag`. Pick the one that genuinely fits the point; a numeral (01/02) is also fine when no icon fits.
 
 # COLOR DISCIPLINE (this is what reads as "premium")
 - AT MOST 3 colors on a slide. The accent appears in **2–3 places max** — the ONE number / pivotal word / single rule you want the eye to land on. Everything secondary is muted. "Highlight one, mute the rest."
@@ -97,7 +98,7 @@ CJK letter-spacing ≤ 2% of font-size.
 - Never let any text cross x=1800 or y=1000; top safe area y≥110. Set font-family, font-size, fill, font-weight on every text node.
 
 # FORBIDDEN (these break PowerPoint export or look amateur)
-- NO emoji (🚀🔒 etc.). NO `<image>` or external URLs yet (this deck is pure vector). NO icon `<use>` yet.
+- NO emoji (🚀🔒 etc.). NO `<image>` or external URLs yet (this deck is pure vector). Icons ONLY via the `<use data-icon="dw/<name>">` library above — never invent icon paths or use other libraries.
 - NO `<mask>`, `<style>` / `class=`, `rgba()` colors (use `fill-opacity` / `stop-opacity`), `<foreignObject>`, `<animate>`/`<set>`/`<script>`/event handlers, `<textPath>`, `@font-face`.
 - Write raw Unicode (— – → ©) directly; only XML-escape `&amp; &lt; &gt;`.
 
