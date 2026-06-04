@@ -46,7 +46,26 @@ type slideJob struct {
 var (
 	jobsMu sync.RWMutex
 	jobs   = map[string]*slideJob{}
+
+	// jobSlots (PMQ D2) caps how many slide jobs run their heavy work (LLM
+	// fan-out + Chromium render) at once. An unbounded `go runSlideJob`
+	// previously let every concurrent deck spawn its own Chromium plus a
+	// burst of DeepSeek calls — which under load drove rate-limit timeout
+	// cascades and memory spikes. This small global semaphore serialises the
+	// excess: surplus jobs block on acquire (status stays "running") and
+	// start as soon as a slot frees. Override DW_MAX_CONCURRENT_JOBS.
+	jobSlots = make(chan struct{}, maxConcurrentJobs())
 )
+
+// maxConcurrentJobs reads DW_MAX_CONCURRENT_JOBS (default 4, floor 1).
+func maxConcurrentJobs() int {
+	if v := os.Getenv("DW_MAX_CONCURRENT_JOBS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 1 {
+			return n
+		}
+	}
+	return 4
+}
 
 type createSlidesRequest struct {
 	Topic         string `json:"topic"`
@@ -197,6 +216,15 @@ func (h *handlers) CreateSlides(w http.ResponseWriter, r *http.Request) {
 // context.Background() and so loses the request's auth ctx values).
 // uuid.Nil is fine: the persister hookup no-ops for anonymous sessions.
 func (h *handlers) runSlideJob(job *slideJob, in slides.Input, wsID uuid.UUID) {
+	// PMQ D2: bound global concurrency. Blocks here if the cap is already
+	// reached — surplus jobs queue (status stays "running") and start as a
+	// slot frees. Acquired BEFORE the 15-min ctx so queue time doesn't eat
+	// the run budget. Released on return — including when an agent-mode job
+	// pauses at a HILT gate (its later resume goroutine isn't capped, so the
+	// user-driven continuation never deadlocks behind a full queue).
+	jobSlots <- struct{}{}
+	defer func() { <-jobSlots }()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
