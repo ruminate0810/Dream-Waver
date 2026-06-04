@@ -16,6 +16,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -205,13 +206,26 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 	p.emit(ctx, event.NewOutline(outline.Title, len(outline.Slides)))
 
 	theme := string(outline.Theme)
-	// Sprint SV-5 — deterministic layout. The LLM emits a coordinate-free
-	// block tree; the svglayout engine computes geometry, so nothing
-	// overlaps by construction (no measure-repair needed). Replaces the
-	// SV-1/2 raw-SVG-authoring + repair-loop path.
-	content, u2, err := stages.PlanSlideLayout(ctx, p.Router, outline, theme)
-	if err != nil {
-		return nil, fmt.Errorf("svg plan: %w", err)
+	var content *stages.ContentResult
+	var u2 llm.Usage
+	if os.Getenv("DW_SVG_ENGINE") == "grid" {
+		// Sprint SV-5 fallback — deterministic block-tree layout (no
+		// overlap by construction, but "templated" looking). Behind a flag.
+		content, u2, err = stages.PlanSlideLayout(ctx, p.Router, outline, theme)
+		if err != nil {
+			return nil, fmt.Errorf("svg plan: %w", err)
+		}
+	} else {
+		// Sprint PM (default) — ppt-master-grade free-SVG authoring: the
+		// LLM authors rich bespoke SVG (gradients / shadows / depth /
+		// decorative shapes) per slide, then the visual-review repair loop
+		// measures real text bboxes and surgically fixes any overflow /
+		// overlap. This is how ppt-master reaches its visual ceiling.
+		content, u2, err = stages.AuthorSVG(ctx, p.Router, outline, theme)
+		if err != nil {
+			return nil, fmt.Errorf("svg author: %w", err)
+		}
+		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, nil)
 	}
 	cost.add(u2)
 

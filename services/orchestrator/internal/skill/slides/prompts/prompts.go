@@ -50,3 +50,13 @@ var SVG string
 //
 //go:embed svg_plan.md
 var SVGPlan string
+
+// Sprint PM — the ppt-master-grade free-SVG author prompt. Unlike svg.md
+// (which forbids the rich vocabulary for the deterministic native-shape
+// path), this opens up gradients / shadows / fill-opacity depth /
+// decorative shapes / patterns / tspan emphasis and injects the theme's
+// full spec_lock. Paired with the visual-review repair loop + double-
+// layer PNG export, so the rich vocabulary is safe.
+//
+//go:embed svg_master.md
+var SVGMaster string

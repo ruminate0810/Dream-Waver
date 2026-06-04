@@ -21,17 +21,29 @@ import "strings"
 
 // Tokens is one theme's resolved design tokens.
 type Tokens struct {
-	Key       string // schema.Theme key, e.g. "editorial"
-	BG        string // #RRGGBB — slide background
-	FG        string // #RRGGBB — primary text/ink
-	FGMuted   string // #RRGGBB — secondary text
-	Accent    string // #RRGGBB — brand accent (brand override default)
-	FontBody  string // full CSS font-family stack
-	FontDisp  string // full CSS font-family stack (display/headlines)
-	FontMono  string // full CSS font-family stack (kickers/labels)
+	Key      string // schema.Theme key, e.g. "editorial"
+	BG       string // #RRGGBB — slide background
+	FG       string // #RRGGBB — primary text/ink
+	FGMuted  string // #RRGGBB — secondary text
+	Accent   string // #RRGGBB — brand accent (brand override default)
+	FontBody string // full CSS font-family stack
+	FontDisp string // full CSS font-family stack (display/headlines)
+	FontMono string // full CSS font-family stack (kickers/labels)
 	// Dark reports whether the background is dark (so the SVG prompt can
 	// tell the LLM "this is a dark slide; use light text").
 	Dark bool
+
+	// Sprint PM — rich "spec_lock" tokens for ppt-master-grade SVG. These
+	// are optional in the table: Get() fills sensible derived defaults so
+	// existing themes keep working. Set them explicitly to art-direct a
+	// theme's depth, motif, and imagery.
+	Accent2      string // #RRGGBB — secondary accent (depth / 2nd emphasis); default = Accent
+	Surface      string // #RRGGBB — card/panel fill (subtle lift off BG); default = blend(BG,FG,0.07)
+	Border       string // #RRGGBB — hairline border on panels; default = blend(BG,FG,0.16)
+	Pattern      string // background motif hint: "grid"|"dot"|"diagonal"|"none"; default "none"
+	IconLib      string // locked vector icon library: "tabler-outline"|"tabler-filled"|"phosphor"; default "tabler-outline"
+	ImagePalette string // AI-image palette hint (keeps deck imagery coherent); default derived from Dark
+	Mood         string // one-line aesthetic the LLM should channel; default derived
 }
 
 // PPTXDisplayFont returns the first (primary) display font family with
@@ -110,19 +122,111 @@ var table = map[string]Tokens{
 		FontDisp: "'Bodoni Moda', 'Noto Serif SC', 'Didot', Georgia, serif",
 		FontBody: "'Bodoni Moda', 'Noto Serif SC', 'Didot', Georgia, serif",
 		FontMono: "'JetBrains Mono', ui-monospace, monospace", Dark: true},
-	"azure": {Key: "azure", BG: "#16357E", FG: "#FFFFFF", FGMuted: "#C2D2F2", Accent: "#9DBDF5",
+	"azure": {Key: "azure", BG: "#16357E", FG: "#FFFFFF", FGMuted: "#AFC2EA", Accent: "#F5B841",
 		FontDisp: "'DM Serif Display', 'Noto Serif SC', Georgia, serif",
 		FontBody: "'Manrope', 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif",
-		FontMono: "'JetBrains Mono', ui-monospace, monospace", Dark: true},
+		FontMono: "'JetBrains Mono', ui-monospace, monospace", Dark: true,
+		Accent2: "#6E92D6", Surface: "#1E3F8F", Border: "#33549E", Pattern: "dot",
+		IconLib:      "tabler-outline",
+		ImagePalette: "deep navy field with warm gold glints, cinematic low-key light, glass-and-steel, financial-report gravitas",
+		Mood:         "deep-navy editorial with a single warm-gold accent — a premium financial annual report; gold appears on ONLY the one number that matters per slide"},
 }
 
 // Get returns the tokens for a theme key, falling back to minimalist
 // for unknown keys (never panics — the caller always gets usable tokens).
+// Rich spec_lock fields left blank in the table are filled with derived
+// defaults here, so every theme exposes a complete token set.
 func Get(theme string) Tokens {
-	if t, ok := table[theme]; ok {
-		return t
+	t, ok := table[theme]
+	if !ok {
+		t = table["minimalist"]
 	}
-	return table["minimalist"]
+	return t.withDefaults()
+}
+
+// withDefaults fills the optional Sprint-PM spec_lock fields from the
+// core palette when a theme didn't set them explicitly.
+func (t Tokens) withDefaults() Tokens {
+	if t.Accent2 == "" {
+		t.Accent2 = t.Accent
+	}
+	if t.Surface == "" {
+		t.Surface = blendHex(t.BG, t.FG, 0.07)
+	}
+	if t.Border == "" {
+		t.Border = blendHex(t.BG, t.FG, 0.16)
+	}
+	if t.Pattern == "" {
+		t.Pattern = "none"
+	}
+	if t.IconLib == "" {
+		t.IconLib = "tabler-outline"
+	}
+	if t.ImagePalette == "" {
+		if t.Dark {
+			t.ImagePalette = "moody, cinematic, low-key lighting, rich shadows, desaturated with a single accent hue"
+		} else {
+			t.ImagePalette = "bright, airy, clean editorial light, soft natural tones, generous negative space"
+		}
+	}
+	if t.Mood == "" {
+		t.Mood = "clean, confident, editorial — restrained palette, generous whitespace, one clear focal point per slide"
+	}
+	return t
+}
+
+// blendHex linearly mixes a toward b by t∈[0,1]; both #RRGGBB. Used to
+// derive surface/border tints from the core palette.
+func blendHex(a, b string, ratio float64) string {
+	ar, ag, ab, ok1 := hexRGB(a)
+	br, bg, bbl, ok2 := hexRGB(b)
+	if !ok1 || !ok2 {
+		return a
+	}
+	mix := func(x, y int) int {
+		v := int(float64(x) + (float64(y)-float64(x))*ratio)
+		if v < 0 {
+			v = 0
+		}
+		if v > 255 {
+			v = 255
+		}
+		return v
+	}
+	const hexd = "0123456789ABCDEF"
+	enc := func(v int) string { return string([]byte{hexd[v>>4], hexd[v&0xF]}) }
+	return "#" + enc(mix(ar, br)) + enc(mix(ag, bg)) + enc(mix(ab, bbl))
+}
+
+func hexRGB(s string) (r, g, b int, ok bool) {
+	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
+	if len(s) == 3 {
+		s = string([]byte{s[0], s[0], s[1], s[1], s[2], s[2]})
+	}
+	if len(s) != 6 {
+		return 0, 0, 0, false
+	}
+	val := func(c byte) (int, bool) {
+		switch {
+		case c >= '0' && c <= '9':
+			return int(c - '0'), true
+		case c >= 'a' && c <= 'f':
+			return int(c-'a') + 10, true
+		case c >= 'A' && c <= 'F':
+			return int(c-'A') + 10, true
+		}
+		return 0, false
+	}
+	hex2 := func(hi, lo byte) (int, bool) {
+		h, ok1 := val(hi)
+		l, ok2 := val(lo)
+		return h<<4 | l, ok1 && ok2
+	}
+	var o1, o2, o3 bool
+	r, o1 = hex2(s[0], s[1])
+	g, o2 = hex2(s[2], s[3])
+	b, o3 = hex2(s[4], s[5])
+	return r, g, b, o1 && o2 && o3
 }
 
 // StyleBlock renders a <style>:root{...}</style> the SVG render shell

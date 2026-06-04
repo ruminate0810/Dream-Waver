@@ -46,9 +46,10 @@ func AuthorSVG(ctx context.Context, router llm.Router, outline *OutlineResult, t
 		Model:        router.ModelFor("planner"),
 		SystemPrompt: sys,
 		Messages:     []schema.Message{schema.NewUser(user.String())},
-		// SVG markup is verbose — one slide can run 1.5K chars. Budget
-		// generously so a 10-slide deck doesn't trip finish_reason=length.
-		MaxTokens:         16000,
+		// Rich SVG markup is verbose — a ppt-master-grade slide (gradients,
+		// shadows, decorative shapes) can run 3-4K chars. Budget generously
+		// so a 10-slide deck doesn't trip finish_reason=length.
+		MaxTokens:         28000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		slides = nil
@@ -191,25 +192,32 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 	return out, nil
 }
 
-// renderSVGPrompt substitutes the theme's concrete tokens into the
-// prompts.SVG template's {{TOKEN}} placeholders.
+// renderSVGPrompt substitutes the theme's full spec_lock tokens into the
+// ppt-master-grade prompts.SVGMaster template (Sprint PM). The richer
+// token set (surface / border / accent-2 / pattern / mood) lets the LLM
+// author gradients, depth, and motifs that match the theme.
 func renderSVGPrompt(t themetokens.Tokens) string {
 	darkness := "LIGHT (dark text on light background)"
 	contrast := "Use " + t.FG + " for text on the light background; reserve the accent for emphasis."
 	if t.Dark {
 		darkness = "DARK (light text on dark background)"
-		contrast = "This is a DARK slide — ALL text must be light (" + t.FG + " or " + t.FGMuted + "). NEVER put dark text on the dark background."
+		contrast = "This is a DARK slide — ALL text must be light (" + t.FG + " or " + t.FGMuted + "). NEVER put dark text on the dark background. Black drop-shadows vanish on dark — use a subtle accent-hue glow or a 1px light stroke for elevation."
 	}
 	r := strings.NewReplacer(
 		"{{BG}}", t.BG,
+		"{{SURFACE}}", t.Surface,
+		"{{BORDER}}", t.Border,
 		"{{FG}}", t.FG,
 		"{{FG_MUTED}}", t.FGMuted,
 		"{{ACCENT}}", t.Accent,
+		"{{ACCENT2}}", t.Accent2,
 		"{{DARKNESS}}", darkness,
 		"{{CONTRAST_RULE}}", contrast,
 		"{{FONT_DISPLAY}}", t.FontDisp,
 		"{{FONT_BODY}}", t.FontBody,
 		"{{FONT_MONO}}", t.FontMono,
+		"{{PATTERN}}", t.Pattern,
+		"{{MOOD}}", t.Mood,
 	)
-	return r.Replace(prompts.SVG)
+	return r.Replace(prompts.SVGMaster)
 }
