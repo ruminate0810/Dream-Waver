@@ -242,7 +242,20 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		}
 		putStream()
 
-		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, func(idx0 int, cs *stages.ContentSlide) {
+		// PM-3: per-slide image resolver — the author marks atmospheric
+		// images with href="dw-img://<prompt>"; this generates each via the
+		// image searcher (NanoBanana) and returns a served URL.
+		imgResolve := func(c context.Context, prompt string) string {
+			if p.Images == nil || strings.TrimSpace(prompt) == "" {
+				return ""
+			}
+			r, err := p.Images.Search(c, prompt)
+			if err != nil || r == nil {
+				return ""
+			}
+			return r.URL
+		}
+		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, imgResolve, func(idx0 int, cs *stages.ContentSlide) {
 			streamMu.Lock()
 			if idx0 >= 0 && idx0 < len(streamed.Slides) {
 				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: cs.Data}

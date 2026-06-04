@@ -47,6 +47,7 @@ func AuthorSVGPerSlide(
 	router llm.Router,
 	outline *OutlineResult,
 	theme string,
+	imgResolve func(context.Context, string) string,
 	onSlide func(index0 int, cs *ContentSlide),
 ) (*ContentResult, llm.Usage, error) {
 	if outline == nil || len(outline.Slides) == 0 {
@@ -87,8 +88,9 @@ func AuthorSVGPerSlide(
 			if err != nil || strings.TrimSpace(svg) == "" {
 				return // best-effort; leave this index empty
 			}
-			svg = svgicons.Inline(svg, tok.FGMuted) // PM-1: resolve <use data-icon>
-			if !QASlideUsable(svg) {              // PM-4: junk/blank → clean fallback
+			svg = svgicons.Inline(svg, tok.FGMuted)               // PM-1: resolve <use data-icon>
+			svg = resolveSVGImageRefs(callCtx, svg, imgResolve)   // PM-3: resolve dw-img:// → generated image
+			if !QASlideUsable(svg) {                              // PM-4: junk/blank → clean fallback
 				svg = FallbackSVG(tok, s.Headline)
 			}
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}
