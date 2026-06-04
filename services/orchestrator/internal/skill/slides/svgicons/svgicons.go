@@ -48,8 +48,10 @@ var icons = map[string]string{
 	"flag":        `<path d="M6 21V4M6 4h11l-2 4 2 4H6" fill="none" stroke="{C}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`,
 }
 
-var useRe = regexp.MustCompile(`<use\b[^>]*\bdata-icon="[^"]*"[^>]*/?>`)
-var attrRe = regexp.MustCompile(`([a-zA-Z-]+)="([^"]*)"`)
+// Match <use …data-icon=…/> with EITHER single or double quotes (LLMs
+// emit both). attrRe likewise captures either quote style.
+var useRe = regexp.MustCompile(`<use\b[^>]*\bdata-icon=['"][^'"]*['"][^>]*/?>`)
+var attrRe = regexp.MustCompile(`([a-zA-Z-]+)=['"]([^'"]*)['"]`)
 
 // Inline replaces every <use data-icon="lib/name" …/> with the resolved
 // icon glyph as a positioned, scaled <g>. Unknown icons are dropped

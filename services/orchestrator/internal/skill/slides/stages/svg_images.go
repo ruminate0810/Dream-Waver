@@ -20,8 +20,9 @@ import (
 // failure. It's injected (RunSVG wraps the image.Searcher) so this stages
 // package stays free of the image dependency.
 
-var dwImgHrefRe = regexp.MustCompile(`href="dw-img://([^"]*)"`)
-var dwImgTagRe = regexp.MustCompile(`<image\b[^>]*href="dw-img://[^"]*"[^>]*/?>`)
+// Match the dw-img:// href / <image> tag with EITHER quote style.
+var dwImgHrefRe = regexp.MustCompile(`href=['"]dw-img://([^'"]*)['"]`)
+var dwImgTagRe = regexp.MustCompile(`<image\b[^>]*href=['"]dw-img://[^'"]*['"][^>]*/?>`)
 
 // resolveSVGImageRefs replaces every dw-img:// href in svg with a real
 // generated image URL. If imgResolve is nil or returns "" for a prompt,

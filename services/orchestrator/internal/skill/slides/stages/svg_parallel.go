@@ -85,12 +85,14 @@ func AuthorSVGPerSlide(
 			callCtx, cancel := context.WithTimeout(ctx, svgPerSlidePerCallTimeout)
 			defer cancel()
 			svg, usage, err := authorOneSVG(callCtx, client, model, sys, deckCtx, s, i+1, n)
-			if err != nil || strings.TrimSpace(svg) == "" {
-				return // best-effort; leave this index empty
+			if err == nil && strings.TrimSpace(svg) != "" {
+				svg = svgicons.Inline(svg, tok.FGMuted)             // PM-1: resolve <use data-icon>
+				svg = resolveSVGImageRefs(callCtx, svg, imgResolve) // PM-3: resolve dw-img:// → image
 			}
-			svg = svgicons.Inline(svg, tok.FGMuted)               // PM-1: resolve <use data-icon>
-			svg = resolveSVGImageRefs(callCtx, svg, imgResolve)   // PM-3: resolve dw-img:// → generated image
-			if !QASlideUsable(svg) {                              // PM-4: junk/blank → clean fallback
+			if err != nil || !QASlideUsable(svg) {
+				// PM-4: a failed/timed-out/junk slide becomes a clean
+				// titled fallback (NOT dropped) so the deck keeps all N
+				// pages instead of 404-ing the missing indices.
 				svg = FallbackSVG(tok, s.Headline)
 			}
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}

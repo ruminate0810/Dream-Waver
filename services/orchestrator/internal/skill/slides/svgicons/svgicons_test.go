@@ -24,6 +24,19 @@ func TestInlineKnownIcon(t *testing.T) {
 	}
 }
 
+func TestInlineSingleQuotes(t *testing.T) {
+	// LLMs frequently emit single-quoted SVG attributes — the inliner must
+	// match those too (regression: previously only matched double quotes).
+	in := `<svg><use data-icon='dw/layers' x='160' y='440' width='64' height='64' fill='#6E92D6'/></svg>`
+	out := Inline(in, "#FFFFFF")
+	if strings.Contains(out, "<use") {
+		t.Fatalf("single-quoted use not replaced: %s", out)
+	}
+	if !strings.Contains(out, "translate(160,440)") || !strings.Contains(out, "#6E92D6") {
+		t.Errorf("single-quoted attrs not parsed: %s", out)
+	}
+}
+
 func TestInlineUnknownIconDropped(t *testing.T) {
 	in := `<svg><use data-icon="dw/does-not-exist" x="0" y="0" width="48" height="48" fill="#fff"/></svg>`
 	out := Inline(in, "#FFFFFF")
