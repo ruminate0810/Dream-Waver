@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
@@ -17,6 +18,11 @@ import (
 // enough concurrent planner calls that DeepSeek doesn't rate-limit (5 was
 // triggering transient failures + retries that ate the speed win).
 const svgPerSlideConcurrency = 3
+
+// svgPerSlidePerCallTimeout bounds a single slide's author call so one
+// slow/stuck completion can't stall the whole deck (the rest finish and
+// the slow slide is simply skipped, best-effort).
+const svgPerSlidePerCallTimeout = 150 * time.Second
 
 // AuthorSVGPerSlide authors each slide as its OWN parallel LLM call
 // (Sprint PM, option A). Two wins over the single-call AuthorSVG:
@@ -74,7 +80,9 @@ func AuthorSVGPerSlide(
 		go func(i int, s OutlineSlide) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			svg, usage, err := authorOneSVG(ctx, client, model, sys, deckCtx, s, i+1, n)
+			callCtx, cancel := context.WithTimeout(ctx, svgPerSlidePerCallTimeout)
+			defer cancel()
+			svg, usage, err := authorOneSVG(callCtx, client, model, sys, deckCtx, s, i+1, n)
 			if err != nil || strings.TrimSpace(svg) == "" {
 				return // best-effort; leave this index empty
 			}
