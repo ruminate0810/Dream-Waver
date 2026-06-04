@@ -88,6 +88,9 @@ func AuthorSVGPerSlide(
 				return // best-effort; leave this index empty
 			}
 			svg = svgicons.Inline(svg, tok.FGMuted) // PM-1: resolve <use data-icon>
+			if !QASlideUsable(svg) {              // PM-4: junk/blank → clean fallback
+				svg = FallbackSVG(tok, s.Headline)
+			}
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}
 			mu.Lock()
 			results[i] = cs

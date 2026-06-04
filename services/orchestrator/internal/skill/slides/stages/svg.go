@@ -71,6 +71,13 @@ func AuthorSVG(ctx context.Context, router llm.Router, outline *OutlineResult, t
 				return fmt.Errorf("slide %d: empty svg", i+1)
 			}
 			svg = svgicons.Inline(svg, tok.FGMuted) // PM-1: resolve <use data-icon>
+			if !QASlideUsable(svg) {              // PM-4: junk/blank → clean fallback
+				hl := ""
+				if i < len(outline.Slides) {
+					hl = outline.Slides[i].Headline
+				}
+				svg = FallbackSVG(tok, hl)
+			}
 			slides = append(slides, ContentSlide{
 				Index:    i + 1,
 				Template: theme,
