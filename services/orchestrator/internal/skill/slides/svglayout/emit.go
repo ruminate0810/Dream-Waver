@@ -12,10 +12,12 @@ func emit(b *strings.Builder, blk *Block, th Theme) {
 	switch blk.Type {
 	case "card":
 		fill := resolveSurface(blk.Fill, th)
-		// Rounded card panel. rx scales gently with size.
+		// Rounded card panel with a crisp hairline border, so it reads as
+		// a deliberate card instead of a muddy near-background slab.
 		if fill != "" {
-			fmt.Fprintf(b, `<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="16" fill="%s"/>`,
-				blk.x, blk.y, blk.w, blk.h, fill)
+			border := blendHex(th.BG, th.FG, 0.18)
+			fmt.Fprintf(b, `<rect x="%.0f" y="%.0f" width="%.0f" height="%.0f" rx="20" fill="%s" stroke="%s" stroke-width="1.5"/>`,
+				blk.x, blk.y, blk.w, blk.h, fill, border)
 		}
 		for _, it := range blk.Items {
 			emit(b, it, th)
@@ -198,7 +200,7 @@ func resolveSurface(fill string, th Theme) string {
 	case fill == "" || fill == "none":
 		return ""
 	case fill == "surface":
-		return blendHex(th.BG, th.FG, 0.08)
+		return blendHex(th.BG, th.FG, 0.10)
 	case strings.HasPrefix(fill, "#"):
 		return fill
 	default:
