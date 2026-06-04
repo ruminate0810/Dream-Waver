@@ -216,44 +216,23 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			return nil, fmt.Errorf("svg plan: %w", err)
 		}
 	} else {
-		// Sprint PM (default) — ppt-master-grade free-SVG authoring, STREAMED.
-		// The LLM authors rich bespoke SVG (gradients / shadows / depth /
-		// decorative shapes) per slide; AuthorSVGStream hands us each slide
-		// as soon as its <svg> lands, so we stash it in the session + emit
-		// progress — the live preview fills in page-by-page instead of a
-		// 3-5 min black box. The visual-review repair loop then refines.
-		var streamMu sync.Mutex
-		streamed := stages.Assemble(outline, &stages.ContentResult{})
-		streamed.Theme = schema.Theme(theme)
-		if p.Sessions != nil && jobID != "" {
-			p.Sessions.Put(&SessionState{
-				JobID: jobID, Input: in, Outline: outline,
-				Deck: &streamed, SlideCount: len(outline.Slides),
-			})
-		}
-		content, u2, err = stages.AuthorSVGStream(ctx, p.Router, outline, theme, func(cs *stages.ContentSlide) {
-			streamMu.Lock()
-			streamed.Slides = append(streamed.Slides, schema.Slide{
-				Template: theme, Layout: schema.LayoutSVG, Data: cs.Data,
-			})
-			idx := len(streamed.Slides)
-			if p.Sessions != nil && jobID != "" {
-				p.Sessions.Put(&SessionState{
-					JobID: jobID, Input: in, Outline: outline,
-					Deck: &streamed, SlideCount: len(outline.Slides),
-				})
-			}
-			streamMu.Unlock()
-			// Tell the live-preview iframe stack page `idx` is ready (it
-			// fetches /page/idx.html, which renders the now-stored SVG).
-			p.emit(ctx, event.NewSlideRendered(idx, len(cs.Data.SVG)))
-			p.emit(ctx, event.NewSlideUpdated(idx))
-		})
+		// Sprint PM (default) — ppt-master-grade free-SVG authoring: the
+		// LLM authors rich bespoke SVG (gradients / shadows / depth /
+		// decorative shapes) per slide, then the visual-review repair loop
+		// fixes any overflow / overlap.
+		//
+		// NOTE (PM streaming, deferred): AuthorSVGStream exists for
+		// per-slide live-preview streaming, but DeepSeek wraps its JSON in
+		// ```fences the incremental decoder can't skip mid-stream, so it
+		// silently buffers to the end (no real streaming) AND a single
+		// serial author call for N rich slides is slow (~4-5 min). The
+		// right fix is per-slide PARALLEL authoring (one LLM call per
+		// slide, like ppt-master) — faster AND naturally streaming. Until
+		// then, use the reliable non-streaming path.
+		content, u2, err = stages.AuthorSVG(ctx, p.Router, outline, theme)
 		if err != nil {
 			return nil, fmt.Errorf("svg author: %w", err)
 		}
-		// Refine: one visual-review round to fix any overflow/overlap, then
-		// re-emit the slides that changed so the preview refreshes.
 		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 1, nil)
 	}
 	cost.add(u2)
