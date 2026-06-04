@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +22,18 @@ import (
 // triggering transient failures + retries that ate the speed win).
 const svgPerSlideConcurrency = 3
 
-// svgPerSlidePerCallTimeout bounds a single slide's author call so one
-// slow/stuck completion can't stall the whole deck (the rest finish and
-// the slow slide is simply skipped, best-effort).
-const svgPerSlidePerCallTimeout = 150 * time.Second
+// svgPerSlideAttemptTimeout bounds ONE author attempt. With the author
+// routed to v4-flash (PMQ A1) a rich slide returns in ~15-40s, so 90s is
+// generous headroom. Crucially each ATTEMPT gets its own deadline: the old
+// design shared a single 150s budget across the retry, so a slow first try
+// left no time for the second — retries never actually helped against the
+// timeouts that were degrading most slides to a plain fallback page.
+const svgPerSlideAttemptTimeout = 90 * time.Second
+
+// svgPerSlideMaxAttempts caps tries per slide before giving up to a clean
+// titled fallback. 2 is enough: flash rarely needs a retry, and a slide
+// that genuinely keeps failing shouldn't burn the whole deck's wall-time.
+const svgPerSlideMaxAttempts = 2
 
 // AuthorSVGPerSlide authors each slide as its OWN parallel LLM call
 // (Sprint PM, option A). Two wins over the single-call AuthorSVG:
@@ -73,8 +83,11 @@ func AuthorSVGPerSlide(
 		wg    sync.WaitGroup
 	)
 	sem := make(chan struct{}, svgPerSlideConcurrency)
-	client := router.For("planner")
-	model := router.ModelFor("planner")
+	// PMQ A1: author on the fast tier (v4-flash by default), NOT the slow
+	// v4-pro planner. Pro's long-output latency was the root cause of the
+	// per-slide timeouts. Configurable via LLM_MODEL_SVG_AUTHOR.
+	client := router.For("svg_author")
+	model := router.ModelFor("svg_author")
 
 	for i, s := range outline.Slides {
 		wg.Add(1)
@@ -82,17 +95,47 @@ func AuthorSVGPerSlide(
 		go func(i int, s OutlineSlide) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			callCtx, cancel := context.WithTimeout(ctx, svgPerSlidePerCallTimeout)
-			defer cancel()
-			svg, usage, err := authorOneSVG(callCtx, client, model, sys, deckCtx, s, i+1, n)
+
+			// PMQ A1: retry with a FRESH per-attempt deadline + jittered
+			// backoff. Each try gets its own timeout, so a slow first
+			// attempt no longer starves the retry (the bug that left most
+			// slides degraded to fallback under the old shared-budget design).
+			var (
+				svg   string
+				usage llm.Usage
+				err   error
+			)
+			for attempt := 1; attempt <= svgPerSlideMaxAttempts; attempt++ {
+				attemptCtx, cancel := context.WithTimeout(ctx, svgPerSlideAttemptTimeout)
+				svg, usage, err = authorOneSVG(attemptCtx, client, model, sys, deckCtx, s, i+1, n)
+				cancel()
+				if err == nil && strings.TrimSpace(svg) != "" {
+					break
+				}
+				if attempt < svgPerSlideMaxAttempts {
+					slog.Warn("svg author attempt failed — retrying",
+						"slide", i+1, "attempt", attempt, "err", svgErrStr(err))
+					// Jittered backoff: 600ms·attempt + 0-400ms. Bail early
+					// if the whole deck's context is already cancelled.
+					backoff := time.Duration(attempt)*600*time.Millisecond +
+						time.Duration(rand.Intn(400))*time.Millisecond
+					select {
+					case <-ctx.Done():
+						attempt = svgPerSlideMaxAttempts // stop retrying
+					case <-time.After(backoff):
+					}
+				}
+			}
 			if err == nil && strings.TrimSpace(svg) != "" {
-				svg = svgicons.Inline(svg, tok.FGMuted)             // PM-1: resolve <use data-icon>
-				svg = resolveSVGImageRefs(callCtx, svg, imgResolve) // PM-3: resolve dw-img:// → image
+				svg = svgicons.Inline(svg, tok.FGMuted)         // PM-1: resolve <use data-icon>
+				svg = resolveSVGImageRefs(ctx, svg, imgResolve) // PM-3: resolve dw-img:// → image
 			}
 			if err != nil || !QASlideUsable(svg) {
 				// PM-4: a failed/timed-out/junk slide becomes a clean
 				// titled fallback (NOT dropped) so the deck keeps all N
 				// pages instead of 404-ing the missing indices.
+				slog.Warn("svg slide degraded to fallback",
+					"slide", i+1, "err", svgErrStr(err))
 				svg = FallbackSVG(tok, s.Headline)
 			}
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}
@@ -137,28 +180,39 @@ func authorOneSVG(ctx context.Context, client llm.Client, model, sys, deckCtx st
 	}
 	user.WriteString("\nReturn STRICT JSON for THIS ONE slide only — NO array, NO markdown fences:\n{\"svg\":\"<svg viewBox='0 0 1920 1080' xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'>…</svg>\"}")
 
-	var svg string
-	resp, err := askWithRetry(ctx, client, "svg-one", llm.AskToolRequest{
-		Model:        model,
-		SystemPrompt: sys,
-		Messages:     []schema.Message{schema.NewUser(user.String())},
-		// One rich slide is ~3-4K chars; 9000 leaves generous headroom.
-		MaxTokens:         9000,
+	// Single attempt — the per-slide loop in AuthorSVGPerSlide owns retries,
+	// per-attempt timeouts, and jittered backoff, so this stays a one-shot
+	// call. MaxTokens 12000: a rich, JSON-escaped slide SVG genuinely runs
+	// large (flash was hitting finish_reason="length" at a 6000 cap → the
+	// truncated reply parses as empty → the slide fell back to a plain page).
+	// Since the author is on fast v4-flash (PMQ A1), a high cap costs nothing
+	// when unused and only the richest slides approach it; the 90s per-attempt
+	// budget still bounds a genuine runaway. (A2's prompt slim + compact-SVG
+	// few-shots will pull typical output well under this.)
+	resp, err := client.AskTool(ctx, llm.AskToolRequest{
+		Model:             model,
+		SystemPrompt:      sys,
+		Messages:          []schema.Message{schema.NewUser(user.String())},
+		MaxTokens:         12000,
 		EnablePromptCache: true,
-	}, func(content string) error {
-		svg = parseOneSVG(content)
-		if strings.TrimSpace(svg) == "" {
-			return fmt.Errorf("no <svg> in response: %q", truncate(content, 160))
-		}
-		return nil
 	})
 	if err != nil {
 		return "", llm.Usage{}, err
 	}
-	if resp != nil {
-		return svg, resp.Usage, nil
+	svg := parseOneSVG(resp.Content)
+	if strings.TrimSpace(svg) == "" {
+		return "", resp.Usage, fmt.Errorf("no <svg> in response: %q", truncate(resp.Content, 160))
 	}
-	return svg, llm.Usage{}, nil
+	return svg, resp.Usage, nil
+}
+
+// svgErrStr renders an author error for logging; nil means the call
+// "succeeded" but produced an unusable/QA-failing slide.
+func svgErrStr(err error) string {
+	if err == nil {
+		return "qa-unusable"
+	}
+	return err.Error()
 }
 
 // parseOneSVG pulls the slide SVG from a single-slide response. Tolerant:

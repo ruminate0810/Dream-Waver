@@ -56,11 +56,13 @@ func main() {
 	router.Bind("planner", primary, cfg.ModelPlanner)
 	router.Bind("worker", primary, cfg.ModelWorker)
 	router.Bind("critic", primary, cfg.ModelCritic)
+	router.Bind("svg_author", primary, cfg.ModelSVGAuthor)
 	slog.Info("llm router ready",
 		"primary", primary.Name(),
 		"planner_model", cfg.ModelPlanner,
 		"worker_model", cfg.ModelWorker,
 		"critic_model", cfg.ModelCritic,
+		"svg_author_model", cfg.ModelSVGAuthor,
 	)
 
 	// ─── Event hub ────────────────────────────────────────────────────

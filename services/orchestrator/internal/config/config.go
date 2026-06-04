@@ -52,6 +52,13 @@ type Config struct {
 	ModelPlanner string
 	ModelWorker  string
 	ModelCritic  string
+	// ModelSVGAuthor authors each rich per-slide SVG in mode=svg. Defaults
+	// to v4-flash, NOT v4-pro: pro is 3-5× slower on long structured output,
+	// which was blowing the per-slide timeout and degrading most slides to a
+	// plain titled fallback page. Flash + few-shot exemplars keeps the visual
+	// quality while finishing reliably. Override to deepseek-v4-pro only if
+	// you want max quality and can tolerate slower, timeout-prone runs.
+	ModelSVGAuthor string
 
 	SandboxGRPCAddr string
 
@@ -123,6 +130,8 @@ func Load() (*Config, error) {
 		ModelPlanner: envOr("LLM_MODEL_PLANNER", "deepseek-v4-pro"),
 		ModelWorker:  envOr("LLM_MODEL_WORKER", "deepseek-v4-flash"),
 		ModelCritic:  envOr("LLM_MODEL_CRITIC", "deepseek-v4-flash"),
+		// Default flash — see ModelSVGAuthor doc above (timeout fix).
+		ModelSVGAuthor:  envOr("LLM_MODEL_SVG_AUTHOR", "deepseek-v4-flash"),
 		SandboxGRPCAddr: envOr("SANDBOX_GRPC_ADDR", "localhost:50051"),
 		TemplateDir:     resolveTemplateDir(),
 		OutDir:          envOr("SLIDE_OUT_DIR", "/tmp/dreamwaver-out"),
