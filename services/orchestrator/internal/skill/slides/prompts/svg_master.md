@@ -105,3 +105,70 @@ CJK letter-spacing ≤ 2% of font-size.
 
 # QUALITY BAR
 A senior editorial/consulting designer reviewing this would say: one clear focal point, full confident use of the canvas, every number contextualised, ruthless color restraint (accent in 2–3 spots), real depth from gradients/tints/one-or-two shadows — and nothing floating in a void. If a slide looks flat, sparse, or top-heavy, redesign it.
+
+# GOLD EXEMPLARS — author at THIS level
+Below are two reference slides in THIS deck's exact palette (the SVG goes inside the JSON `"svg"` field). They are the standard. Study the grid discipline, the spacing, the color restraint, the data-context structure, and the footer — then compose YOUR slide with the same rigor (your content and layout will differ; the craft must not). Notice: every element snaps to the ruler/grid, the accent appears in only 2–3 spots, sibling cards share identical y/width/height, and nothing floats in the upper half.
+
+EXEMPLAR 1 — a cover (skeleton: cover-hero-left). Demonstrates a gradient wash, an oversized faint numeral bleeding off the right edge to fill the canvas, a mono kicker, a hero title with ONE accented word via `<tspan>`, a single accent rule, and the standard footer:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: cover-hero-left -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="{{BG}}"/>
+      <stop offset="1" stop-color="{{SURFACE}}"/>
+    </linearGradient>
+  </defs>
+  <rect width="1920" height="1080" fill="url(#bg)"/>
+  <text x="1660" y="900" font-family="{{FONT_DISPLAY}}" font-size="820" font-weight="700" fill="{{ACCENT}}" fill-opacity="0.06" text-anchor="middle">4</text>
+  <g id="hero">
+    <text x="122" y="312" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="6" fill="{{FG_MUTED}}">2025 · 年度发布</text>
+    <text x="116" y="452" font-family="{{FONT_DISPLAY}}" font-size="138" font-weight="700" fill="{{FG}}">DeepSeek <tspan fill="{{ACCENT}}">V4</tspan> 产品发布</text>
+    <rect x="120" y="510" width="300" height="6" rx="3" fill="{{ACCENT}}"/>
+    <text x="120" y="596" font-family="{{FONT_BODY}}" font-size="40" fill="{{FG_MUTED}}">六大核心能力 · 商业价值跃迁</text>
+  </g>
+  <g id="footer">
+    <line x1="120" y1="980" x2="1800" y2="980" stroke="{{BORDER}}" stroke-width="1"/>
+    <text x="120" y="1014" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">DEEPSEEK V4</text>
+    <text x="1800" y="1014" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">01</text>
+  </g>
+</svg>
+
+EXEMPLAR 2 — a data slide (skeleton: metric-row). Demonstrates an assertion title + accent rule header band, THREE sibling cards on the 3-up grid (x=120/690/1260, w=538) — peer cards stay FLAT, separated by a hairline border + a subtle surface fill (ONE weight tool per card, never border+shadow stacked), ONE icon per card via `<use data-icon>`, and the data-context stack (small label / huge accent value / muted implication). Fills the content band top-to-bottom:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: metric-row -->
+  <rect width="1920" height="1080" fill="{{BG}}"/>
+  <g id="header">
+    <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">PERFORMANCE</text>
+    <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="74" font-weight="700" fill="{{FG}}">性能跃升，成本骤降</text>
+    <rect x="120" y="282" width="280" height="5" rx="2.5" fill="{{ACCENT}}"/>
+    <text x="120" y="330" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">核心能力升级，客户收益一目了然</text>
+  </g>
+  <g id="metric-1">
+    <rect x="120" y="404" width="538" height="452" rx="20" fill="{{SURFACE}}" stroke="{{BORDER}}" stroke-width="1.5"/>
+    <use data-icon="dw/trending-up" x="168" y="452" width="54" height="54" fill="{{ACCENT}}"/>
+    <text x="238" y="490" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">推理速度</text>
+    <text x="168" y="690" font-family="{{FONT_DISPLAY}}" font-size="128" font-weight="700" fill="{{ACCENT}}">+400%</text>
+    <text x="168" y="788" font-family="{{FONT_BODY}}" font-size="26" fill="{{FG_MUTED}}">秒级响应，体验流畅</text>
+  </g>
+  <g id="metric-2">
+    <rect x="690" y="404" width="538" height="452" rx="20" fill="{{SURFACE}}" stroke="{{BORDER}}" stroke-width="1.5"/>
+    <use data-icon="dw/coin" x="738" y="452" width="54" height="54" fill="{{ACCENT}}"/>
+    <text x="808" y="490" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">API 成本</text>
+    <text x="738" y="690" font-family="{{FONT_DISPLAY}}" font-size="128" font-weight="700" fill="{{ACCENT}}">−70%</text>
+    <text x="738" y="788" font-family="{{FONT_BODY}}" font-size="26" fill="{{FG_MUTED}}">费用节约，预算更健康</text>
+  </g>
+  <g id="metric-3">
+    <rect x="1260" y="404" width="538" height="452" rx="20" fill="{{SURFACE}}" stroke="{{BORDER}}" stroke-width="1.5"/>
+    <use data-icon="dw/shield" x="1308" y="452" width="54" height="54" fill="{{ACCENT}}"/>
+    <text x="1378" y="490" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">幻觉率</text>
+    <text x="1308" y="690" font-family="{{FONT_DISPLAY}}" font-size="128" font-weight="700" fill="{{ACCENT}}">−60%</text>
+    <text x="1308" y="788" font-family="{{FONT_BODY}}" font-size="26" fill="{{FG_MUTED}}">输出更可靠，风险更低</text>
+  </g>
+  <g id="footer">
+    <line x1="120" y1="952" x2="1800" y2="952" stroke="{{BORDER}}" stroke-width="1"/>
+    <text x="120" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">DEEPSEEK V4</text>
+    <text x="1800" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">05</text>
+  </g>
+</svg>
+
+Do NOT copy these verbatim — they are the craft bar, not the content. Match their discipline for whatever your slide's type and layout demand.
