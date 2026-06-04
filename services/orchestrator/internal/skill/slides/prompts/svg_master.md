@@ -55,6 +55,7 @@ THE SKELETONS (pick ONE per slide):
 10. **timeline** — chronology / roadmap. Header band + a horizontal spine across the content band with 3–6 evenly-spaced nodes; each node a date/step label above + description below, alternating up/down optional.
 11. **list-with-rail** — sequential or annotated list. A narrow left rail (x=120 w≈420) holding the assertion + a vertical accent line; the right area (x=600→1800) holds 3–5 stacked rows each with a numeral/icon + title + one line.
 12. **quote-statement** — breathing / big idea. One large centered statement (with an oversized opening quotation mark or accent bracket) + attribution, vast negative space. (No grid.)
+13. **chart** — the slide's point IS the data. Header band + a COMPUTED bar / line / donut chart (see the CHARTS section) filling the content band. Use when comparing 3–8 values, showing a trend over time, or a share-of-whole — far stronger than listing the numbers as text.
 
 ALIGNMENT: everything in a column shares one left x; sibling cards share the same y/width/height; baselines of parallel labels align. Ragged edges + uneven gaps are the #1 amateur tell — snap to the grid.
 
@@ -70,6 +71,13 @@ You have a full SVG toolkit. Reach for depth, not flatness:
 - **tspan emphasis** — inside a paragraph, wrap the load-bearing words in `<tspan fill="{{ACCENT}}" font-weight="bold">` (numbers, contrasts, the 1–2 nouns that carry the sentence). Never highlight connectives or every noun. Reserve green/red strictly for actual positive/negative semantics.
 - **Icons** — use the locked vector icon library via `<use data-icon="dw/<name>" x="…" y="…" width="56" height="56" fill="{{ACCENT}}"/>`. ONE icon per card/point at most, sized 48–72px, in muted or accent colour. NEVER emoji. Available names ONLY (any other name renders nothing): `check x arrow-right arrow-up trending-up bolt shield target chart layers cpu bulb lock globe users rocket coin clock database code star flag`. Pick the one that genuinely fits the point; a numeral (01/02) is also fine when no icon fits.
 - **Full-bleed image** (atmosphere) — for COVER, SECTION dividers, CLOSING, or a strongly-visual topic, you MAY place ONE generated photo as the background: `<image href="dw-img://<short english prompt>" x="0" y="0" width="1920" height="1080" preserveAspectRatio="xMidYMid slice"/>` as the FIRST element (after/instead of the bg rect). Then ALWAYS layer a scrim so text stays readable — a linear-gradient overlay (`<defs><linearGradient>…stop-opacity 0.85→0` for side text, or a bottom-up `0→0.75` bar) or a radial vignette — THEN the title/text on top in light colour. Write the prompt to match the deck mood: include subject + setting + lighting (e.g. `dw-img://deep navy data center, racks glowing warm gold, cinematic low light`). Use images SPARINGLY — most content/data slides stay pure-vector. If image generation fails the engine drops the `<image>` and your background rect/gradient shows instead, so always draw a solid/gradient bg underneath.
+
+# CHARTS — draw real data from COMPUTED coordinates (never eyeball positions)
+When a slide's substance IS a data series — a trend over time, a comparison of 3–8 values, or a share-of-whole — draw an actual chart instead of listing numbers. Compute every coordinate; a hand-guessed chart looks broken. Keep it inside the content band, axis text muted, ONE accent series.
+- **Bar / column** (compare values): pick a plot box x:[X0,X1] (e.g. 300→1620) with baseline yB and top yT (e.g. yB=820, yT=400; plotH=yB−yT). For N bars: slot=(X1−X0)/N; barW≈slot×0.5; bar i center cx=X0+slot×(i+0.5); `<rect>` x=cx−barW/2, width=barW, height h=(value/maxValue)×plotH, y=yB−h. Bars in {{ACCENT}} — the focal bar at 1.0, the rest at `fill-opacity="0.45"`. Value label centred above each bar (`text-anchor="middle"` at cx, y−16); category label below yB at cx. Draw the baseline as a 1px {{BORDER}} line from X0 to X1 at yB.
+- **Donut** (share of whole, 2–5 parts): centre (cx,cy), outer R, inner r≈R×0.62. Start at −90° (12 o'clock). Per segment: span=value/total×360°; a0→a1 in degrees → radians; a point on a circle of radius ρ is (cx+ρ·cosθ, cy+ρ·sinθ). Segment path: `M{outer@a0} A R R 0 {large} 1 {outer@a1} L{inner@a1} A r r 0 {large} 0 {inner@a0} Z`, where large=1 when span>180 else 0. Fill segments {{ACCENT}} at 1.0 / 0.6 / 0.35 (monochromatic, never rainbow). Put the headline total + label dead-centre.
+- **Line / trend**: map the data's x-range across x:[X0,X1] and 0→maxY across yB→yT (inverted: bigger value = higher = smaller y). `<polyline fill="none" stroke="{{ACCENT}}" stroke-width="3" points="x0,y0 x1,y1 …"/>` + one `<circle r="5" fill="{{ACCENT}}"/>` per point; muted axis baseline + end-point value labels.
+(See EXEMPLAR 3 for a worked bar chart.)
 
 # COLOR DISCIPLINE (this is what reads as "premium")
 - AT MOST 3 colors on a slide. The accent appears in **2–3 places max** — the ONE number / pivotal word / single rule you want the eye to land on. Everything secondary is muted. "Highlight one, mute the rest."
@@ -168,6 +176,37 @@ EXEMPLAR 2 — a data slide (skeleton: metric-row). Demonstrates an assertion ti
     <line x1="120" y1="952" x2="1800" y2="952" stroke="{{BORDER}}" stroke-width="1"/>
     <text x="120" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">DEEPSEEK V4</text>
     <text x="1800" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">05</text>
+  </g>
+</svg>
+
+EXEMPLAR 3 — a chart slide (skeleton: chart). Demonstrates a COMPUTED bar chart: a fixed plot box (x 300→1620, baseline yB=820, top yT=400 → plotH=420), four bars of width 160 whose heights are value/maxValue×420 (40→140, 65→228, 85→298, 120→420), the focal bar at full accent and the rest at fill-opacity 0.45, value labels centred above and category labels below the baseline. Heights are PROPORTIONAL because they were computed, not guessed:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: chart -->
+  <rect width="1920" height="1080" fill="{{BG}}"/>
+  <g id="header">
+    <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">MARKET SIZE</text>
+    <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="72" font-weight="700" fill="{{FG}}">市场规模四年翻三倍</text>
+    <rect x="120" y="282" width="260" height="5" rx="2.5" fill="{{ACCENT}}"/>
+  </g>
+  <g id="chart">
+    <line x1="300" y1="820" x2="1620" y2="820" stroke="{{BORDER}}" stroke-width="1.5"/>
+    <rect x="380" y="680" width="160" height="140" rx="6" fill="{{ACCENT}}" fill-opacity="0.45"/>
+    <rect x="720" y="592" width="160" height="228" rx="6" fill="{{ACCENT}}" fill-opacity="0.45"/>
+    <rect x="1060" y="522" width="160" height="298" rx="6" fill="{{ACCENT}}" fill-opacity="0.45"/>
+    <rect x="1400" y="400" width="160" height="420" rx="6" fill="{{ACCENT}}"/>
+    <text x="460" y="664" font-family="{{FONT_DISPLAY}}" font-size="40" font-weight="700" fill="{{FG}}" text-anchor="middle">40亿</text>
+    <text x="800" y="576" font-family="{{FONT_DISPLAY}}" font-size="40" font-weight="700" fill="{{FG}}" text-anchor="middle">65亿</text>
+    <text x="1140" y="506" font-family="{{FONT_DISPLAY}}" font-size="40" font-weight="700" fill="{{FG}}" text-anchor="middle">85亿</text>
+    <text x="1480" y="384" font-family="{{FONT_DISPLAY}}" font-size="44" font-weight="700" fill="{{ACCENT}}" text-anchor="middle">120亿</text>
+    <text x="460" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2023</text>
+    <text x="800" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2024</text>
+    <text x="1140" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2025</text>
+    <text x="1480" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2026E</text>
+  </g>
+  <g id="footer">
+    <line x1="120" y1="952" x2="1800" y2="952" stroke="{{BORDER}}" stroke-width="1"/>
+    <text x="120" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">市场规模</text>
+    <text x="1800" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">04</text>
   </g>
 </svg>
 
