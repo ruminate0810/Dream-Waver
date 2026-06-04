@@ -216,23 +216,48 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			return nil, fmt.Errorf("svg plan: %w", err)
 		}
 	} else {
-		// Sprint PM (default) — ppt-master-grade free-SVG authoring: the
-		// LLM authors rich bespoke SVG (gradients / shadows / depth /
-		// decorative shapes) per slide, then the visual-review repair loop
-		// fixes any overflow / overlap.
-		//
-		// NOTE (PM streaming, deferred): AuthorSVGStream exists for
-		// per-slide live-preview streaming, but DeepSeek wraps its JSON in
-		// ```fences the incremental decoder can't skip mid-stream, so it
-		// silently buffers to the end (no real streaming) AND a single
-		// serial author call for N rich slides is slow (~4-5 min). The
-		// right fix is per-slide PARALLEL authoring (one LLM call per
-		// slide, like ppt-master) — faster AND naturally streaming. Until
-		// then, use the reliable non-streaming path.
-		content, u2, err = stages.AuthorSVG(ctx, p.Router, outline, theme)
+		// Sprint PM (default) — ppt-master-grade free-SVG, authored PER
+		// SLIDE IN PARALLEL (option A). Each slide is its own LLM call, so
+		// wall-time ≈ the slowest single slide (not the sum) AND each
+		// slide streams into the live preview the moment its <svg> returns.
+		// We seed the session with N blank placeholder slides up front so
+		// /page/N.html resolves; onSlide fills each in by index + emits.
+		var streamMu sync.Mutex
+		placeholders := make([]stages.ContentSlide, len(outline.Slides))
+		for i := range placeholders {
+			placeholders[i] = stages.ContentSlide{
+				Index: i + 1, Template: theme, Layout: schema.LayoutSVG,
+				Data: schema.SlideData{SVG: ""},
+			}
+		}
+		streamed := stages.Assemble(outline, &stages.ContentResult{Slides: placeholders})
+		streamed.Theme = schema.Theme(theme)
+		putStream := func() {
+			if p.Sessions != nil && jobID != "" {
+				p.Sessions.Put(&SessionState{
+					JobID: jobID, Input: in, Outline: outline,
+					Deck: &streamed, SlideCount: len(outline.Slides),
+				})
+			}
+		}
+		putStream()
+
+		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, func(idx0 int, cs *stages.ContentSlide) {
+			streamMu.Lock()
+			if idx0 >= 0 && idx0 < len(streamed.Slides) {
+				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: cs.Data}
+			}
+			streamMu.Unlock()
+			putStream()
+			// Tell the live-preview iframe stack page idx0+1 is ready (it
+			// fetches /page/N.html, which renders the now-stored SVG).
+			p.emit(ctx, event.NewSlideRendered(idx0+1, len(cs.Data.SVG)))
+			p.emit(ctx, event.NewSlideUpdated(idx0+1))
+		})
 		if err != nil {
 			return nil, fmt.Errorf("svg author: %w", err)
 		}
+		// Refine: one visual-review round to fix any overflow/overlap.
 		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 1, nil)
 	}
 	cost.add(u2)
