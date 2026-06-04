@@ -50,6 +50,7 @@ func FallbackSVG(tok themetokens.Tokens, headline string) string {
 	lines := wrapHeadline(headline, 14) // ~14 CJK chars per line at 72px
 	var b strings.Builder
 	fmt.Fprintf(&b, `<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">`)
+	b.WriteString(fallbackMarker) // lets the A4 self-critique skip plain stand-in slides
 	fmt.Fprintf(&b, `<rect x="0" y="0" width="1920" height="1080" fill="%s"/>`, tok.BG)
 	// accent rule
 	fmt.Fprintf(&b, `<rect x="120" y="300" width="120" height="6" rx="3" fill="%s"/>`, tok.Accent)

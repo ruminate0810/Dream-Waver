@@ -272,6 +272,22 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		}
 		// Refine: one visual-review round to fix any overflow/overlap.
 		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 1, nil)
+		// PMQ A4: optional per-slide DESIGN self-critique (assertion titles,
+		// data-context, accent restraint, dead space) — the soft rules the
+		// geometric repair can't see. No-op unless DW_SVG_SELF_CRITIQUE is
+		// set; never regresses a slide. Refined slides are pushed back into
+		// the live-preview stream so the user sees the polish land.
+		var u3 llm.Usage
+		content, u3, _ = stages.CritiqueRefineSVGSlides(ctx, p.Router, theme, content, func(idx0 int, refined string) {
+			streamMu.Lock()
+			if idx0 >= 0 && idx0 < len(streamed.Slides) {
+				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: refined}}
+			}
+			streamMu.Unlock()
+			putStream()
+			p.emit(ctx, event.NewSlideUpdated(idx0+1))
+		})
+		cost.add(u3)
 	}
 	cost.add(u2)
 
