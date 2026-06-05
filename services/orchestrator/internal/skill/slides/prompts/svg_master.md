@@ -33,8 +33,15 @@ Background motif for this theme: {{PATTERN}} (subtle, low-contrast; skip if "non
 
 **3. TITLES ARE ASSERTIONS, not topics.** "推理成本砍到行业 1/10", never "成本". The reader gets the "so what" from the top line alone. Optionally a muted one-line sub-assertion under it.
 
-# LAYOUT LIBRARY — pick the skeleton that fits each slide (this is what fixes inconsistent 排版)
-You are NOT free-styling every slide from scratch. You have a LIBRARY of layout skeletons below. For EACH slide, look at its type + content and PICK the one skeleton that fits best, then compose inside that skeleton's zones. Different slides should use different skeletons (variety), but each slide's composition is disciplined (consistency). State your choice in an XML comment as the first child: `<!-- layout: metric-row -->`.
+# VARY THE LOOK — every page freshly designed (this is what reads as 美)
+A deck where every slide is the same card-grid feels like a template. Across the slides, VARY the composition BOLDLY — don't reuse the previous slide's skeleton when the content allows something different:
+- mix DENSE pages (metric grids, comparison tables, bento) with SPARSE, bold ones (one giant number, one statement, a pull-quote, a full-bleed moment) — beautiful whitespace beats a crammed page;
+- vary the anchor (left / centred / asymmetric) and where the focal point sits and which edge the eye enters from;
+- reach for editorial moves: an oversized opening quotation mark, a giant faint word/number bleeding off an edge, a dramatic single divider, a full-height accent panel.
+Prioritise visual impact + clarity + BEAUTY over fitting every fact in — when a slide has a lot, show the 3 strongest things gorgeously and leave the rest for the speaker notes (don't cram). The locked palette / type ramp / background / footer keep the deck coherent (the engine paints bg + footer); the COMPOSITION is where you surprise. Make each page something a designer would proudly hang on a wall.
+
+# LAYOUT LIBRARY — a starting palette of skeletons (pick, combine, or bend them)
+These are a STARTING palette, not a cage. For each slide pick the skeleton that fits — or blend two, or bend one — for something fresher, then compose. Use a DIFFERENT skeleton than the previous slide whenever you can. State your choice in an XML comment as the first child: `<!-- layout: metric-row -->`.
 
 THE SHARED RULER (the coordinate system most skeletons sit on):
 - HEADER band  y:[110 → 300]  — kicker (optional) + assertion title + a short accent rule. Left-aligned x=120.
@@ -189,4 +196,18 @@ EXEMPLAR 3 — a chart slide (skeleton: chart). Demonstrates a COMPUTED bar char
   </g>
 </svg>
 
-Do NOT copy these verbatim — they are the craft bar, not the content. Match their discipline for whatever your slide's type and layout demand.
+EXEMPLAR 4 — a SPARSE big-statement page (skeleton: metric-hero), the opposite of a grid. When ONE number is the whole story, go huge and let it BREATHE: faint concentric rings on the empty side, vast negative space, a single accent move. Beautiful restraint is its own style — reach for pages like this to vary the deck's rhythm:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: metric-hero -->
+  <circle cx="1500" cy="560" r="360" fill="none" stroke="{{ACCENT}}" stroke-width="2" stroke-opacity="0.16"/>
+  <circle cx="1500" cy="560" r="250" fill="none" stroke="{{ACCENT}}" stroke-width="2" stroke-opacity="0.10"/>
+  <g id="hero">
+    <text x="120" y="300" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="4" fill="{{FG_MUTED}}">市场规模 · MARKET SIZE</text>
+    <text x="116" y="650" font-family="{{FONT_DISPLAY}}" font-size="300" font-weight="700" fill="{{ACCENT}}">2,150<tspan font-family="{{FONT_BODY}}" font-size="110" fill="{{FG}}"> 亿元</tspan></text>
+    <rect x="120" y="712" width="300" height="6" rx="3" fill="{{ACCENT}}"/>
+    <text x="120" y="794" font-family="{{FONT_BODY}}" font-size="40" fill="{{FG}}">2026 中国新茶饮零售规模，五年复合增速约 18%</text>
+    <text x="120" y="848" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">已超越现制咖啡，成为饮品赛道第一大品类</text>
+  </g>
+</svg>
+
+Do NOT copy these verbatim — they are the craft bar, not the content. Match their craft + variety for whatever your slide's type and layout demand; let no two pages look the same.
