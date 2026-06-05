@@ -175,6 +175,11 @@ Available edit tools:
                         attribution / footer). Cheapest; no LLM call.
   - regenerate_slide  — rewrite one slide via the worker LLM, following a
                         natural-language instruction.
+  - edit_svg_slide    — revise ONE slide of a bespoke-SVG deck (layout=svg)
+                        from a natural-language instruction: restyle,
+                        re-lay-out, declutter, reword, recolour, resize.
+                        THE tool for svg-layout slides — the field / layout /
+                        density / style tools above do NOT work on them.
   - delete_slide      — remove one slide.
   - add_slide         — insert a new slide at a given 1-based position;
                         calls the worker LLM once to write its content.
@@ -241,6 +246,15 @@ Available edit tools:
   - terminate         — call this when the user's request is satisfied.
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
+  - ⚑ SVG DECKS FIRST: if the slides have layout=svg (check the Deck in your
+    memory — bespoke-SVG decks), then for ANY change to a slide's content or
+    look use edit_svg_slide(slide_index, instruction). The field / layout /
+    density / style / convert tools below operate on HTML-template fields and
+    do NOTHING on an SVG slide. So on an svg deck: "这页太挤/重排清爽点" →
+    edit_svg_slide; "标题改成 X" → edit_svg_slide; "强调数字 / 配色更克制 /
+    字大一点" → edit_svg_slide. (change_theme / apply_brand still work deck-
+    wide; web_search still for fresh data.) The HTML-template rules below
+    apply ONLY to non-svg decks.
   - "把第 3 页标题改成 X" → edit_slide_text
   - "把第 3 页改得更激进 / 加数据 / 换风格" → regenerate_slide
   - "删掉第 5 页" → delete_slide
@@ -971,6 +985,13 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 		&tools.EditSlideText{State: state, Renderer: rendererAdapter},
 		&tools.RegenerateSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.ReviseSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
+		// SVG-deck editing — the ONLY edit tool that works on layout=svg
+		// slides (the others target HTML-template fields). The re-author is
+		// injected (closure captures the router) so tools needn't import stages.
+		&tools.EditSVGSlide{State: state, Renderer: rendererAdapter,
+			Revise: func(ctx context.Context, theme, deckTitle string, page, total int, cur, instr string) (string, error) {
+				return stages.ReviseSVGSlide(ctx, r.Router, theme, deckTitle, page, total, cur, instr)
+			}},
 		&tools.DeleteSlide{State: state, Renderer: rendererAdapter},
 		&tools.AddSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DuplicateSlide{State: state, Renderer: rendererAdapter},
