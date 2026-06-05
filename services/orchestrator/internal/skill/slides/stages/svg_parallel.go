@@ -138,6 +138,11 @@ func AuthorSVGPerSlide(
 					"slide", i+1, "err", svgErrStr(err))
 				svg = FallbackSVG(tok, s.Headline)
 			}
+			// PMR: deterministic deck-wide chrome — replace whatever the model
+			// drew for the background + footer with a unified gradient canvas
+			// and a uniform footer (deck title + page no.), so every page is
+			// coherent and free of cross-page drift. Applies to real + fallback.
+			svg = finalizeSVGChrome(svg, tok, outline.Title, i+1, n)
 			cs := ContentSlide{Index: i + 1, Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: svg}}
 			mu.Lock()
 			results[i] = cs

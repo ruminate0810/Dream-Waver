@@ -39,7 +39,7 @@ You are NOT free-styling every slide from scratch. You have a LIBRARY of layout 
 THE SHARED RULER (the coordinate system most skeletons sit on):
 - HEADER band  y:[110 → 300]  — kicker (optional) + assertion title + a short accent rule. Left-aligned x=120.
 - CONTENT band y:[340 → 900]  — the body. **This 560px-tall band MUST be filled top-to-bottom** — if you have 3 cards, make each ≈ 460–520px tall, NOT 200px floating up top. Vertically center the content group in the band. (Kills the "floats in the upper half, empty bottom" failure.)
-- FOOTER band  y:[940 → 1000] — thin hairline + deck short-title (left) + page number (right), muted/mono. Identical on every slide.
+- FOOTER band  y:[940 → 1080] — RESERVED. The engine draws a uniform footer here automatically; leave it EMPTY (keep all your content above y≈930).
 - 12-column horizontal grid: margins 120, content x:[120,1800]=1680px, gutter 32. N-up card widths: 2-up 824 (x=120,976) · 3-up 538 (x=120,690,1260) · 4-up 396 (x=120,548,976,1404). NEVER more than 4 cards in a row — 5+ → 2 rows (3+2) or cut to the 4 strongest.
 
 THE SKELETONS (pick ONE per slide):
@@ -82,16 +82,19 @@ When a slide's substance IS a data series — a trend over time, a comparison of
 # COLOR DISCIPLINE (this is what reads as "premium")
 - AT MOST 3 colors on a slide. The accent appears in **2–3 places max** — the ONE number / pivotal word / single rule you want the eye to land on. Everything secondary is muted. "Highlight one, mute the rest."
 - Same-series data → monochromatic depth (accent at 1.0/0.6/0.3), never a rainbow.
-- First child is ALWAYS a full-bleed background `<rect x="0" y="0" width="1920" height="1080" fill="{{BG}}">` (or a background gradient/pattern over it).
+- Do NOT paint the background and do NOT draw a footer. The ENGINE injects a unified themed background (a subtle gradient + faint texture) behind every slide AND a consistent footer (deck title + page number) at the bottom — identical on every page, so the deck stays coherent. Begin your SVG directly with content/decoration; assume the themed `{{BG}}` canvas is already there. (You MAY still draw your own panels, scrims, accent bars, full-bleed images — just not the base background rect or the footer.)
 
-# TYPOGRAPHY RAMP (hierarchy by SIZE + WEIGHT + COLOR, not just size)
-- impact display (cover/section): 120–160px, weight 700, display family
-- content assertion / headline: 56–84px, weight 700
-- big metric value: 96–150px, weight 700, accent or ink
-- kicker / section label: 20–26px, mono family, UPPERCASE, letter-spacing 2–4
-- body / card text: 28–38px
-- caption / reference / footnote: 18–24px, muted
-CJK letter-spacing ≤ 2% of font-size.
+# TYPOGRAPHY RAMP — use these FIXED sizes (a harmonious scale, CONSISTENT across pages)
+Pick from this ramp; don't invent in-between sizes. The point is harmony: the SAME role is the SAME size on every page (a content title is 72px whether it's slide 2 or slide 7), and within a slide the steps are clearly distinct.
+- cover / section impact title: 140px, weight 700, display family
+- content slide title (assertion): 72px, weight 700, display family   ← identical on EVERY content page
+- sub-assertion / subtitle: 34px, body family, muted
+- big metric value: 128px, weight 700, accent or ink
+- card numeral (01 / 02): 40px, mono, muted
+- kicker / section label: 24px, mono, UPPERCASE, letter-spacing 3–4, muted
+- card / body text: 30px
+- implication / caption / reference: 26px, muted
+Deviate only when one hero number or a tight card genuinely needs it — and even then keep sibling elements the SAME size. CJK letter-spacing ≤ 2% of font-size.
 
 # PAGE RHYTHM (match density to slide TYPE — variety prevents the "every page same" failure)
 - **anchor / breathing** — cover, section divider, closing, single big idea. FEW elements, ONE focal point, oversized type, generous negative space, a single accent move. Do NOT build a multi-card grid here — naked text + a divider + whitespace, or one hero number, or a full-panel composition.
@@ -115,36 +118,23 @@ CJK letter-spacing ≤ 2% of font-size.
 A senior editorial/consulting designer reviewing this would say: one clear focal point, full confident use of the canvas, every number contextualised, ruthless color restraint (accent in 2–3 spots), real depth from gradients/tints/one-or-two shadows — and nothing floating in a void. If a slide looks flat, sparse, or top-heavy, redesign it.
 
 # GOLD EXEMPLARS — author at THIS level
-Below are two reference slides in THIS deck's exact palette (the SVG goes inside the JSON `"svg"` field). They are the standard. Study the grid discipline, the spacing, the color restraint, the data-context structure, and the footer — then compose YOUR slide with the same rigor (your content and layout will differ; the craft must not). Notice: every element snaps to the ruler/grid, the accent appears in only 2–3 spots, sibling cards share identical y/width/height, and nothing floats in the upper half.
+Below are three reference slides in THIS deck's exact palette (the SVG goes inside the JSON `"svg"` field). They are the standard. Study the grid discipline, the spacing, the color restraint, and the data-context structure — then compose YOUR slide with the same rigor. Notice: every element snaps to the ruler/grid, the accent appears in only 2–3 spots, sibling cards share identical y/width/height, nothing floats in the upper half, and crucially NO background rect and NO footer are drawn — the engine paints those for you.
 
-EXEMPLAR 1 — a cover (skeleton: cover-hero-left). Demonstrates a gradient wash, an oversized faint numeral bleeding off the right edge to fill the canvas, a mono kicker, a hero title with ONE accented word via `<tspan>`, a single accent rule, and the standard footer:
+EXEMPLAR 1 — a cover (skeleton: cover-hero-left). No background rect, no footer (the engine adds them) — the SVG opens straight at the content: an oversized faint numeral bleeding off the right edge to fill the canvas, a mono kicker, a hero title with ONE accented word via `<tspan>`, and a single accent rule:
 <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
   <!-- layout: cover-hero-left -->
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
-      <stop offset="0" stop-color="{{BG}}"/>
-      <stop offset="1" stop-color="{{SURFACE}}"/>
-    </linearGradient>
-  </defs>
-  <rect width="1920" height="1080" fill="url(#bg)"/>
   <text x="1660" y="900" font-family="{{FONT_DISPLAY}}" font-size="820" font-weight="700" fill="{{ACCENT}}" fill-opacity="0.06" text-anchor="middle">4</text>
   <g id="hero">
     <text x="122" y="312" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="6" fill="{{FG_MUTED}}">2025 · 年度发布</text>
-    <text x="116" y="452" font-family="{{FONT_DISPLAY}}" font-size="138" font-weight="700" fill="{{FG}}">DeepSeek <tspan fill="{{ACCENT}}">V4</tspan> 产品发布</text>
+    <text x="116" y="452" font-family="{{FONT_DISPLAY}}" font-size="140" font-weight="700" fill="{{FG}}">DeepSeek <tspan fill="{{ACCENT}}">V4</tspan> 产品发布</text>
     <rect x="120" y="510" width="300" height="6" rx="3" fill="{{ACCENT}}"/>
-    <text x="120" y="596" font-family="{{FONT_BODY}}" font-size="40" fill="{{FG_MUTED}}">六大核心能力 · 商业价值跃迁</text>
-  </g>
-  <g id="footer">
-    <line x1="120" y1="980" x2="1800" y2="980" stroke="{{BORDER}}" stroke-width="1"/>
-    <text x="120" y="1014" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">DEEPSEEK V4</text>
-    <text x="1800" y="1014" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">01</text>
+    <text x="120" y="596" font-family="{{FONT_BODY}}" font-size="34" fill="{{FG_MUTED}}">六大核心能力 · 商业价值跃迁</text>
   </g>
 </svg>
 
 EXEMPLAR 2 — a data slide (skeleton: metric-row). Demonstrates an assertion title + accent rule header band, THREE sibling cards on the 3-up grid (x=120/690/1260, w=538) — peer cards stay FLAT, separated by a hairline border + a subtle surface fill (ONE weight tool per card, never border+shadow stacked), ONE icon per card via `<use data-icon>`, and the data-context stack (small label / huge accent value / muted implication). Fills the content band top-to-bottom:
 <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
   <!-- layout: metric-row -->
-  <rect width="1920" height="1080" fill="{{BG}}"/>
   <g id="header">
     <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">PERFORMANCE</text>
     <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="74" font-weight="700" fill="{{FG}}">性能跃升，成本骤降</text>
@@ -172,17 +162,11 @@ EXEMPLAR 2 — a data slide (skeleton: metric-row). Demonstrates an assertion ti
     <text x="1308" y="690" font-family="{{FONT_DISPLAY}}" font-size="128" font-weight="700" fill="{{ACCENT}}">−60%</text>
     <text x="1308" y="788" font-family="{{FONT_BODY}}" font-size="26" fill="{{FG_MUTED}}">输出更可靠，风险更低</text>
   </g>
-  <g id="footer">
-    <line x1="120" y1="952" x2="1800" y2="952" stroke="{{BORDER}}" stroke-width="1"/>
-    <text x="120" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">DEEPSEEK V4</text>
-    <text x="1800" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">05</text>
-  </g>
 </svg>
 
 EXEMPLAR 3 — a chart slide (skeleton: chart). Demonstrates a COMPUTED bar chart: a fixed plot box (x 300→1620, baseline yB=820, top yT=400 → plotH=420), four bars of width 160 whose heights are value/maxValue×420 (40→140, 65→228, 85→298, 120→420), the focal bar at full accent and the rest at fill-opacity 0.45, value labels centred above and category labels below the baseline. Heights are PROPORTIONAL because they were computed, not guessed:
 <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
   <!-- layout: chart -->
-  <rect width="1920" height="1080" fill="{{BG}}"/>
   <g id="header">
     <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">MARKET SIZE</text>
     <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="72" font-weight="700" fill="{{FG}}">市场规模四年翻三倍</text>
@@ -202,11 +186,6 @@ EXEMPLAR 3 — a chart slide (skeleton: chart). Demonstrates a COMPUTED bar char
     <text x="800" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2024</text>
     <text x="1140" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2025</text>
     <text x="1480" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2026E</text>
-  </g>
-  <g id="footer">
-    <line x1="120" y1="952" x2="1800" y2="952" stroke="{{BORDER}}" stroke-width="1"/>
-    <text x="120" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}">市场规模</text>
-    <text x="1800" y="984" font-family="{{FONT_MONO}}" font-size="20" fill="{{FG_MUTED}}" text-anchor="end">04</text>
   </g>
 </svg>
 

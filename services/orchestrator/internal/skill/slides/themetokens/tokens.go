@@ -175,6 +175,45 @@ func (t Tokens) withDefaults() Tokens {
 	return t
 }
 
+// BackgroundSVG returns a deterministic, deck-wide background block injected
+// behind every authored slide: a subtle gradient (a soft top-light + vignette
+// on dark themes; a gentle top→bottom wash on light ones) plus a whisper-faint
+// texture when the theme has a motif. Painting this in the render layer — ONCE,
+// identically, for every page — is what makes a deck feel coherent ("协和"):
+// no flat monotone background, and zero page-to-page drift from each per-slide
+// LLM call guessing its own gradient. ids are dw-prefixed to avoid colliding
+// with author-drawn <defs>.
+func (t Tokens) BackgroundSVG() string {
+	var b strings.Builder
+	b.WriteString(`<defs>`)
+	if t.Dark {
+		c0 := blendHex(t.BG, "#FFFFFF", 0.05) // soft light near the top
+		c1 := blendHex(t.BG, "#000000", 0.24) // vignette toward the edges
+		b.WriteString(`<radialGradient id="dwbg" cx="50%" cy="30%" r="95%"><stop offset="0" stop-color="` + c0 + `"/><stop offset="1" stop-color="` + c1 + `"/></radialGradient>`)
+	} else {
+		c0 := blendHex(t.BG, "#FFFFFF", 0.30) // cleaner up top
+		c1 := blendHex(t.BG, t.FGMuted, 0.06) // barely deeper at the foot
+		b.WriteString(`<linearGradient id="dwbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="` + c0 + `"/><stop offset="1" stop-color="` + c1 + `"/></linearGradient>`)
+	}
+	patCol := blendHex(t.BG, t.FG, 0.10)
+	patRect := ""
+	switch t.Pattern {
+	case "dot":
+		b.WriteString(`<pattern id="dwpat" width="46" height="46" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="1.5" fill="` + patCol + `"/></pattern>`)
+		patRect = `<rect width="1920" height="1080" fill="url(#dwpat)" fill-opacity="0.55"/>`
+	case "grid":
+		b.WriteString(`<pattern id="dwpat" width="64" height="64" patternUnits="userSpaceOnUse"><path d="M64 0H0V64" fill="none" stroke="` + patCol + `" stroke-width="1"/></pattern>`)
+		patRect = `<rect width="1920" height="1080" fill="url(#dwpat)" fill-opacity="0.5"/>`
+	case "diagonal":
+		b.WriteString(`<pattern id="dwpat" width="42" height="42" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="42" stroke="` + patCol + `" stroke-width="1"/></pattern>`)
+		patRect = `<rect width="1920" height="1080" fill="url(#dwpat)" fill-opacity="0.5"/>`
+	}
+	b.WriteString(`</defs>`)
+	b.WriteString(`<rect width="1920" height="1080" fill="url(#dwbg)"/>`)
+	b.WriteString(patRect)
+	return b.String()
+}
+
 // blendHex linearly mixes a toward b by t∈[0,1]; both #RRGGBB. Used to
 // derive surface/border tints from the core palette.
 func blendHex(a, b string, ratio float64) string {
