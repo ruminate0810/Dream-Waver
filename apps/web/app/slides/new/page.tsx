@@ -12,12 +12,13 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, ChevronDown, FileText, Loader2, Paperclip, Plus, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 
 import {
   createSlides,
   deleteUserTemplate,
+  extractDocument,
   listUserTemplates,
   type UserTemplate,
 } from "@/lib/api";
@@ -88,6 +89,17 @@ function NewSlidesChat() {
   const [selectedMyTemplate, setSelectedMyTemplate] = useState<UserTemplate | null>(null);
   // Creator modal open / closed.
   const [showCreator, setShowCreator] = useState(false);
+  // PMQ C1 — an uploaded PDF / Markdown / txt, extracted to text and passed
+  // as reference_text so the outline is grounded in the real document.
+  const [docText, setDocText] = useState("");
+  const [docMeta, setDocMeta] = useState<{
+    filename: string;
+    chars: number;
+    truncated: boolean;
+  } | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
+  const [docErr, setDocErr] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const mainRef = useRef<HTMLElement | null>(null);
 
@@ -229,6 +241,8 @@ function NewSlidesChat() {
         slide_count: finalCount,
         force_theme: style,
         brand,
+        // PMQ C1 — ground the outline in the uploaded document when present.
+        reference_text: docText || undefined,
       });
       rememberDeck({
         jobId: res.job_id,
@@ -241,6 +255,34 @@ function NewSlidesChat() {
       setErr(e instanceof Error ? e.message : "Unknown error");
       setSubmitting(false);
     }
+  }
+
+  // PMQ C1 — read an uploaded document into reference_text.
+  async function handleFilePick(file: File | undefined | null) {
+    if (!file) return;
+    setDocErr(null);
+    setDocBusy(true);
+    try {
+      const doc = await extractDocument(file);
+      setDocText(doc.text);
+      setDocMeta({
+        filename: doc.filename,
+        chars: doc.chars,
+        truncated: doc.truncated,
+      });
+    } catch (e) {
+      setDocText("");
+      setDocMeta(null);
+      setDocErr(e instanceof Error ? e.message : "文档解析失败");
+    } finally {
+      setDocBusy(false);
+    }
+  }
+  function clearDoc() {
+    setDocText("");
+    setDocMeta(null);
+    setDocErr(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // Sprint T4 — helpers for "我的模板" pick + delete + create.
@@ -363,6 +405,46 @@ function NewSlidesChat() {
               />
             </div>
 
+            {/* PMQ C1 — attached document chip + parse error + hidden picker */}
+            {docMeta ? (
+              <div className="flex items-center gap-3 border border-[color:var(--rule)] bg-[color:var(--ink)]/[0.02] px-3 py-2">
+                <FileText
+                  size={14}
+                  strokeWidth={1.6}
+                  className="shrink-0 text-[color:var(--vermillion)]"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono-jb text-[11px] text-[color:var(--ink)]">
+                    {docMeta.filename}
+                  </p>
+                  <p className="font-mono-jb text-[9px] uppercase tracking-[0.18em] text-[color:var(--ink-faint)]">
+                    已抽取 {docMeta.chars.toLocaleString()} 字 · 作为参考资料
+                    {docMeta.truncated ? " · 已截断" : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearDoc}
+                  aria-label="移除文档"
+                  className="shrink-0 text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--vermillion)]"
+                >
+                  <X size={14} strokeWidth={1.8} />
+                </button>
+              </div>
+            ) : null}
+            {docErr ? (
+              <p className="font-mono-jb text-[10px] leading-relaxed tracking-[0.04em] text-[color:var(--vermillion)]">
+                {docErr}
+              </p>
+            ) : null}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.md,.markdown,.txt,.text,.csv,application/pdf,text/markdown,text/plain"
+              className="hidden"
+              onChange={(e) => handleFilePick(e.target.files?.[0])}
+            />
+
             <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
               <button
                 type="button"
@@ -382,6 +464,21 @@ function NewSlidesChat() {
                 <span className="tabular-nums">{slideCount} pages</span>
                 <span className="text-[color:var(--ink-faint)]">·</span>
                 <span>{selectedTemplate.label}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={submitting || docBusy}
+                title="上传 PDF / Markdown / txt，agent 会基于它生成"
+                className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {docBusy ? (
+                  <Loader2 size={11} strokeWidth={1.6} className="translate-y-[1px] animate-spin" />
+                ) : (
+                  <Paperclip size={11} strokeWidth={1.6} className="translate-y-[1px]" />
+                )}
+                <span>{docBusy ? "Reading" : docMeta ? "换文档" : "附文档"}</span>
               </button>
 
               <button
@@ -410,7 +507,7 @@ function NewSlidesChat() {
             ) : null}
 
             <p className="dw-new-helper font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
-              ⌘ / Ctrl + Enter 提交 · agent 会按需要问你几个问题再开工
+              ⌘ / Ctrl + Enter 提交 · 可「附文档」让 agent 基于 PDF / Markdown 生成 · 会按需问你几个问题再开工
             </p>
           </form>
 

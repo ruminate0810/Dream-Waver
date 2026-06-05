@@ -158,6 +158,11 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Get("/slides/{id}/page/{n}", h.SlidePageAsset)
 		r.Post("/slides/{id}/messages", h.PostSlideMessage)
 
+		// PMQ C1 — upload a PDF / Markdown / txt and get its text back to
+		// drop into reference_text on the next POST /slides. Stateless parse,
+		// nothing stored — anonymous-safe like the rest of the slides surface.
+		r.Post("/documents/extract", h.ExtractDocument)
+
 		// Games — single-shot HTML5 game generation. POST /games returns
 		// {job_id, session_id}; play_url surfaces only once status==finished.
 		r.Post("/games", h.CreateGame)

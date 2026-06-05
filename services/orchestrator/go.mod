@@ -44,7 +44,10 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260226221140-a57be14db171 // indirect
 )
 
-require github.com/microcosm-cc/bluemonday v1.0.27
+require (
+	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
+	github.com/microcosm-cc/bluemonday v1.0.27
+)
 
 require (
 	github.com/aymerick/douceur v0.2.0 // indirect

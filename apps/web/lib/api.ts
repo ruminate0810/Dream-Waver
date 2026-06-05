@@ -65,7 +65,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     }
   }
 
-  if (init?.body && !headers.has("Content-Type")) {
+  // Default JSON, but NEVER for FormData — the browser must set its own
+  // multipart/form-data Content-Type (with the boundary). Forcing JSON here
+  // would corrupt file uploads (PMQ C1 document extract).
+  if (init?.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   return fetch(path, { ...init, headers });
@@ -272,6 +275,31 @@ export async function createSlides(body: CreateSlidesRequest): Promise<CreateSli
     body: JSON.stringify({ ...body, mode: body.mode ?? "svg" }),
   });
   return unwrap<CreateSlidesResponse>(res);
+}
+
+export type ExtractedDocument = {
+  filename: string;
+  chars: number;
+  text: string;
+  truncated: boolean; // server capped the text (very long doc)
+};
+
+/**
+ * PMQ C1 — upload a PDF / Markdown / txt document and get its extracted text
+ * back, to drop into `reference_text` on the next createSlides() call so the
+ * outline is grounded in the real document instead of just the topic line.
+ * Stateless on the server (nothing stored). Throws ApiError on an unsupported
+ * file type, an oversized upload, or a parse failure (e.g. scanned PDF).
+ */
+export async function extractDocument(file: File): Promise<ExtractedDocument> {
+  const form = new FormData();
+  form.append("file", file);
+  // apiFetch leaves FormData's Content-Type to the browser (boundary).
+  const res = await apiFetch("/api/v1/documents/extract", {
+    method: "POST",
+    body: form,
+  });
+  return unwrap<ExtractedDocument>(res);
 }
 
 /**
