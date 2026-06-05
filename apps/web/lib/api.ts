@@ -79,12 +79,13 @@ export type CreateSlidesRequest = {
   reference_text?: string;
   force_theme?: string;
   /**
-   * Execution path. "agent" (default) runs a ToolCallAgent that picks
-   * each tool and emits llm.thought / tool.* events. "pipeline" is the
-   * deterministic outline → content → render shortcut — cheaper, but the
-   * chat surface stays opaque.
+   * Execution path. "svg" (DEFAULT) is the flagship: every slide is a
+   * bespoke ppt-master-grade <svg> (gradients, gold accent, vector icons,
+   * computed charts, data-context metrics). "agent" runs a ToolCallAgent
+   * over the templated HTML layouts (richer chat events + wizard/edit, but
+   * lower visual ceiling). "pipeline" is the deterministic HTML shortcut.
    */
-  mode?: "agent" | "pipeline";
+  mode?: "agent" | "pipeline" | "svg";
   /**
    * Sprint T2 — optional brand overlay. When set, the orchestrator
    * applies the brand once the deck is assembled so a saved "我的模板"
@@ -261,10 +262,14 @@ function fieldErrorsFromPayload(p: string | Record<string, unknown>): string[] {
 }
 
 export async function createSlides(body: CreateSlidesRequest): Promise<CreateSlidesResponse> {
+  // Default to the flagship SVG path (ppt-master-grade bespoke <svg> per
+  // slide). The UI used to send no mode → backend defaulted to "agent"
+  // (bland templated HTML), so all the rich-SVG work was unreachable from
+  // the app. A caller can still override by passing mode explicitly.
   const res = await fetch("/api/v1/slides", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ ...body, mode: body.mode ?? "svg" }),
   });
   return unwrap<CreateSlidesResponse>(res);
 }
