@@ -188,18 +188,48 @@ func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, er
 func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output, error) {
 	var cost Cost
 
-	outline, u1, err := stages.Outline(ctx, p.Router, stages.OutlineParams{
-		Topic:         in.Topic,
-		Audience:      in.Audience,
-		SlideCount:    in.SlideCount,
-		Style:         in.Style,
-		ReferenceText: in.ReferenceText,
-		BlueprintID:   in.BlueprintID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("svg outline: %w", err)
+	// Parallel planning (skeleton → N parallel section-planners → merge)
+	// produces the outline AND the architect spec together, far faster than the
+	// serial Outline + ArchitectDeck (the planning bottleneck on big decks). On
+	// ANY failure we fall back to the proven serial path, so a flaky parallel
+	// plan never blocks a deck. A blueprint forces the serial path (its fixed
+	// slide skeleton is honoured only by stages.Outline).
+	var (
+		outline  *stages.OutlineResult
+		planSpec *stages.DeckSpec
+		err      error
+	)
+	if in.BlueprintID == "" {
+		var uPlan llm.Usage
+		outline, planSpec, uPlan, err = stages.PlanDeckParallel(ctx, p.Router, stages.OutlineParams{
+			Topic:         in.Topic,
+			Audience:      in.Audience,
+			SlideCount:    in.SlideCount,
+			Style:         in.Style,
+			ReferenceText: in.ReferenceText,
+		}, in.ForceTheme)
+		if err != nil {
+			slog.WarnContext(ctx, "parallel plan failed — falling back to serial outline+architect", "err", err)
+			outline, planSpec = nil, nil
+		} else {
+			cost.add(uPlan)
+		}
 	}
-	cost.add(u1)
+	if outline == nil {
+		var u1 llm.Usage
+		outline, u1, err = stages.Outline(ctx, p.Router, stages.OutlineParams{
+			Topic:         in.Topic,
+			Audience:      in.Audience,
+			SlideCount:    in.SlideCount,
+			Style:         in.Style,
+			ReferenceText: in.ReferenceText,
+			BlueprintID:   in.BlueprintID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("svg outline: %w", err)
+		}
+		cost.add(u1)
+	}
 	if in.ForceTheme != "" {
 		outline.Theme = schema.Theme(in.ForceTheme)
 	}
@@ -261,19 +291,28 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		// ONE consistent plan instead of each improvising layout + inventing
 		// (often self-contradictory) numbers. Best-effort: any failure → nil
 		// plan → free authoring (pre-MoA behaviour), so it never blocks a deck.
-		deckSpec, uArch, archErr := stages.ArchitectDeck(ctx, p.Router, outline, theme)
-		if archErr != nil {
-			slog.WarnContext(ctx, "deck architect failed — authoring without a plan", "err", archErr)
-			deckSpec = nil
-		} else {
-			cost.add(uArch)
+		// The parallel plan already produced the spec; only run the standalone
+		// Architect when we fell back to the serial outline (planSpec == nil).
+		deckSpec := planSpec
+		if deckSpec == nil {
+			var uArch llm.Usage
+			var archErr error
+			deckSpec, uArch, archErr = stages.ArchitectDeck(ctx, p.Router, outline, theme)
+			if archErr != nil {
+				slog.WarnContext(ctx, "deck architect failed — authoring without a plan", "err", archErr)
+				deckSpec = nil
+			} else {
+				cost.add(uArch)
+			}
+		}
+		if deckSpec != nil {
 			charts := 0
 			for _, s := range deckSpec.Slides {
 				if s.Chart != nil {
 					charts++
 				}
 			}
-			slog.InfoContext(ctx, "deck architect planned the deck", "slides", len(deckSpec.Slides), "charts", charts)
+			slog.InfoContext(ctx, "deck planned", "slides", len(deckSpec.Slides), "charts", charts)
 		}
 
 		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, deckSpec, imgResolve, func(idx0 int, cs *stages.ContentSlide) {

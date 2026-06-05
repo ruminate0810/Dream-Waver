@@ -20,7 +20,7 @@ import (
 // 3 is the sweet spot: enough parallelism to cut wall-time hard, but few
 // enough concurrent planner calls that DeepSeek doesn't rate-limit (5 was
 // triggering transient failures + retries that ate the speed win).
-const svgPerSlideConcurrency = 3
+const svgPerSlideConcurrency = 5
 
 // svgPerSlideAttemptTimeout bounds ONE author attempt. With the author
 // routed to v4-flash (PMQ A1) a rich slide returns in ~15-40s, so 90s is

@@ -79,3 +79,14 @@ var SVGArchitect string
 //
 //go:embed svg_coherence.md
 var SVGCoherence string
+
+// Parallel planning (speed) — replaces the serial Outline + Architect for
+// mode=svg with a fast skeleton pass that carves the deck into sections, then
+// N section-planners that flesh out each section's outline + spec IN PARALLEL.
+// See stages/svg_plan_parallel.go.
+//
+//go:embed svg_skeleton.md
+var SVGSkeleton string
+
+//go:embed svg_section.md
+var SVGSection string
