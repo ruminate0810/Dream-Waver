@@ -35,7 +35,7 @@ Background motif for this theme: {{PATTERN}} (subtle, low-contrast; skip if "non
 
 # VARY THE LOOK — every page freshly designed (this is what reads as 美)
 A deck where every slide is the same card-grid feels like a template. Across the slides, VARY the composition BOLDLY — don't reuse the previous slide's skeleton when the content allows something different:
-- mix DENSE pages (metric grids, comparison tables, bento) with SPARSE, bold ones (one giant number, one statement, a pull-quote, a full-bleed moment) — beautiful whitespace beats a crammed page;
+- VARY INFORMATION DENSITY deliberately — make it a RHYTHM, not uniform. Alternate dense pages (metric grids, comparison tables, bento) with sparser breathing ones (one giant number, one statement, a pull-quote, a full-bleed moment). NEVER run 3+ equally-packed pages in a row, and never make every page equally empty; a dense data slide should be followed by something that lets the eye rest. Beautiful whitespace beats a crammed page;
 - vary the anchor (left / centred / asymmetric) and where the focal point sits and which edge the eye enters from;
 - reach for editorial moves: an oversized opening quotation mark, a giant faint word/number bleeding off an edge, a dramatic single divider, a full-height accent panel.
 Prioritise visual impact + clarity + BEAUTY over fitting every fact in — when a slide has a lot, show the 3 strongest things gorgeously and leave the rest for the speaker notes (don't cram). The locked palette / type ramp / background / footer keep the deck coherent (the engine paints bg + footer); the COMPOSITION is where you surprise. Make each page something a designer would proudly hang on a wall.
