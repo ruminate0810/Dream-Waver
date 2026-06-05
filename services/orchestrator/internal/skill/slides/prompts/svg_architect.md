@@ -25,6 +25,7 @@ RULES:
 - The first slide is a cover; a closing slide is quote-statement or cover-hero-center.
 - VARY the skeleton — never assign the same layout to 3 slides in a row.
 - Match layout to content: a process → flow-diagram, a chronology → timeline, A-vs-B → two-col-compare, an overview → bento.
+- AVOID HOLLOW CARDS. A card-row / bento / icon-grid only looks good when each cell has enough substance to FILL it. If a slide's points are one-liners, EITHER give each card 2–3 supporting `facts` (a stat, a consequence, an example) so it fills, OR pick a tighter layout (list-with-rail for an annotated list; metric-row if the points are numbers). NEVER plan 4 cards that each carry a single short line — they render as big empty boxes.
 
 # CHART DECISIONS — be deliberate, this is the #1 thing you fix
 Assign `chart` (not a text layout) whenever a slide's substance is a data series. Pick the type by the data's SHAPE:

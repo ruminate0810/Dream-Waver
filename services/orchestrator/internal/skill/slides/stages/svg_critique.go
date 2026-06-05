@@ -61,6 +61,8 @@ const svgCritiqueSystem = `You are a ruthless presentation-design editor reviewi
 
 Check, in order:
 - TITLE is an ASSERTION (a claim or takeaway), not a bare topic word. "成本" or "Overview" is a fail; "推理成本降至行业 1/10" passes.
+- NOTHING OVERFLOWS THE FRAME. Flag any <text> whose content would run past the right safe edge (x≈1800) or off the canvas — a long title at 72px (over ~20 CJK chars) that isn't wrapped to two <tspan> lines or dropped to ~56px is a fail; a card's body line cut off at the card's right edge is a fail. Name the offending text and say "wrap to two lines" or "shorten / reduce font-size".
+- NO HOLLOW CARDS. Flag any card/panel that is tall but whose content (icon + title + one line) sits only in its top third, leaving a large dead empty bottom. The fix: either shrink the card to fit its content and vertically centre the row, or add a supporting line/stat so it fills. Four big empty boxes is the #1 amateur tell.
 - Every headline NUMBER carries context (a label AND a "so what" implication). A lone metric floating alone is a fail.
 - ACCENT restraint: the accent colour highlights at most ~3 things. If almost everything is the accent colour, that's a fail.
 - The composition FILLS the canvas — flag a large empty lower half or content crammed into the top.
