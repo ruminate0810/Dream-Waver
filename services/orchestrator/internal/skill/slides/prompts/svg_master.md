@@ -84,7 +84,7 @@ When a slide's substance IS a data series — a trend over time, a comparison of
 - **Bar / column** (compare values): pick a plot box x:[X0,X1] (e.g. 300→1620) with baseline yB and top yT (e.g. yB=820, yT=400; plotH=yB−yT). For N bars: slot=(X1−X0)/N; barW≈slot×0.5; bar i center cx=X0+slot×(i+0.5); `<rect>` x=cx−barW/2, width=barW, height h=(value/maxValue)×plotH, y=yB−h. Bars in {{ACCENT}} — the focal bar at 1.0, the rest at `fill-opacity="0.45"`. Value label centred above each bar (`text-anchor="middle"` at cx, y−16); category label below yB at cx. Draw the baseline as a 1px {{BORDER}} line from X0 to X1 at yB.
 - **Donut** (share of whole, 2–5 parts): centre (cx,cy), outer R, inner r≈R×0.62. Start at −90° (12 o'clock). Per segment: span=value/total×360°; a0→a1 in degrees → radians; a point on a circle of radius ρ is (cx+ρ·cosθ, cy+ρ·sinθ). Segment path: `M{outer@a0} A R R 0 {large} 1 {outer@a1} L{inner@a1} A r r 0 {large} 0 {inner@a0} Z`, where large=1 when span>180 else 0. Fill segments {{ACCENT}} at 1.0 / 0.6 / 0.35 (monochromatic, never rainbow). Put the headline total + label dead-centre.
 - **Line / trend**: map the data's x-range across x:[X0,X1] and 0→maxY across yB→yT (inverted: bigger value = higher = smaller y). `<polyline fill="none" stroke="{{ACCENT}}" stroke-width="3" points="x0,y0 x1,y1 …"/>` + one `<circle r="5" fill="{{ACCENT}}"/>` per point; muted axis baseline + end-point value labels.
-(See EXEMPLAR 3 for a worked bar chart.)
+(See EXEMPLAR 3 for a worked bar chart, EXEMPLAR 5 for a donut, EXEMPLAR 6 for a line/trend — each with real computed coordinates.)
 
 # COLOR DISCIPLINE (this is what reads as "premium")
 - AT MOST 3 colors on a slide. The accent appears in **2–3 places max** — the ONE number / pivotal word / single rule you want the eye to land on. Everything secondary is muted. "Highlight one, mute the rest."
@@ -125,7 +125,7 @@ Deviate only when one hero number or a tight card genuinely needs it — and eve
 A senior editorial/consulting designer reviewing this would say: one clear focal point, full confident use of the canvas, every number contextualised, ruthless color restraint (accent in 2–3 spots), real depth from gradients/tints/one-or-two shadows — and nothing floating in a void. If a slide looks flat, sparse, or top-heavy, redesign it.
 
 # GOLD EXEMPLARS — author at THIS level
-Below are three reference slides in THIS deck's exact palette (the SVG goes inside the JSON `"svg"` field). They are the standard. Study the grid discipline, the spacing, the color restraint, and the data-context structure — then compose YOUR slide with the same rigor. Notice: every element snaps to the ruler/grid, the accent appears in only 2–3 spots, sibling cards share identical y/width/height, nothing floats in the upper half, and crucially NO background rect and NO footer are drawn — the engine paints those for you.
+Below are six reference slides in THIS deck's exact palette (the SVG goes inside the JSON `"svg"` field). They are the standard. Study the grid discipline, the spacing, the color restraint, and the data-context structure — then compose YOUR slide with the same rigor. Notice: every element snaps to the ruler/grid, the accent appears in only 2–3 spots, sibling cards share identical y/width/height, nothing floats in the upper half, and crucially NO background rect and NO footer are drawn — the engine paints those for you.
 
 EXEMPLAR 1 — a cover (skeleton: cover-hero-left). No background rect, no footer (the engine adds them) — the SVG opens straight at the content: an oversized faint numeral bleeding off the right edge to fill the canvas, a mono kicker, a hero title with ONE accented word via `<tspan>`, and a single accent rule:
 <svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
@@ -207,6 +207,61 @@ EXEMPLAR 4 — a SPARSE big-statement page (skeleton: metric-hero), the opposite
     <rect x="120" y="712" width="300" height="6" rx="3" fill="{{ACCENT}}"/>
     <text x="120" y="794" font-family="{{FONT_BODY}}" font-size="40" fill="{{FG}}">2026 中国新茶饮零售规模，五年复合增速约 18%</text>
     <text x="120" y="848" font-family="{{FONT_BODY}}" font-size="30" fill="{{FG_MUTED}}">已超越现制咖啡，成为饮品赛道第一大品类</text>
+  </g>
+</svg>
+
+EXEMPLAR 5 — a chart slide (skeleton: chart, SHARE-OF-WHOLE donut). A COMPUTED donut from real arc math: centre (1280,620), outer R=240, inner r=150, three parts 58% / 27% / 15% summing to 100, each span=value/100×360° walked CLOCKWISE from −90° (12 o'clock); large-arc-flag=1 only on the one segment that exceeds 180° (the 58%). Segments are MONOCHROMATIC accent at 1.0 / 0.6 / 0.35 (never rainbow), the whole's total sits dead-centre in the hole, and a left legend maps swatch→label→value. Every arc endpoint was computed as (cx+ρ·cosθ, cy+ρ·sinθ) — a hand-guessed donut looks broken:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: chart -->
+  <g id="header">
+    <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">GMV MIX</text>
+    <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="72" font-weight="700" fill="{{FG}}">现磨撑起六成大盘</text>
+    <rect x="120" y="282" width="260" height="5" rx="2.5" fill="{{ACCENT}}"/>
+  </g>
+  <g id="legend">
+    <rect x="160" y="452" width="36" height="36" rx="8" fill="{{ACCENT}}"/>
+    <text x="216" y="481" font-family="{{FONT_BODY}}" font-size="34" fill="{{FG}}">现磨咖啡</text>
+    <text x="660" y="484" font-family="{{FONT_DISPLAY}}" font-size="46" font-weight="700" fill="{{ACCENT}}" text-anchor="end">58%</text>
+    <rect x="160" y="592" width="36" height="36" rx="8" fill="{{ACCENT}}" fill-opacity="0.6"/>
+    <text x="216" y="621" font-family="{{FONT_BODY}}" font-size="34" fill="{{FG}}">即饮罐装</text>
+    <text x="660" y="624" font-family="{{FONT_DISPLAY}}" font-size="46" font-weight="700" fill="{{FG}}" text-anchor="end">27%</text>
+    <rect x="160" y="732" width="36" height="36" rx="8" fill="{{ACCENT}}" fill-opacity="0.35"/>
+    <text x="216" y="761" font-family="{{FONT_BODY}}" font-size="34" fill="{{FG}}">速溶冲调</text>
+    <text x="660" y="764" font-family="{{FONT_DISPLAY}}" font-size="46" font-weight="700" fill="{{FG}}" text-anchor="end">15%</text>
+  </g>
+  <g id="donut">
+    <path d="M1280,380 A240 240 0 1 1 1164.4,830.3 L1207.7,751.4 A150 150 0 1 0 1280,470 Z" fill="{{ACCENT}}"/>
+    <path d="M1164.4,830.3 A240 240 0 0 1 1085.8,478.9 L1158.6,531.8 A150 150 0 0 0 1207.7,751.4 Z" fill="{{ACCENT}}" fill-opacity="0.6"/>
+    <path d="M1085.8,478.9 A240 240 0 0 1 1280,380 L1280,470 A150 150 0 0 0 1158.6,531.8 Z" fill="{{ACCENT}}" fill-opacity="0.35"/>
+    <text x="1280" y="602" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="2" fill="{{FG_MUTED}}" text-anchor="middle">GMV 总额</text>
+    <text x="1280" y="666" font-family="{{FONT_DISPLAY}}" font-size="56" font-weight="700" fill="{{FG}}" text-anchor="middle">1,840亿</text>
+  </g>
+</svg>
+
+EXEMPLAR 6 — a chart slide (skeleton: chart, TREND line). A COMPUTED line/trend: plot box x:[320,1620], baseline yB=820, top yT=420 (plotH=400); five yearly points [8,14,23,41,67] mapped y=yB−(value/75)×400 (75 = scale max, a hair above the peak so the top point isn't jammed to the ceiling), x evenly spaced step=(1620−320)/4=325. A faint accent area-fill under the line adds depth; the final point is enlarged + value-labelled in accent; the axis stays muted. Every point is COMPUTED, not eyeballed:
+<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080">
+  <!-- layout: chart -->
+  <g id="header">
+    <text x="120" y="166" font-family="{{FONT_MONO}}" font-size="24" letter-spacing="5" fill="{{FG_MUTED}}">ANNUAL REVENUE</text>
+    <text x="118" y="244" font-family="{{FONT_DISPLAY}}" font-size="72" font-weight="700" fill="{{FG}}">营收四年增长八倍</text>
+    <rect x="120" y="282" width="260" height="5" rx="2.5" fill="{{ACCENT}}"/>
+  </g>
+  <g id="chart">
+    <polygon points="320,777.3 645,745.3 970,697.3 1295,601.3 1620,462.7 1620,820 320,820" fill="{{ACCENT}}" fill-opacity="0.10"/>
+    <line x1="320" y1="820" x2="1620" y2="820" stroke="{{BORDER}}" stroke-width="1.5"/>
+    <polyline fill="none" stroke="{{ACCENT}}" stroke-width="3" points="320,777.3 645,745.3 970,697.3 1295,601.3 1620,462.7"/>
+    <circle cx="320" cy="777.3" r="5" fill="{{ACCENT}}"/>
+    <circle cx="645" cy="745.3" r="5" fill="{{ACCENT}}"/>
+    <circle cx="970" cy="697.3" r="5" fill="{{ACCENT}}"/>
+    <circle cx="1295" cy="601.3" r="5" fill="{{ACCENT}}"/>
+    <circle cx="1620" cy="462.7" r="8" fill="{{ACCENT}}"/>
+    <text x="1620" y="430" font-family="{{FONT_DISPLAY}}" font-size="44" font-weight="700" fill="{{ACCENT}}" text-anchor="end">67亿</text>
+    <text x="320" y="752" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">8亿</text>
+    <text x="320" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2021</text>
+    <text x="645" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2022</text>
+    <text x="970" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2023</text>
+    <text x="1295" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2024</text>
+    <text x="1620" y="868" font-family="{{FONT_BODY}}" font-size="28" fill="{{FG_MUTED}}" text-anchor="middle">2025</text>
   </g>
 </svg>
 
