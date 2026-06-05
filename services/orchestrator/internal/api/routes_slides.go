@@ -1217,6 +1217,43 @@ func (h *handlers) ExportSlidesPDF(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(pdf)
 }
 
+// PresentSlides serves the web-presentation: one self-contained, shareable HTML
+// page that shows the whole deck as a navigable, fullscreen-able slideshow (the
+// SVG slides wrapped in an HTML presenter shell). The SVG content + .pptx export
+// are untouched — this is purely the on-the-web present view.
+func (h *handlers) PresentSlides(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if h.deps.Sessions == nil || h.deps.Renderer == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "present unavailable")
+		return
+	}
+	state, ok := h.deps.Sessions.Get(id)
+	if !ok {
+		wsID := workspaceIDFromCtx(r.Context())
+		if wsID != uuid.Nil {
+			if hydrated, hOK := h.deps.Sessions.GetOrLoad(r.Context(), wsID, id); hOK {
+				state, ok = hydrated, true
+			}
+		}
+		if !ok {
+			errorJSON(w, http.StatusNotFound, "deck not found")
+			return
+		}
+	}
+	deck, count := state.Snapshot()
+	if deck == nil || count == 0 {
+		errorJSON(w, http.StatusNotFound, "deck not ready")
+		return
+	}
+	html, err := h.deps.Renderer.RenderDeckPresentHTML(*deck)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "present: "+err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = w.Write([]byte(html))
+}
+
 // hydrateSlideJob is Sprint X2b-2's restart-recovery entry point: when
 // the in-memory `jobs` map misses (process bounced since the job was
 // created) we try to rebuild both the metadata record AND the

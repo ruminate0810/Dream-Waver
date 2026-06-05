@@ -20,6 +20,7 @@ import {
   Palette,
   Paperclip,
   PenLine,
+  Play,
   Plus,
   Power,
   Search,
@@ -443,10 +444,22 @@ function PendingRow({ text, onCancel }: { text: string; onCancel: () => void }) 
 function DownloadRow({ href }: { href: string }) {
   // PMQ C2: the PDF export shares the deck's route — /download → /export.pdf.
   const pdfHref = href.replace(/\/download$/, "/export.pdf");
+  // Web-presentation shares the route too — /download → /present.
+  const presentHref = href.replace(/\/download$/, "/present");
   return (
     <div className="space-y-1.5">
       <Label kind="ai" />
       <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={presentHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 bg-[color:var(--vermillion)] px-3.5 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-90"
+          title="在浏览器里全屏演示（方向键翻页 · F 全屏 · O 总览 · 可分享链接）"
+        >
+          <Play size={14} strokeWidth={1.8} />
+          <span>演示</span>
+        </a>
         <a
           href={href}
           className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 bg-white px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)] transition-colors hover:border-[color:var(--ink)]/40 hover:bg-[color:var(--paper)]/60"

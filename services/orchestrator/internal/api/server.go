@@ -152,6 +152,7 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Get("/slides/{id}", h.GetSlides)
 		r.Get("/slides/{id}/download", h.DownloadSlides)
 		r.Get("/slides/{id}/export.pdf", h.ExportSlidesPDF) // PMQ C2: whole-deck PDF
+		r.Get("/slides/{id}/present", h.PresentSlides)      // web-presentation (HTML shell over SVG)
 		// One path handles two surfaces. SlidePageAsset dispatches on the
 		// suffix: ".html" → live template rendering, anything else (".png"
 		// or bare integer) → the cached preview PNG.

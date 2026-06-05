@@ -1307,3 +1307,100 @@ func sanitize(s string) string {
 }
 
 // (base64 encoding now uses encoding/base64.StdEncoding)
+
+// RenderDeckPresentHTML assembles the whole deck into ONE self-contained,
+// shareable HTML "presenter" page — the web-presentation mode. Each SVG slide
+// is inlined (id-namespaced per slide so their <defs> don't collide) and a small
+// JS presenter adds keyboard/click navigation, fullscreen, a page counter, a
+// progress bar, fade transitions, and an overview grid (press O). The SVG stays
+// the content (the .pptx export is untouched) — this is purely the HTML *shell*
+// for presenting on the web. No chromedp; the browser renders it directly.
+func (r *SlideRender) RenderDeckPresentHTML(deck schema.Deck) (string, error) {
+	if len(deck.Slides) == 0 {
+		return "", fmt.Errorf("RenderDeckPresentHTML: deck has no slides")
+	}
+	theme := string(deck.Theme)
+	if theme == "" {
+		theme = string(schema.ThemeMinimalist)
+	}
+	tok := themetokens.Get(theme)
+
+	var slidesHTML strings.Builder
+	for i, s := range deck.Slides {
+		content := strings.TrimSpace(s.Data.SVG)
+		if s.Layout == schema.LayoutSVG && content != "" {
+			content = namespaceSVGIDs(content, i+1)
+		} else {
+			content = fmt.Sprintf(`<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="%s"/></svg>`, tok.BG)
+		}
+		active := ""
+		if i == 0 {
+			active = ` data-active="1"`
+		}
+		fmt.Fprintf(&slidesHTML, `<section class="dwp-slide"%s>%s</section>`, active, content)
+	}
+
+	title := template.HTMLEscapeString(deck.Title)
+	if title == "" {
+		title = "Presentation"
+	}
+	n := strconv.Itoa(len(deck.Slides))
+
+	doc := `<!doctype html><html lang="zh"><head><meta charset="utf-8">` +
+		`<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">` +
+		`<title>` + title + `</title><style>` + presentCSS + `</style></head><body>` +
+		`<div id="dwp-bar"></div>` +
+		`<div id="dwp-stage">` + slidesHTML.String() + `</div>` +
+		`<div id="dwp-grid" aria-hidden="true"></div>` +
+		`<div id="dwp-ui">` +
+		`<button id="dwp-over" title="总览 (O)">▦</button>` +
+		`<button id="dwp-prev" title="上一页 (←)">‹</button>` +
+		`<span id="dwp-count">1 / ` + n + `</span>` +
+		`<button id="dwp-next" title="下一页 (→)">›</button>` +
+		`<button id="dwp-full" title="全屏 (F)">⛶</button>` +
+		`</div><script>` + presentJS + `</script></body></html>`
+	return doc, nil
+}
+
+// presentCSS / presentJS — the web-presentation shell. Plain const strings (not
+// fmt-formatted), so literal % in CSS/JS is fine. The 1920×1080 stage is scaled
+// to the viewport via --dwp-s; only the active slide is shown.
+const presentCSS = `*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;background:#07090d;overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+#dwp-stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+.dwp-slide{position:absolute;width:1920px;height:1080px;opacity:0;visibility:hidden;transition:opacity .35s ease;transform:scale(var(--dwp-s,1));transform-origin:center center;box-shadow:0 30px 90px rgba(0,0,0,.55)}
+.dwp-slide[data-active="1"]{opacity:1;visibility:visible}
+.dwp-slide>svg{display:block;width:1920px;height:1080px}
+#dwp-bar{position:fixed;left:0;top:0;height:3px;background:#3b82f6;width:0;transition:width .35s ease;z-index:30}
+#dwp-ui{position:fixed;bottom:16px;right:22px;display:flex;align-items:center;gap:4px;color:#9aa3b2;font-size:13px;letter-spacing:.05em;z-index:30;opacity:.3;transition:opacity .2s}
+body:hover #dwp-ui{opacity:1}
+#dwp-ui button{background:none;border:none;color:#9aa3b2;cursor:pointer;font-size:17px;line-height:1;padding:6px 9px;border-radius:7px;transition:.15s}
+#dwp-ui button:hover{color:#fff;background:rgba(255,255,255,.1)}
+#dwp-count{font-variant-numeric:tabular-nums;padding:0 6px;min-width:64px;text-align:center}
+#dwp-grid{position:fixed;inset:0;background:#07090d;display:none;grid-template-columns:repeat(4,1fr);gap:18px;padding:34px;overflow:auto;z-index:40}
+#dwp-grid.open{display:grid}
+.dwp-thumb{position:relative;aspect-ratio:16/9;border:2px solid #1b2128;border-radius:9px;overflow:hidden;cursor:pointer;background:#0d1017;transition:.15s}
+.dwp-thumb:hover{border-color:#3b82f6aa}
+.dwp-thumb.cur{border-color:#3b82f6}
+.dwp-thumb svg{position:absolute;inset:0;width:100%;height:100%}
+.dwp-thumb .n{position:absolute;left:9px;bottom:7px;color:#cbd2dd;font-size:12px;font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000;z-index:1}`
+
+const presentJS = `(function(){
+var stage=document.getElementById('dwp-stage');
+var slides=[].slice.call(document.querySelectorAll('.dwp-slide'));
+var n=slides.length,cur=0;
+var count=document.getElementById('dwp-count'),bar=document.getElementById('dwp-bar'),grid=document.getElementById('dwp-grid');
+function fit(){var s=Math.min(window.innerWidth/1920,window.innerHeight/1080);document.documentElement.style.setProperty('--dwp-s',s);}
+function show(i){cur=Math.max(0,Math.min(n-1,i));for(var k=0;k<slides.length;k++){slides[k].setAttribute('data-active',k===cur?'1':'0');}count.textContent=(cur+1)+' / '+n;bar.style.width=((cur+1)/n*100)+'%';var th=grid.children;for(var j=0;j<th.length;j++){th[j].className='dwp-thumb'+(j===cur?' cur':'');}}
+function next(){show(cur+1);}function prev(){show(cur-1);}
+function full(){if(document.fullscreenElement){document.exitFullscreen();}else if(document.documentElement.requestFullscreen){document.documentElement.requestFullscreen();}}
+function over(){grid.classList.toggle('open');}
+window.addEventListener('keydown',function(e){var k=e.key;if(grid.classList.contains('open')&&(k==='Escape'||k==='o'||k==='O')){grid.classList.remove('open');return;}if(k==='ArrowRight'||k==='ArrowDown'||k===' '||k==='PageDown'){e.preventDefault();next();}else if(k==='ArrowLeft'||k==='ArrowUp'||k==='PageUp'){e.preventDefault();prev();}else if(k==='Home'){show(0);}else if(k==='End'){show(n-1);}else if(k==='f'||k==='F'){full();}else if(k==='o'||k==='O'){over();}});
+stage.addEventListener('click',function(e){if(e.clientX<window.innerWidth*0.22){prev();}else{next();}});
+for(var i=0;i<slides.length;i++){(function(idx){var t=document.createElement('div');t.className='dwp-thumb';t.innerHTML=slides[idx].innerHTML+'<span class="n">'+(idx+1)+'</span>';t.addEventListener('click',function(){show(idx);grid.classList.remove('open');});grid.appendChild(t);})(i);}
+document.getElementById('dwp-prev').onclick=function(e){e.stopPropagation();prev();};
+document.getElementById('dwp-next').onclick=function(e){e.stopPropagation();next();};
+document.getElementById('dwp-full').onclick=function(e){e.stopPropagation();full();};
+document.getElementById('dwp-over').onclick=function(e){e.stopPropagation();over();};
+window.addEventListener('resize',fit);fit();show(0);
+})();`
