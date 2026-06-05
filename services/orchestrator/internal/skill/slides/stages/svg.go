@@ -183,16 +183,15 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 		Messages:     []schema.Message{schema.NewUser(user)},
 		MaxTokens:    4000,
 	}, func(content string) error {
-		var parsed struct {
-			SVG string `json:"svg"`
+		// parseOneSVG is tolerant: it handles {"svg":…}, {"slides":[…]}, a bare
+		// <svg>, AND a JSON body the model broke with a raw newline inside the
+		// string literal (the substring fallback now unescapes \" so the repaired
+		// slide doesn't render blank). This used to be a strict json.Unmarshal
+		// that hard-failed on raw newlines and burned a retry.
+		out = parseOneSVG(content)
+		if strings.TrimSpace(out) == "" {
+			return fmt.Errorf("parse repair json: no <svg> in response")
 		}
-		if err := json.Unmarshal(stripFences(content), &parsed); err != nil {
-			return fmt.Errorf("parse repair json: %w", err)
-		}
-		if strings.TrimSpace(parsed.SVG) == "" {
-			return fmt.Errorf("repair returned empty svg")
-		}
-		out = parsed.SVG
 		return nil
 	})
 	if err != nil {

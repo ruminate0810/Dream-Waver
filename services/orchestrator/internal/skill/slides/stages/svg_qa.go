@@ -30,6 +30,14 @@ func QASlideUsable(svg string) bool {
 	if !strings.Contains(s, "viewBox") {
 		return false
 	}
+	// A leaked JSON escape — backslash-quote in attributes (x=\"120\") — means the
+	// SVG was sliced out of a JSON string without unescaping. The browser can't
+	// read those attributes, so every element collapses to the origin and the
+	// slide renders blank. parseOneSVG now unescapes this, but reject it here too
+	// so any future leak degrades to a clean FallbackSVG instead of a blank page.
+	if strings.Contains(s, "\\\"") {
+		return false
+	}
 	// Must render at least one non-empty <text> — a content slide with no
 	// text is broken even if it parses.
 	low := strings.Index(s, "<text")
