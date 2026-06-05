@@ -255,7 +255,28 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			}
 			return r.URL
 		}
-		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, imgResolve, func(idx0 int, cs *stages.ContentSlide) {
+
+		// MoA — the Deck Architect plans every slide (layout + chart type +
+		// pinned numbers) BEFORE authoring, so the per-slide designers execute
+		// ONE consistent plan instead of each improvising layout + inventing
+		// (often self-contradictory) numbers. Best-effort: any failure → nil
+		// plan → free authoring (pre-MoA behaviour), so it never blocks a deck.
+		deckSpec, uArch, archErr := stages.ArchitectDeck(ctx, p.Router, outline, theme)
+		if archErr != nil {
+			slog.WarnContext(ctx, "deck architect failed — authoring without a plan", "err", archErr)
+			deckSpec = nil
+		} else {
+			cost.add(uArch)
+			charts := 0
+			for _, s := range deckSpec.Slides {
+				if s.Chart != nil {
+					charts++
+				}
+			}
+			slog.InfoContext(ctx, "deck architect planned the deck", "slides", len(deckSpec.Slides), "charts", charts)
+		}
+
+		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, deckSpec, imgResolve, func(idx0 int, cs *stages.ContentSlide) {
 			streamMu.Lock()
 			if idx0 >= 0 && idx0 < len(streamed.Slides) {
 				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: cs.Data}
@@ -288,6 +309,22 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			p.emit(ctx, event.NewSlideUpdated(idx0+1))
 		})
 		cost.add(u3)
+		// MoA-3: Coherence Editor — one whole-deck pass that fixes the
+		// cross-slide problems no single-slide agent can see (a number that
+		// disagrees between slides, a broken narrative, 3+ identical layouts
+		// in a row). ON by default (opt out DW_SVG_COHERENCE=off); applies
+		// ≤3 targeted fixes, never regresses.
+		var u4 llm.Usage
+		content, u4, _ = stages.CoherenceReviewSVG(ctx, p.Router, theme, outline.Title, content, func(idx0 int, refined string) {
+			streamMu.Lock()
+			if idx0 >= 0 && idx0 < len(streamed.Slides) {
+				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: refined}}
+			}
+			streamMu.Unlock()
+			putStream()
+			p.emit(ctx, event.NewSlideUpdated(idx0+1))
+		})
+		cost.add(u4)
 	}
 	cost.add(u2)
 

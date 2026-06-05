@@ -52,11 +52,16 @@ const svgPerSlideMaxAttempts = 2
 // possibly OUT OF ORDER (parallel). A slide whose call fails after
 // retries is left out — best-effort, one bad slide doesn't kill the deck.
 // The returned ContentResult.Slides is in deck order.
+// spec (MoA Architect plan) is optional: when non-nil, each slide's brief
+// (layout + chart + pinned numbers) is injected into its author prompt so the
+// designers execute the plan instead of improvising. nil → free authoring
+// (the pre-MoA behaviour), so the Architect can fail without blocking the deck.
 func AuthorSVGPerSlide(
 	ctx context.Context,
 	router llm.Router,
 	outline *OutlineResult,
 	theme string,
+	spec *DeckSpec,
 	imgResolve func(context.Context, string) string,
 	onSlide func(index0 int, cs *ContentSlide),
 ) (*ContentResult, llm.Usage, error) {
@@ -107,7 +112,7 @@ func AuthorSVGPerSlide(
 			)
 			for attempt := 1; attempt <= svgPerSlideMaxAttempts; attempt++ {
 				attemptCtx, cancel := context.WithTimeout(ctx, svgPerSlideAttemptTimeout)
-				svg, usage, err = authorOneSVG(attemptCtx, client, model, sys, deckCtx, s, i+1, n)
+				svg, usage, err = authorOneSVG(attemptCtx, client, model, sys, deckCtx, s, spec.SpecFor(i), i+1, n)
 				cancel()
 				if err == nil && strings.TrimSpace(svg) != "" {
 					break
@@ -173,7 +178,7 @@ func AuthorSVGPerSlide(
 
 // authorOneSVG authors a single slide's SVG given the shared spec_lock
 // system prompt + the deck context + this slide's spec.
-func authorOneSVG(ctx context.Context, client llm.Client, model, sys, deckCtx string, s OutlineSlide, pos, total int) (string, llm.Usage, error) {
+func authorOneSVG(ctx context.Context, client llm.Client, model, sys, deckCtx string, s OutlineSlide, spec *SlideSpec, pos, total int) (string, llm.Usage, error) {
 	var user strings.Builder
 	user.WriteString(deckCtx)
 	fmt.Fprintf(&user, "\n\n── AUTHOR ONLY THIS ONE SLIDE (position %d of %d) ──\n[%s] %s\n", pos, total, s.Type, s.Headline)
@@ -183,6 +188,10 @@ func authorOneSVG(ctx context.Context, client llm.Client, model, sys, deckCtx st
 	if strings.TrimSpace(s.SpeakerNotes) != "" {
 		fmt.Fprintf(&user, "note: %s\n", s.SpeakerNotes)
 	}
+	// MoA: when the Architect produced a plan, its per-slide brief (layout +
+	// chart + pinned numbers) is the authority — append it so this designer
+	// executes the plan instead of improvising.
+	user.WriteString(spec.promptBlock())
 	user.WriteString("\nReturn STRICT JSON for THIS ONE slide only — NO array, NO markdown fences:\n{\"svg\":\"<svg viewBox='0 0 1920 1080' xmlns='http://www.w3.org/2000/svg' width='1920' height='1080'>…</svg>\"}")
 
 	// Single attempt — the per-slide loop in AuthorSVGPerSlide owns retries,

@@ -25,12 +25,12 @@ import (
 // only when it flags a concrete violation, one targeted refine pass rewrites
 // that single slide.
 //
-// COST-GATED: off unless DW_SVG_SELF_CRITIQUE is set. When on it adds one
-// critic call per non-fallback slide (+ one refine call only for slides that
-// fail), which roughly doubles a deck's authoring LLM calls — worth it for a
-// final polish, not for every draft. Both calls run on the fast svg_author
-// tier and the refine reuses the (prompt-cached) author system prompt, so the
-// real added cost is modest. Fallback stand-in slides are skipped.
+// MoA-2: ON by default (opt out with DW_SVG_SELF_CRITIQUE=off). Per non-fallback
+// slide it runs an author↔critic LOOP of up to svgCritiqueMaxRounds rounds:
+// critique → (if issues) refine → re-critique, stopping early when the critic is
+// clean. Both calls run on the fast svg_author tier and the refine reuses the
+// (prompt-cached) author system prompt, so the added cost stays modest. Fallback
+// stand-in slides are skipped; a refine that fails QA never regresses the slide.
 
 // fallbackMarker tags FallbackSVG output so the critique pass can skip plain
 // stand-in slides (nothing to polish there).
@@ -38,16 +38,24 @@ const fallbackMarker = "<!--dw-fallback-->"
 
 func isFallbackSVG(svg string) bool { return strings.Contains(svg, fallbackMarker) }
 
-// svgSelfCritiqueEnabled gates the whole pass.
+// svgSelfCritiqueEnabled gates the whole pass. MoA-2: the author↔critic loop
+// is now CORE to quality, so it runs by DEFAULT. Opt OUT (e.g. for a fast
+// cheap draft) with DW_SVG_SELF_CRITIQUE=off.
 func svgSelfCritiqueEnabled() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv("DW_SVG_SELF_CRITIQUE"))) {
-	case "on", "1", "true", "yes":
-		return true
+	case "off", "0", "false", "no":
+		return false
 	}
-	return false
+	return true
 }
 
 const svgCritiqueConcurrency = 3
+
+// svgCritiqueMaxRounds bounds the per-slide author↔critic loop (MoA-2): each
+// round = one critique + (if it flags issues) one refine, then re-critique. 2
+// rounds catches the common case (a fix that introduces a smaller issue) while
+// staying cost-bounded; a slide still flagged after 2 ships as-is.
+const svgCritiqueMaxRounds = 2
 
 const svgCritiqueSystem = `You are a ruthless presentation-design editor reviewing ONE slide that is supplied as SVG markup. Judge it ONLY against these rules and return concrete, actionable fixes — or an empty list if it is already strong.
 
@@ -94,29 +102,41 @@ func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme strin
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			notes, u1, err := critiqueOneSVG(ctx, client, model, svg)
-			mu.Lock()
-			total.InputTokens += u1.InputTokens
-			total.OutputTokens += u1.OutputTokens
-			mu.Unlock()
-			if err != nil || len(notes) == 0 {
-				return // critic failed or slide is already good — leave it
+			// MoA-2: author↔critic LOOP. Each round critiques the CURRENT
+			// SVG; if the critic flags issues, refine once and loop to
+			// re-critique. Stop early when clean, when refine fails QA (keep
+			// the last good version — never regress), or after maxRounds.
+			cur := svg
+			improved := false
+			for round := 1; round <= svgCritiqueMaxRounds; round++ {
+				notes, u1, err := critiqueOneSVG(ctx, client, model, cur)
+				mu.Lock()
+				total.InputTokens += u1.InputTokens
+				total.OutputTokens += u1.OutputTokens
+				mu.Unlock()
+				if err != nil || len(notes) == 0 {
+					break // critic failed or the slide is clean — done
+				}
+				refined, u2, rerr := refineOneSVGDesign(ctx, client, model, sys, cur, notes)
+				mu.Lock()
+				total.InputTokens += u2.InputTokens
+				total.OutputTokens += u2.OutputTokens
+				mu.Unlock()
+				if rerr != nil || !QASlideUsable(refined) {
+					break // refine failed — keep the last good version
+				}
+				cur = svgicons.Inline(refined, tok.FGMuted) // re-resolve any <use> icons
+				improved = true
+				slog.Info("svg slide critic-refined", "slide", i+1, "round", round, "fixes", strings.Join(notes, "; "))
 			}
-			refined, u2, rerr := refineOneSVGDesign(ctx, client, model, sys, svg, notes)
-			mu.Lock()
-			total.InputTokens += u2.InputTokens
-			total.OutputTokens += u2.OutputTokens
-			mu.Unlock()
-			if rerr != nil || !QASlideUsable(refined) {
-				return // refine failed — keep the original (never regress)
+			if !improved {
+				return // nothing changed
 			}
-			refined = svgicons.Inline(refined, tok.FGMuted) // re-resolve any <use> icons
 			mu.Lock()
-			content.Slides[i].Data.SVG = refined
+			content.Slides[i].Data.SVG = cur
 			mu.Unlock()
-			slog.Info("svg slide self-refined", "slide", i+1, "fixes", strings.Join(notes, "; "))
 			if onRefined != nil {
-				onRefined(i, refined)
+				onRefined(i, cur)
 			}
 		}(i, svg)
 	}

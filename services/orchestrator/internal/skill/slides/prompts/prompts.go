@@ -60,3 +60,22 @@ var SVGPlan string
 //
 //go:embed svg_master.md
 var SVGMaster string
+
+// MoA (Mixture-of-Agents) — the Deck Architect. Runs AFTER the outline and
+// BEFORE per-slide SVG authoring. It assigns each slide a layout skeleton,
+// decides which slides carry a chart (and which type), and pins the deck's
+// ACTUAL numbers as a single source of truth — so the per-slide authors
+// execute a plan instead of each improvising layout + inventing (often
+// inconsistent) figures. See stages/svg_architect.go.
+//
+//go:embed svg_architect.md
+var SVGArchitect string
+
+// MoA — the Coherence Editor. Runs LAST, after every slide is authored +
+// critiqued. It reads a text digest of the WHOLE deck and flags the cross-slide
+// problems no single-slide reviewer can see: a number that disagrees between
+// slides, a broken narrative, 3+ identical layouts in a row. See
+// stages/svg_coherence.go.
+//
+//go:embed svg_coherence.md
+var SVGCoherence string
