@@ -225,7 +225,19 @@ func (h *handlers) runSlideJob(job *slideJob, in slides.Input, wsID uuid.UUID) {
 	jobSlots <- struct{}{}
 	defer func() { <-jobSlots }()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+	// Budget scales with deck size. 15 min fits an ~8-page deck; a 20-page
+	// full-MoA deck (a big v4-pro outline + 20 parallel authors + critic loop
+	// + coherence + a 20-page chromedp render) blew past it and died at render
+	// with "context deadline exceeded". Floor 15 min, +90s per slide over 8,
+	// capped 45 min so a runaway can't pin a slot forever.
+	jobBudget := 15 * time.Minute
+	if n := in.SlideCount; n > 8 {
+		jobBudget += time.Duration(n-8) * 90 * time.Second
+		if jobBudget > 45*time.Minute {
+			jobBudget = 45 * time.Minute
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), jobBudget)
 	defer cancel()
 	ctx = event.WithSessionID(ctx, job.SessionID)
 	if wsID != uuid.Nil {
