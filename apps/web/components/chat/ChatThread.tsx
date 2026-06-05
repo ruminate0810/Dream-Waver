@@ -13,6 +13,7 @@ import {
   ArrowUp,
   Check,
   ChevronRight,
+  FileDown,
   Layers,
   Loader2,
   Map as MapIcon,
@@ -440,16 +441,28 @@ function PendingRow({ text, onCancel }: { text: string; onCancel: () => void }) 
 }
 
 function DownloadRow({ href }: { href: string }) {
+  // PMQ C2: the PDF export shares the deck's route — /download → /export.pdf.
+  const pdfHref = href.replace(/\/download$/, "/export.pdf");
   return (
     <div className="space-y-1.5">
       <Label kind="ai" />
-      <a
-        href={href}
-        className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 bg-white px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)] transition-colors hover:border-[color:var(--ink)]/40 hover:bg-[color:var(--paper)]/60"
-      >
-        <ArrowDownToLine size={14} strokeWidth={1.8} />
-        <span>Download .pptx</span>
-      </a>
+      <div className="flex flex-wrap items-center gap-2">
+        <a
+          href={href}
+          className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 bg-white px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)] transition-colors hover:border-[color:var(--ink)]/40 hover:bg-[color:var(--paper)]/60"
+        >
+          <ArrowDownToLine size={14} strokeWidth={1.8} />
+          <span>下载 .pptx</span>
+        </a>
+        <a
+          href={pdfHref}
+          className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)]/80 transition-colors hover:border-[color:var(--ink)]/40 hover:text-[color:var(--ink)]"
+          title="将整套幻灯片导出为 PDF（首次点击需几秒渲染）"
+        >
+          <FileDown size={14} strokeWidth={1.8} />
+          <span>导出 PDF</span>
+        </a>
+      </div>
     </div>
   );
 }

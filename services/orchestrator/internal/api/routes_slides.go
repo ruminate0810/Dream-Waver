@@ -1158,6 +1158,53 @@ func (h *handlers) DownloadSlides(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, f)
 }
 
+// ExportSlidesPDF (PMQ C2) rasterises the whole deck to a single multi-page
+// PDF via Chromium print-to-PDF and streams it as a download. Reads the deck
+// from the live SessionState (same restart-hydrate fallback the preview
+// handlers use), so it works the moment the deck has rendered — independent
+// of the .pptx.
+func (h *handlers) ExportSlidesPDF(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if h.deps.Sessions == nil || h.deps.Renderer == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "pdf export unavailable")
+		return
+	}
+	state, ok := h.deps.Sessions.Get(id)
+	if !ok {
+		wsID := workspaceIDFromCtx(r.Context())
+		if wsID != uuid.Nil {
+			if hydrated, hOK := h.deps.Sessions.GetOrLoad(r.Context(), wsID, id); hOK {
+				state, ok = hydrated, true
+			}
+		}
+		if !ok {
+			errorJSON(w, http.StatusNotFound, "deck not found")
+			return
+		}
+	}
+	deck, count := state.Snapshot()
+	if deck == nil || count == 0 {
+		errorJSON(w, http.StatusNotFound, "deck not ready")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	pdf, err := h.deps.Renderer.RenderDeckPDF(ctx, *deck)
+	if err != nil {
+		errorJSON(w, http.StatusInternalServerError, "pdf: "+err.Error())
+		return
+	}
+	name := "slides.pdf"
+	jobsMu.RLock()
+	if job, jok := jobs[id]; jok && job.PptxPath != "" {
+		name = strings.TrimSuffix(filepath.Base(job.PptxPath), ".pptx") + ".pdf"
+	}
+	jobsMu.RUnlock()
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	_, _ = w.Write(pdf)
+}
+
 // hydrateSlideJob is Sprint X2b-2's restart-recovery entry point: when
 // the in-memory `jobs` map misses (process bounced since the job was
 // created) we try to rebuild both the metadata record AND the

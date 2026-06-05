@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -533,6 +534,117 @@ func (r *SlideRender) RenderSlideHTML(s schema.Slide, theme schema.Theme, folio 
 		return nil, fmt.Errorf("load templates: %w", err)
 	}
 	return r.renderHTML(s, theme, folio)
+}
+
+// ─── PMQ C2: whole-deck PDF export ──────────────────────────────────
+
+var (
+	pdfIDDefRe  = regexp.MustCompile(`\bid="([^"]+)"`)
+	pdfURLRefRe = regexp.MustCompile(`url\(#([^)]+)\)`)
+	pdfHrefRe   = regexp.MustCompile(`(\bxlink:href|\bhref)="#([^"]+)"`)
+)
+
+// namespaceSVGIDs prefixes every id + same-document reference in one slide's
+// SVG with a per-page token. SVG ids are document-GLOBAL, so combining many
+// slides into a single PDF document would otherwise make every page reuse
+// page 1's gradients/filters (url(#bg) resolves to the first match). This
+// keeps each page's defs isolated without spinning up a browser tab per slide.
+func namespaceSVGIDs(svg string, page int) string {
+	p := fmt.Sprintf("p%d_", page)
+	svg = pdfIDDefRe.ReplaceAllString(svg, `id="`+p+`$1"`)
+	svg = pdfURLRefRe.ReplaceAllString(svg, `url(#`+p+`$1)`)
+	svg = pdfHrefRe.ReplaceAllString(svg, `$1="#`+p+`$2"`)
+	return svg
+}
+
+// RenderDeckPDF rasterises the whole deck to a single multi-page PDF via
+// Chromium print-to-PDF — one 1920×1080 landscape page per slide. SVG-mode
+// slides are inlined (id-namespaced per page so their <defs> don't collide);
+// any non-SVG slide falls back to a themed blank page so pagination and the
+// export never break. One Chromium navigation for the whole deck.
+func (r *SlideRender) RenderDeckPDF(ctx context.Context, deck schema.Deck) ([]byte, error) {
+	if len(deck.Slides) == 0 {
+		return nil, fmt.Errorf("RenderDeckPDF: deck has no slides")
+	}
+	if err := r.loadTemplates(); err != nil {
+		return nil, fmt.Errorf("load templates: %w", err)
+	}
+	theme := string(deck.Theme)
+	if theme == "" {
+		theme = string(schema.ThemeMinimalist)
+	}
+	tok := themetokens.Get(theme)
+
+	var body strings.Builder
+	for i, s := range deck.Slides {
+		content := strings.TrimSpace(s.Data.SVG)
+		if s.Layout == schema.LayoutSVG && content != "" {
+			content = namespaceSVGIDs(content, i+1)
+		} else {
+			content = fmt.Sprintf(`<svg viewBox="0 0 1920 1080" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="%s"/></svg>`, tok.BG)
+		}
+		fmt.Fprintf(&body, `<div class="dw-pg">%s</div>`, content)
+	}
+	doc := "<!doctype html><html><head><meta charset=\"utf-8\">" +
+		tok.StyleBlock("", "", "") +
+		// NOTE: override StyleBlock's single-slide shell, which clamps
+		// html,body to height:1080px;overflow:hidden (that would clip every
+		// page after the first → a 1-page PDF). Force the document to grow so
+		// the .dw-pg pages stack and paginate.
+		`<style>@page{size:20in 11.25in;margin:0}html,body{margin:0!important;padding:0!important;width:1920px!important;height:auto!important;min-height:0!important;overflow:visible!important;background:` + tok.BG +
+		`;-webkit-print-color-adjust:exact;print-color-adjust:exact}.dw-pg{width:1920px;height:1080px;overflow:hidden;break-after:page;page-break-after:always}.dw-pg:last-child{break-after:auto;page-break-after:auto}.dw-pg>svg{display:block;width:1920px;height:1080px}</style>` +
+		"</head><body>" + body.String() + "</body></html>"
+
+	stagingDir, err := os.MkdirTemp("", "dw-pdf-*")
+	if err != nil {
+		return nil, fmt.Errorf("staging dir: %w", err)
+	}
+	defer os.RemoveAll(stagingDir)
+	htmlPath := filepath.Join(stagingDir, "deck.html")
+	if err := os.WriteFile(htmlPath, []byte(doc), 0o644); err != nil {
+		return nil, fmt.Errorf("write deck html: %w", err)
+	}
+
+	allocOpts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("hide-scrollbars", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+	)
+	allocCtx, cancelAlloc := chromedp.NewExecAllocator(ctx, allocOpts...)
+	defer cancelAlloc()
+	browserCtx, cancelBrowser := chromedp.NewContext(allocCtx)
+	defer cancelBrowser()
+
+	awaitFontsReady := chromedp.Evaluate(`document.fonts.ready`, nil,
+		func(p *cdpruntime.EvaluateParams) *cdpruntime.EvaluateParams {
+			return p.WithAwaitPromise(true)
+		})
+
+	var pdf []byte
+	if err := chromedp.Run(browserCtx,
+		chromedp.EmulateViewport(renderViewportW, renderViewportH),
+		chromedp.Navigate("file://"+htmlPath),
+		chromedp.WaitReady("body", chromedp.ByQuery),
+		awaitFontsReady,
+		chromedp.Sleep(250*time.Millisecond), // last paint settle
+		chromedp.ActionFunc(func(c context.Context) error {
+			buf, _, perr := page.PrintToPDF().
+				WithPrintBackground(true).
+				WithPreferCSSPageSize(false). // paper dims below are the single source of truth
+				WithMarginTop(0).WithMarginBottom(0).
+				WithMarginLeft(0).WithMarginRight(0).
+				WithPaperWidth(20).WithPaperHeight(11.25). // 1920×1080 px @ 96dpi
+				Do(c)
+			if perr != nil {
+				return perr
+			}
+			pdf = buf
+			return nil
+		}),
+	); err != nil {
+		return nil, fmt.Errorf("print-to-pdf: %w", err)
+	}
+	return pdf, nil
 }
 
 // renderHTML executes the HTML+Tailwind template for one slide.
