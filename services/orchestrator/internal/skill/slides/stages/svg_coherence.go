@@ -100,11 +100,11 @@ func CoherenceReviewSVG(ctx context.Context, router llm.Router, theme, deckTitle
 		MaxTokens:         1400,
 		EnablePromptCache: true,
 	})
-	total.InputTokens += resp.Usage.InputTokens
-	total.OutputTokens += resp.Usage.OutputTokens
 	if err != nil {
 		return content, total, nil // critic glitch — ship the deck as-is
 	}
+	total.InputTokens += resp.Usage.InputTokens
+	total.OutputTokens += resp.Usage.OutputTokens
 
 	var parsed struct {
 		Fixes []struct {
