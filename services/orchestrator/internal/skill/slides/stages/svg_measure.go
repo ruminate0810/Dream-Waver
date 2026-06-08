@@ -79,25 +79,46 @@ type measurePayload struct {
 // want for overflow. getBoundingClientRect is in CSS px at our 1920-wide
 // viewport, i.e. canvas coordinates.
 const measureJS = `(() => {
-  const texts = [];
-  document.querySelectorAll('text').forEach(t => {
-    const r = t.getBoundingClientRect();
+  // effective opacity = element opacity * fill-opacity, multiplied up the
+  // ancestor chain — lets us recognise a faint watermark (e.g. a 320px
+  // <text fill-opacity="0.04"> behind the title) as decorative and skip it,
+  // instead of counting its huge bbox as a real overlap/overflow.
+  function effOpacity(el){
+    var o = 1;
+    for (var n = el; n && n.nodeType === 1; n = n.parentNode){
+      var cs = getComputedStyle(n);
+      var op = parseFloat(cs.opacity); if(!isNaN(op)) o *= op;
+      if (n === el){ var fo = parseFloat(cs.fillOpacity); if(!isNaN(fo)) o *= fo; }
+      if (n.tagName && n.tagName.toLowerCase() === 'svg') break;
+    }
+    return o;
+  }
+  var texts = [];
+  document.querySelectorAll('text').forEach(function(t){
+    var r = t.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
-    texts.push({
-      text: (t.textContent || '').trim().slice(0, 40),
-      x: r.left, y: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height
-    });
+    if (effOpacity(t) < 0.18) return; // faint watermark / decorative — not a real collision
+    texts.push({ text:(t.textContent||'').trim().slice(0,40), x:r.left, y:r.top, right:r.right, bottom:r.bottom, w:r.width, h:r.height });
   });
-  // Card / panel rects, so we can flag text that spills OUTSIDE its own card
-  // even when it stays far inside the global safe margin. Skip the full-bleed
-  // background and thin decorative bars / chips / chart ticks.
-  const cards = [];
-  document.querySelectorAll('rect').forEach(c => {
-    const r = c.getBoundingClientRect();
+  // Card / panel shapes, so we can flag text that spills OUTSIDE its own card
+  // even when it stays far inside the global safe margin. rects are taken as-is
+  // (proven); path/polygon cards get strict filters (filled + panel aspect) so
+  // chart axes, dividers, and decorative strokes aren't mistaken for panels.
+  var cards = [];
+  function pushIfCard(el, strict){
+    var r = el.getBoundingClientRect();
     if (r.width >= 1860 && r.height >= 1040) return; // full-canvas background
-    if (r.width < 140 || r.height < 56) return;      // dividers / pills / ticks
-    cards.push({ x: r.left, y: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height });
-  });
+    if (r.width < 140 || r.height < 56) return;      // dividers / pills / ticks / icons
+    if (strict){
+      var cs = getComputedStyle(el);
+      if (cs.fill === 'none' || cs.fillOpacity === '0') return; // stroke-only line / chart axis
+      var ar = r.width / r.height;
+      if (ar < 0.4 || ar > 9) return;                // thin rails, not panels
+    }
+    cards.push({ x:r.left, y:r.top, right:r.right, bottom:r.bottom, w:r.width, h:r.height });
+  }
+  document.querySelectorAll('rect').forEach(function(c){ pushIfCard(c, false); });
+  document.querySelectorAll('path, polygon').forEach(function(c){ pushIfCard(c, true); });
   return JSON.stringify({ texts, cards });
 })()`
 
@@ -191,11 +212,23 @@ func detectViolations(rects []textRect, cards []cardRect) []Violation {
 	// Pairwise overlap (O(n²); n is small — a slide has <40 text nodes).
 	for a := 0; a < len(rects); a++ {
 		for b := a + 1; b < len(rects); b++ {
-			if area := intersectArea(rects[a], rects[b]); area >= overlapMinArea {
-				vs = append(vs, Violation{Kind: "overlap",
-					Detail: fmt.Sprintf("text %q overlaps text %q (collision ~%.0f px²) — reposition one so they don't sit on top of each other",
-						truncate(rects[a].Text, 20), truncate(rects[b].Text, 20), area)})
+			area := intersectArea(rects[a], rects[b])
+			if area < overlapMinArea {
+				continue
 			}
+			// Require the overlap to be a meaningful FRACTION of the smaller
+			// text box. Two stacked lines of one heading graze by a few percent
+			// (tight leading + CJK/Latin ascenders) — not a collision; two
+			// labels rendered on top of each other overlap by most of their
+			// area. This kills the adjacent-title-line false positive without
+			// missing real "text sitting on text".
+			minArea := min64(rects[a].W*rects[a].H, rects[b].W*rects[b].H)
+			if minArea > 0 && area < 0.25*minArea {
+				continue
+			}
+			vs = append(vs, Violation{Kind: "overlap",
+				Detail: fmt.Sprintf("text %q overlaps text %q (collision ~%.0f px²) — reposition one so they don't sit on top of each other",
+					truncate(rects[a].Text, 20), truncate(rects[b].Text, 20), area)})
 		}
 	}
 	// Per-card overflow: text that renders PAST the right/bottom border of the

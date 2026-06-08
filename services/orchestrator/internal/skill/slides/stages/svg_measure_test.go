@@ -60,3 +60,33 @@ func TestSmallestContainingCard_PicksInner(t *testing.T) {
 		t.Fatalf("expected inner card (right=%.0f), got ok=%v right=%.0f", inner.Right, ok, c.Right)
 	}
 }
+
+// Two stacked lines of one heading graze (tight leading) but don't collide; two
+// labels rendered on top of each other do. The fractional gate must tell them
+// apart so a multi-line title doesn't trip a wasted repair round.
+func TestDetectViolations_OverlapFraction(t *testing.T) {
+	stacked := []textRect{
+		{Text: "标题第一行很宽", X: 600, Y: 300, Right: 1320, Bottom: 372, W: 720, H: 72},
+		{Text: "标题第二行很宽", X: 600, Y: 368, Right: 1320, Bottom: 440, W: 720, H: 72}, // 4px graze
+	}
+	if n := countKind(detectViolations(stacked, nil), "overlap"); n != 0 {
+		t.Errorf("stacked heading lines should not flag overlap, got %d", n)
+	}
+	onTop := []textRect{
+		{Text: "+25%", X: 600, Y: 300, Right: 760, Bottom: 380, W: 160, H: 80},
+		{Text: "40%", X: 610, Y: 305, Right: 770, Bottom: 385, W: 160, H: 80}, // sits on top
+	}
+	if n := countKind(detectViolations(onTop, nil), "overlap"); n != 1 {
+		t.Errorf("on-top labels should flag exactly 1 overlap, got %d", n)
+	}
+}
+
+func countKind(vs []Violation, kind string) int {
+	n := 0
+	for _, v := range vs {
+		if v.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
