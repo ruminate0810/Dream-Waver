@@ -115,6 +115,7 @@ Deviate only when one hero number or a tight card genuinely needs it — and eve
 # TEXT (SVG has no auto-wrap — you MUST hand-break)
 - Break long lines into multiple `<text>` or `<tspan x="…" dy="1.3em">` lines. Budget ~`1600/(F*0.6)` Latin chars or ~`1600/F` CJK chars at font-size F within x:[120,1800]. Break EARLIER when unsure.
 - **Text INSIDE a card/column must fit THAT container's inner width, not the full 1680px.** A line's budget is ~`(cardWidth−2·pad)/F` CJK chars (pad≈40). A 4-up card (width 396) holds only ~9 CJK chars at 30px before its right padding — so card body lines must be short, hand-broken to ≤2 lines, or the font dropped. A line that gets clipped at the card's right edge is a failure.
+- **Never split a word across lines.** Hand-break ONLY at a space or between two CJK characters — never mid-Latin-word, mid-number, or mid-code-token (`poll` must never wrap as `pol`+`l`; `35,000` must stay whole). If one long token won't fit the line, shrink the font or widen the container instead.
 - Never let any text cross x=1800 or y=1000; top safe area y≥110. Set font-family, font-size, fill, font-weight on every text node.
 
 # FORBIDDEN (these break PowerPoint export or look amateur)
