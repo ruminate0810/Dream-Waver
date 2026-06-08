@@ -330,8 +330,11 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		if err != nil {
 			return nil, fmt.Errorf("svg author: %w", err)
 		}
-		// Refine: one visual-review round to fix any overflow/overlap.
-		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 1, nil)
+		// Refine: up to 2 visual-review rounds to fix any overflow/overlap.
+		// Round 2 RE-MEASURES the slides round 1 touched, so an LLM fix that
+		// didn't fully resolve the overrun gets a second pass instead of
+		// shipping with it (maxRounds=1 had no verification step).
+		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, nil)
 		// PMQ A4: optional per-slide DESIGN self-critique (assertion titles,
 		// data-context, accent restraint, dead space) — the soft rules the
 		// geometric repair can't see. No-op unless DW_SVG_SELF_CRITIQUE is
