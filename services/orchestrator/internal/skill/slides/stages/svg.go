@@ -117,9 +117,10 @@ Rules:
 //
 // onRound (optional) is called once per round with a short status string
 // for event-stream surfacing; nil disables it.
-func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, maxRounds int, onRound func(string)) (*ContentResult, error) {
+func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, maxRounds int, onRound func(string)) (*ContentResult, llm.Usage, error) {
+	var total llm.Usage
 	if content == nil || len(content.Slides) == 0 {
-		return content, nil
+		return content, total, nil
 	}
 	if maxRounds <= 0 {
 		maxRounds = 2
@@ -138,7 +139,7 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 		viol, err := MeasureSVGs(ctx, svgs, theme)
 		if err != nil {
 			// measurement infra failed — don't block the deck.
-			return content, nil
+			return content, total, nil
 		}
 		var stillBad []int
 		repaired := 0
@@ -147,7 +148,8 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 			if len(vs) == 0 {
 				continue
 			}
-			fixed, rerr := repairOneSVG(ctx, router, theme, content.Slides[idx].Data.SVG, vs)
+			fixed, u, rerr := repairOneSVG(ctx, router, theme, content.Slides[idx].Data.SVG, vs)
+			addUsage(&total, u)
 			if rerr != nil || strings.TrimSpace(fixed) == "" {
 				continue // keep original; will not re-check
 			}
@@ -164,12 +166,12 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 		// Re-measure only the slides we just changed next round.
 		pending = stillBad
 	}
-	return content, nil
+	return content, total, nil
 }
 
 // repairOneSVG asks the LLM to fix a single slide's SVG given its
 // violations. Returns the corrected SVG markup.
-func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs []Violation) (string, error) {
+func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs []Violation) (string, llm.Usage, error) {
 	tok := themetokens.Get(theme)
 	user := fmt.Sprintf(
 		"Theme palette: bg=%s fg=%s muted=%s accent=%s\n\nCurrent SVG:\n%s\n\nMeasured layout problems to fix:\n%s",
@@ -177,7 +179,7 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 	)
 	client := router.For("planner")
 	var out string
-	_, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
+	resp, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
 		Model:        router.ModelFor("planner"),
 		SystemPrompt: svgRepairSystem,
 		Messages:     []schema.Message{schema.NewUser(user)},
@@ -194,10 +196,14 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 		}
 		return nil
 	})
-	if err != nil {
-		return "", err
+	var u llm.Usage
+	if resp != nil {
+		u = resp.Usage
 	}
-	return out, nil
+	if err != nil {
+		return "", u, err
+	}
+	return out, u, nil
 }
 
 // renderSVGPrompt substitutes the theme's full spec_lock tokens into the

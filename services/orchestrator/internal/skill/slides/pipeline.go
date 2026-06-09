@@ -95,10 +95,11 @@ type Output struct {
 // EstimatedUSD is derived (see estimateCost) so the API can show a "this
 // run cost $X" badge without re-summing on the frontend.
 type Cost struct {
-	InputTokens     int     `json:"input_tokens"`
-	OutputTokens    int     `json:"output_tokens"`
-	CacheReadTokens int     `json:"cache_read_tokens"`
-	EstimatedUSD    float64 `json:"estimated_usd"`
+	InputTokens         int     `json:"input_tokens"`
+	OutputTokens        int     `json:"output_tokens"`
+	CacheReadTokens     int     `json:"cache_read_tokens"`
+	CacheCreationTokens int     `json:"cache_creation_tokens"`
+	EstimatedUSD        float64 `json:"estimated_usd"`
 }
 
 // Run is the fast/deterministic execution path: outline → content →
@@ -187,6 +188,8 @@ func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, er
 // (SV-3 will upgrade assembly to native editable shapes).
 func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output, error) {
 	var cost Cost
+	// SVQ Phase 0: per-stage token ledger feeding the `svg token budget` log.
+	var planCost, authorCost, critCost, repairCost, cohCost Cost
 
 	// Parallel planning (skeleton → N parallel section-planners → merge)
 	// produces the outline AND the architect spec together, far faster than the
@@ -213,6 +216,7 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			outline, planSpec = nil, nil
 		} else {
 			cost.add(uPlan)
+			planCost.add(uPlan)
 		}
 	}
 	if outline == nil {
@@ -303,6 +307,7 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 				deckSpec = nil
 			} else {
 				cost.add(uArch)
+				planCost.add(uArch)
 			}
 		}
 		if deckSpec != nil {
@@ -334,7 +339,10 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		// Round 2 RE-MEASURES the slides round 1 touched, so an LLM fix that
 		// didn't fully resolve the overrun gets a second pass instead of
 		// shipping with it (maxRounds=1 had no verification step).
-		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, nil)
+		var uRepair llm.Usage
+		content, uRepair, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, nil)
+		cost.add(uRepair)
+		repairCost.add(uRepair)
 		// PMQ A4: optional per-slide DESIGN self-critique (assertion titles,
 		// data-context, accent restraint, dead space) — the soft rules the
 		// geometric repair can't see. No-op unless DW_SVG_SELF_CRITIQUE is
@@ -351,6 +359,7 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			p.emit(ctx, event.NewSlideUpdated(idx0+1))
 		})
 		cost.add(u3)
+		critCost.add(u3)
 		// MoA-3: Coherence Editor — one whole-deck pass that fixes the
 		// cross-slide problems no single-slide agent can see (a number that
 		// disagrees between slides, a broken narrative, 3+ identical layouts
@@ -367,8 +376,19 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			p.emit(ctx, event.NewSlideUpdated(idx0+1))
 		})
 		cost.add(u4)
+		cohCost.add(u4)
 	}
 	cost.add(u2)
+	authorCost.add(u2)
+	slog.InfoContext(ctx, "svg token budget",
+		"slides", len(content.Slides),
+		"plan_in", planCost.InputTokens, "plan_out", planCost.OutputTokens,
+		"author_in", authorCost.InputTokens, "author_out", authorCost.OutputTokens,
+		"critique_out", critCost.OutputTokens,
+		"repair_in", repairCost.InputTokens, "repair_out", repairCost.OutputTokens,
+		"coherence_out", cohCost.OutputTokens,
+		"total_in", cost.InputTokens, "total_out", cost.OutputTokens,
+		"cache_read", cost.CacheReadTokens, "cache_create", cost.CacheCreationTokens)
 
 	deck := stages.Assemble(outline, content)
 	deck.Theme = schema.Theme(theme)
@@ -582,6 +602,7 @@ func (c *Cost) add(u llm.Usage) {
 	c.InputTokens += u.InputTokens
 	c.OutputTokens += u.OutputTokens
 	c.CacheReadTokens += u.CacheReadTokens
+	c.CacheCreationTokens += u.CacheCreationTokens
 }
 
 // estimateCost is a rough USD estimate of one generation. The constants
