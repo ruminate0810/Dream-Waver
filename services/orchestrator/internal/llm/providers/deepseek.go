@@ -304,11 +304,26 @@ type partialToolCall struct {
 	args strings.Builder
 }
 
-// extractCacheHit reads the non-standard `prompt_cache_hit_tokens` field
-// DeepSeek adds to the usage object. The OpenAI Go SDK doesn't model it, so
-// we round-trip through JSON to read it without breaking when DeepSeek
-// removes / renames it later.
+// extractCacheHit reads how many prompt tokens DeepSeek served from its
+// automatic context cache.
+//
+// HISTORY: this used to JSON-round-trip the *already-decoded* openai.Usage and
+// look for a top-level `prompt_cache_hit_tokens` key. That key never survived —
+// go-openai's decoder drops fields it doesn't model, so DeepSeek's native
+// `prompt_cache_hit_tokens` was gone before we ever re-marshalled. Result:
+// extractCacheHit ALWAYS returned 0, which made us believe the 34KB SVG-author
+// prompt was billed uncached every slide. A direct probe disproved it: DeepSeek
+// caches ~99.7% of the stable prefix even at concurrency-5. The cache was always
+// warm; only our meter was blind.
+//
+// go-openai v1.41+ DOES model the OpenAI-standard nested field
+// `prompt_tokens_details.cached_tokens`, and DeepSeek populates it. Read that
+// directly. The legacy JSON fallback stays for resilience if a future
+// SDK/endpoint surfaces the count top-level instead.
 func extractCacheHit(u openai.Usage) int {
+	if u.PromptTokensDetails != nil && u.PromptTokensDetails.CachedTokens > 0 {
+		return u.PromptTokensDetails.CachedTokens
+	}
 	b, err := json.Marshal(u)
 	if err != nil {
 		return 0
