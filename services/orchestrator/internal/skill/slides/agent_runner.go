@@ -180,6 +180,14 @@ Available edit tools:
                         re-lay-out, declutter, reword, recolour, resize.
                         THE tool for svg-layout slides — the field / layout /
                         density / style tools above do NOT work on them.
+  - style_svg_element — DETERMINISTIC per-element restyle on an SVG slide:
+                        set ONE text element's fill (#RRGGBB), font_size,
+                        and/or font_weight, located by its exact match_text +
+                        occurrence. NO LLM call. Prefer this over edit_svg_slide
+                        for a pure colour / size / weight tweak on one specific
+                        bit of text ("把这个标题改成红色 / 这个数字大一点 /
+                        加粗这行") — it's instant and surgical. (The live
+                        preview's 样式 tab calls this directly.)
   - delete_slide      — remove one slide.
   - add_slide         — insert a new slide at a given 1-based position;
                         calls the worker LLM once to write its content.
@@ -992,6 +1000,9 @@ func (r *AgentRunner) Continue(ctx context.Context, jobID, userMessage string) (
 			Revise: func(ctx context.Context, theme, deckTitle string, page, total int, cur, instr string) (string, error) {
 				return stages.ReviseSVGSlide(ctx, r.Router, theme, deckTitle, page, total, cur, instr)
 			}},
+		// AG.1c — deterministic per-element restyle (fill/font-size/font-weight)
+		// of ONE <text> on an SVG slide. No LLM; powers the preview "样式" tab.
+		&tools.StyleSVGElement{State: state, Renderer: rendererAdapter},
 		&tools.DeleteSlide{State: state, Renderer: rendererAdapter},
 		&tools.AddSlide{State: state, Router: r.Router, Renderer: rendererAdapter},
 		&tools.DuplicateSlide{State: state, Renderer: rendererAdapter},

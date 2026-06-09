@@ -230,7 +230,12 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   const [mgmtBusy, setMgmtBusy] = useState(false);
 
   const handleEditOpen = useCallback((req: EditRequest, anchorRect: DOMRect) => {
-    setTarget({ slideIndex: req.slideIndex, text: req.text, role: req.role });
+    setTarget({
+      slideIndex: req.slideIndex,
+      text: req.text,
+      role: req.role,
+      style: req.style ?? null,
+    });
     setAnchor(anchorRect);
   }, []);
   const handleEditClose = useCallback(() => {
@@ -599,6 +604,14 @@ function buildEditInstruction(s: EditSubmit): string {
     // confuses payload boundaries with the Chinese 「」 characters that
     // might appear inside the body itself.
     return `请使用 edit_slide_text 工具修改第 ${s.slideIndex} 页的 ${fieldZh} 字段：把内容里包含 "${s.oldText}" 的文本改为 "${s.newText}"。不要调用 regenerate_slide。`;
+  }
+  if (s.mode === "style") {
+    // Deterministic per-element restyle (Sprint AG.1c) → style_svg_element.
+    const parts: string[] = [];
+    if (s.fill) parts.push(`fill 设为 "${s.fill}"`);
+    if (typeof s.fontSize === "number") parts.push(`font_size 设为 ${s.fontSize}`);
+    if (s.fontWeight) parts.push(`font_weight 设为 "${s.fontWeight}"`);
+    return `请使用 style_svg_element 工具修改第 ${s.slideIndex} 页：定位文本 "${s.matchText}"（第 ${s.occurrence} 处出现），把 ${parts.join("，")}。只调用 style_svg_element，不要调用 edit_svg_slide 或其他工具。`;
   }
   return `请把第 ${s.slideIndex} 页按照下面这条指示重写（使用 regenerate_slide 工具）：${s.instruction}`;
 }

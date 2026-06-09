@@ -30,6 +30,17 @@ export type EditRequest = {
     width: number;
     height: number;
   };
+  // Sprint AG.1c — per-element style target, present only when the click
+  // resolved into an SVG <text> (null on HTML-template decks). Carries the full
+  // <text> content + occurrence (the match key for style_svg_element) plus the
+  // element's current computed style, so the 样式 tab can prefill + restyle.
+  style?: {
+    text: string;
+    occurrence: number;
+    fill: string;
+    fontSize: number;
+    fontWeight: string;
+  } | null;
 };
 
 export function SlideFrame({

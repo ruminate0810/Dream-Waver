@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import { ArrowUpRight, Loader2, Sparkles, X } from "lucide-react";
+import { ArrowUpRight, Loader2, Minus, Palette, Plus, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
 
 // EditPopover is the floating editor that opens when the user clicks any
@@ -28,15 +28,37 @@ import clsx from "clsx";
 //     instruction. The agent picks regenerate_slide and rewrites the
 //     whole page through the worker LLM.
 
+// StyleTarget (Sprint AG.1c) — present only when the clicked element resolves
+// into an SVG <text>. Carries the full <text> content + occurrence (the match
+// key for style_svg_element) plus the element's current computed style so the
+// 样式 tab can prefill swatches / size.
+export type StyleTarget = {
+  text: string;
+  occurrence: number;
+  fill: string; // computed (rgb(...) or hex)
+  fontSize: number; // computed px in SVG user units
+  fontWeight: string; // computed
+};
+
 export type EditTarget = {
   slideIndex: number;
   text: string;
   role: string;
+  style?: StyleTarget | null;
 };
 
 export type EditSubmit =
   | { mode: "direct"; slideIndex: number; role: string; oldText: string; newText: string }
-  | { mode: "rewrite"; slideIndex: number; instruction: string };
+  | { mode: "rewrite"; slideIndex: number; instruction: string }
+  | {
+      mode: "style";
+      slideIndex: number;
+      matchText: string;
+      occurrence: number;
+      fill?: string;
+      fontSize?: number;
+      fontWeight?: string;
+    };
 
 export function EditPopover({
   target,
@@ -62,6 +84,9 @@ export function EditPopover({
   if (!mounted || !target || !anchor) return null;
   return createPortal(
     <PopoverBody
+      // Remount on a new target so all field state (direct / size / swatch)
+      // re-initializes from the freshly-clicked element.
+      key={`${target.slideIndex}:${target.text}:${target.style?.occurrence ?? 0}`}
       target={target}
       anchor={anchor}
       busy={busy}
@@ -73,10 +98,39 @@ export function EditPopover({
   );
 }
 
-type Tab = "direct" | "rewrite";
+type Tab = "direct" | "rewrite" | "style";
 
 const POPOVER_WIDTH = 380;
 const POPOVER_MARGIN = 16;
+
+// Curated swatches for the 样式 tab — the editorial accents + a few essentials.
+const STYLE_PRESETS: { label: string; hex: string }[] = [
+  { label: "朱红", hex: "#B5371E" },
+  { label: "墨", hex: "#1A1614" },
+  { label: "灰", hex: "#57534E" },
+  { label: "金", hex: "#F5B841" },
+  { label: "蓝", hex: "#2563EB" },
+  { label: "绿", hex: "#15803D" },
+  { label: "白", hex: "#FFFFFF" },
+];
+
+// rgbToHex normalizes a computed-style colour ("rgb(181, 55, 30)" or "#b5371e")
+// into upper-case #RRGGBB, or "" when it can't parse it.
+function rgbToHex(c: string): string {
+  const s = (c || "").trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toUpperCase();
+  const m = s.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (!m) return "";
+  const hex = (n: string) => Number(n).toString(16).padStart(2, "0");
+  return `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`.toUpperCase();
+}
+
+// weightNorm maps a computed font-weight to the two-state control's value.
+function weightNorm(w: string): "normal" | "bold" {
+  const n = parseInt(w, 10);
+  if (!Number.isNaN(n)) return n >= 600 ? "bold" : "normal";
+  return w === "bold" || w === "bolder" ? "bold" : "normal";
+}
 
 function PopoverBody({
   target,
@@ -101,6 +155,18 @@ function PopoverBody({
   const [direct, setDirect] = useState(target.text);
   const [rewrite, setRewrite] = useState("");
   const [enter, setEnter] = useState(false);
+
+  // ── 样式 tab (Sprint AG.1c) — only when the click resolved into an SVG <text>.
+  const styleT = target.style ?? null;
+  const styleAvail = !!styleT;
+  const origFill = styleT ? rgbToHex(styleT.fill) : "";
+  const origSize = styleT ? Math.round(styleT.fontSize) : 0;
+  const origWeight = styleT ? weightNorm(styleT.fontWeight) : "normal";
+  const [styleFill, setStyleFill] = useState(origFill);
+  const [styleSize, setStyleSize] = useState(origSize);
+  const [styleWeight, setStyleWeight] = useState<"normal" | "bold">(origWeight);
+  // Never strand the popover on a tab the current target doesn't offer.
+  const activeTab: Tab = tab === "style" && !styleAvail ? "direct" : tab;
 
   // Recompute the on-screen position. We try below first, fall back to
   // above when there's no room — like a Wikipedia footnote that prefers
@@ -130,11 +196,11 @@ function PopoverBody({
   // Refocus when switching tabs so keyboard flow stays smooth.
   useEffect(() => {
     const t = setTimeout(() => {
-      if (tab === "direct") inputRef.current?.focus();
-      else textareaRef.current?.focus();
+      if (activeTab === "direct") inputRef.current?.focus();
+      else if (activeTab === "rewrite") textareaRef.current?.focus();
     }, 40);
     return () => clearTimeout(t);
-  }, [tab]);
+  }, [activeTab]);
 
   // Click-outside + Escape close. The check uses composedPath because
   // the popover lives in a portal — a plain contains() can miss nested
@@ -186,6 +252,25 @@ function PopoverBody({
       mode: "rewrite",
       slideIndex: target.slideIndex,
       instruction: trimmedRewrite,
+    });
+  };
+
+  const styleChanged =
+    (!!styleFill && styleFill !== origFill) ||
+    (styleSize > 0 && styleSize !== origSize) ||
+    styleWeight !== origWeight;
+  const canSubmitStyle = !!styleT && styleChanged && !busy;
+  const submitStyle = (e?: FormEvent) => {
+    e?.preventDefault();
+    if (!canSubmitStyle || !styleT) return;
+    onSubmit({
+      mode: "style",
+      slideIndex: target.slideIndex,
+      matchText: styleT.text,
+      occurrence: styleT.occurrence,
+      fill: styleFill && styleFill !== origFill ? styleFill : undefined,
+      fontSize: styleSize > 0 && styleSize !== origSize ? styleSize : undefined,
+      fontWeight: styleWeight !== origWeight ? styleWeight : undefined,
     });
   };
 
@@ -255,21 +340,29 @@ function PopoverBody({
         {/* ────────── Mode tabs — segmented pixel switch ────────── */}
         <div className="mt-3 px-4">
           <div className="inline-flex overflow-hidden rounded-pixel border-2 border-ink">
-            <FolderTab active={tab === "direct"} onClick={() => setTab("direct")}>
+            <FolderTab active={activeTab === "direct"} onClick={() => setTab("direct")}>
               直接改
             </FolderTab>
-            <FolderTab active={tab === "rewrite"} onClick={() => setTab("rewrite")}>
+            <FolderTab active={activeTab === "rewrite"} onClick={() => setTab("rewrite")}>
               <span className="inline-flex items-baseline gap-1">
                 让 AI 重写
                 <Sparkles size={9} strokeWidth={1.8} className="translate-y-[1px]" />
               </span>
             </FolderTab>
+            {styleAvail ? (
+              <FolderTab active={activeTab === "style"} onClick={() => setTab("style")}>
+                <span className="inline-flex items-baseline gap-1">
+                  样式
+                  <Palette size={9} strokeWidth={1.8} className="translate-y-[1px]" />
+                </span>
+              </FolderTab>
+            ) : null}
           </div>
         </div>
 
         {/* ────────── Body ────────── */}
         <div className="px-4 pb-4 pt-4">
-          {tab === "direct" ? (
+          {activeTab === "direct" ? (
             <form onSubmit={submitDirect}>
               <label className="font-pixel text-[0.55rem] tracking-wide text-muted">
                 Revised wording
@@ -296,7 +389,7 @@ function PopoverBody({
                 onSubmit={submitDirect}
               />
             </form>
-          ) : (
+          ) : activeTab === "rewrite" ? (
             <form onSubmit={submitRewrite}>
               <label className="font-mono text-[10px] font-semibold tracking-wide text-muted">
                 Instruction · 让 AI 重写整页
@@ -322,6 +415,88 @@ function PopoverBody({
                 disabled={!canSubmitRewrite}
                 busy={busy}
                 onSubmit={submitRewrite}
+              />
+            </form>
+          ) : (
+            <form onSubmit={submitStyle}>
+              {/* Colour swatches */}
+              <label className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+                Colour · 颜色
+              </label>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {STYLE_PRESETS.map((p) => {
+                  const sel = styleFill.toUpperCase() === p.hex.toUpperCase();
+                  return (
+                    <button
+                      key={p.hex}
+                      type="button"
+                      title={p.label}
+                      aria-label={p.label}
+                      onClick={() => setStyleFill(p.hex.toUpperCase())}
+                      className={clsx(
+                        "h-6 w-6 rounded-[2px] border transition-transform",
+                        sel
+                          ? "scale-110 border-[color:var(--ink)] ring-1 ring-[color:var(--ink)]"
+                          : "border-[color:var(--ink)]/20 hover:scale-105",
+                      )}
+                      style={{ backgroundColor: p.hex }}
+                    />
+                  );
+                })}
+                <label
+                  className="ml-1 inline-flex h-6 cursor-pointer items-center gap-1 border border-[color:var(--ink)]/20 px-1.5 font-mono-jb text-[9px] uppercase tracking-[0.2em] text-[color:var(--ink-soft)]"
+                  title="自定义颜色"
+                >
+                  自定
+                  <input
+                    type="color"
+                    value={/^#[0-9A-Fa-f]{6}$/.test(styleFill) ? styleFill : "#1A1614"}
+                    onChange={(e) => setStyleFill(e.target.value.toUpperCase())}
+                    className="h-4 w-4 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                </label>
+              </div>
+
+              {/* Size stepper */}
+              <div className="mt-4 flex items-center justify-between">
+                <label className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+                  Size · 字号
+                </label>
+                <div className="inline-flex items-center gap-2">
+                  <StepBtn ariaLabel="缩小" onClick={() => setStyleSize((s) => clampSize(s - sizeStep(s)))}>
+                    <Minus size={12} strokeWidth={2} />
+                  </StepBtn>
+                  <span className="min-w-[46px] text-center font-mono-jb text-[12px] tabular-nums text-[color:var(--ink)]">
+                    {styleSize}px
+                  </span>
+                  <StepBtn ariaLabel="放大" onClick={() => setStyleSize((s) => clampSize(s + sizeStep(s)))}>
+                    <Plus size={12} strokeWidth={2} />
+                  </StepBtn>
+                </div>
+              </div>
+
+              {/* Weight toggle */}
+              <div className="mt-4 flex items-center justify-between">
+                <label className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+                  Weight · 字重
+                </label>
+                <div className="inline-flex border border-[color:var(--ink)]/20">
+                  <WeightBtn active={styleWeight === "normal"} onClick={() => setStyleWeight("normal")}>
+                    常规
+                  </WeightBtn>
+                  <WeightBtn active={styleWeight === "bold"} bold onClick={() => setStyleWeight("bold")}>
+                    加粗
+                  </WeightBtn>
+                </div>
+              </div>
+
+              {error && !busy ? <ErrorRow message={error} /> : null}
+              <Footer
+                hint={error ? "Esc 取消" : "改好点「应用」· Esc 取消"}
+                actionLabel={error ? "重试" : "应用"}
+                disabled={!canSubmitStyle}
+                busy={busy}
+                onSubmit={submitStyle}
               />
             </form>
           )}
@@ -356,6 +531,64 @@ function FolderTab({
       {children}
     </button>
   );
+}
+
+// ── 样式 tab sub-controls ──────────────────────────────────────────────
+
+function StepBtn({
+  ariaLabel,
+  onClick,
+  children,
+}: {
+  ariaLabel: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={ariaLabel}
+      onClick={onClick}
+      className="inline-flex h-6 w-6 items-center justify-center border border-[color:var(--ink)]/20 text-[color:var(--ink-soft)] transition-colors hover:border-[color:var(--ink)]/50 hover:text-[color:var(--ink)]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function WeightBtn({
+  active,
+  bold,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  bold?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={clsx(
+        "px-2.5 py-1 text-[12px] transition-colors",
+        bold ? "font-bold" : "font-normal",
+        active
+          ? "bg-[color:var(--ink)] text-[color:var(--paper)]"
+          : "text-[color:var(--ink-soft)] hover:text-[color:var(--ink)]",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function clampSize(n: number): number {
+  return Math.max(8, Math.min(400, Math.round(n)));
+}
+function sizeStep(s: number): number {
+  return Math.max(1, Math.round(s * 0.08));
 }
 
 function Footer({

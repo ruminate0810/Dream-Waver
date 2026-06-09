@@ -985,6 +985,33 @@ const slideBridgeScriptTpl = `
       el.classList.add('__dw-active');
 
       var r = el.getBoundingClientRect();
+      // Per-element style targeting (Sprint AG.1c): if the click resolves into
+      // an SVG <text>, resolve that <text> + its current computed style so the
+      // "样式" tab can restyle it deterministically. It's matched server-side by
+      // full text + occurrence (the Kth <text> with the same content), so styling
+      // a multi-line (tspan) title affects the whole block. Null on HTML decks.
+      var styleTarget = null;
+      var te = el;
+      while (te && te !== document.body) {
+        if (te.tagName && te.tagName.toLowerCase() === 'text') break;
+        te = te.parentElement;
+      }
+      if (te && te.tagName && te.tagName.toLowerCase() === 'text') {
+        var stext = (te.textContent || '').replace(/\s+/g, ' ').trim();
+        var occ = 1, k = 0;
+        document.querySelectorAll('text').forEach(function(tn) {
+          var tt = (tn.textContent || '').replace(/\s+/g, ' ').trim();
+          if (tt === stext) { k++; if (tn === te) occ = k; }
+        });
+        var cs = window.getComputedStyle(te);
+        styleTarget = {
+          text: stext,
+          occurrence: occ,
+          fill: cs.fill || '',
+          fontSize: parseFloat(cs.fontSize) || 0,
+          fontWeight: cs.fontWeight || ''
+        };
+      }
       window.parent.postMessage({
         type: 'dw-edit-request',
         slideIndex: window.__dwSlideIndex,
@@ -993,7 +1020,8 @@ const slideBridgeScriptTpl = `
         bbox: { left: r.left, top: r.top, right: r.right, bottom: r.bottom,
                 width: r.width, height: r.height },
         viewport: { w: document.documentElement.clientWidth,
-                    h: document.documentElement.clientHeight }
+                    h: document.documentElement.clientHeight },
+        style: styleTarget
       }, '*');
     }, true);
 
