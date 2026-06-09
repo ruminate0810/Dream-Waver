@@ -181,13 +181,21 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 	// deep reasoning — run it on the cheaper + faster svg_author tier (the harder
 	// 12K design refine already runs there fine) and cache the tiny, stable repair
 	// system prompt across rounds.
+	//
+	// MaxTokens MUST match the author's budget: repair re-emits the WHOLE slide
+	// SVG (not a diff), and a rich slide runs 4–6K tokens. The old 4000 ceiling
+	// truncated large slides mid-document → finish_reason="length" → empty content
+	// → a wasted retry → the overflow shipped unrepaired. This bit serif-heavy
+	// data themes (editorial) hardest, exactly where polish matters. 12000 is a
+	// ceiling, not a target, so small repairs are unaffected; it only stops the
+	// truncation on big slides.
 	client := router.For("svg_author")
 	var out string
 	resp, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
 		Model:             router.ModelFor("svg_author"),
 		SystemPrompt:      svgRepairSystem,
 		Messages:          []schema.Message{schema.NewUser(user)},
-		MaxTokens:         4000,
+		MaxTokens:         12000,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		// parseOneSVG is tolerant: it handles {"svg":…}, {"slides":[…]}, a bare
