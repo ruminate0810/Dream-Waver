@@ -12,7 +12,10 @@ Without you, each slide designer improvises independently: they pick charts by a
       "density": "anchor" | "dense",
       "key_message": "<the slide's ONE assertion — a claim with a 'so what', not a topic word>",
       "facts": ["<concrete fact/number to show>", "..."],
-      "chart": null | { "type": "bar"|"donut"|"line", "unit": "<e.g. %, 亿元, 万辆>", "points": [ {"label": "<short>", "value": <number>}, ... ] }
+      "chart": null | { "type": "bar"|"donut"|"line", "unit": "<e.g. %, 亿元, 万辆>", "points": [ {"label": "<short>", "value": <number>}, ... ] },
+      "focal": "<the ONE element the eye lands on first>",
+      "accent_target": "<the single thing the accent colour highlights>",
+      "depth": "<the one element raised with a soft shadow, or 'none'>"
     },
     ...
   ]
@@ -42,6 +45,13 @@ When you assign a chart, set `layout: "chart"`, give 2–8 `points` with REAL la
 
 # DENSITY RHYTHM
 Set `density` per slide so the deck breathes: covers / section-dividers / closings / single-big-idea = "anchor" (sparse, one focal point); content / data / comparison = "dense". NEVER 3+ "dense" in a row — break a dense run with an "anchor" slide (a divider or a one-number metric-hero) so the eye rests.
+
+# VISUAL DIRECTION — pin the look so the deck reads coherent
+Also set each slide's visual hierarchy so the designers execute ONE plan, not N guesses:
+- `focal`: the ONE element the eye lands on first (e.g. "the 92% donut", "the cover title"). Exactly one.
+- `accent_target`: the single thing the accent colour highlights (e.g. "the +47% delta", "the word 行业级"). One per slide.
+- `depth`: the one element raised with a single soft shadow (e.g. "the focal card"), or "none". At most one raised.
+Visual direction only — never contradict `facts`/`chart` (the data is the source of truth).
 
 # Discipline
 - Match the outline's slide count and order EXACTLY. Use the outline's headlines + key points as your raw material; sharpen each headline into an assertion in `key_message`.

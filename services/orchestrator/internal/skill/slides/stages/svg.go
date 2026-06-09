@@ -177,13 +177,18 @@ func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs 
 		"Theme palette: bg=%s fg=%s muted=%s accent=%s\n\nCurrent SVG:\n%s\n\nMeasured layout problems to fix:\n%s",
 		tok.BG, tok.FG, tok.FGMuted, tok.Accent, svg, formatViolations(vs),
 	)
-	client := router.For("planner")
+	// SVQ Phase 3: repair is a mechanical "move 40px / wrap this line" edit, not
+	// deep reasoning — run it on the cheaper + faster svg_author tier (the harder
+	// 12K design refine already runs there fine) and cache the tiny, stable repair
+	// system prompt across rounds.
+	client := router.For("svg_author")
 	var out string
 	resp, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
-		Model:        router.ModelFor("planner"),
-		SystemPrompt: svgRepairSystem,
-		Messages:     []schema.Message{schema.NewUser(user)},
-		MaxTokens:    4000,
+		Model:             router.ModelFor("svg_author"),
+		SystemPrompt:      svgRepairSystem,
+		Messages:          []schema.Message{schema.NewUser(user)},
+		MaxTokens:         4000,
+		EnablePromptCache: true,
 	}, func(content string) error {
 		// parseOneSVG is tolerant: it handles {"svg":…}, {"slides":[…]}, a bare
 		// <svg>, AND a JSON body the model broke with a raw newline inside the

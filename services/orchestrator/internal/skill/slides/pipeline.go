@@ -349,7 +349,7 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		// set; never regresses a slide. Refined slides are pushed back into
 		// the live-preview stream so the user sees the polish land.
 		var u3 llm.Usage
-		content, u3, _ = stages.CritiqueRefineSVGSlides(ctx, p.Router, theme, content, func(idx0 int, refined string) {
+		content, u3, _ = stages.CritiqueRefineSVGSlides(ctx, p.Router, theme, content, deckSpec, func(idx0 int, refined string) {
 			streamMu.Lock()
 			if idx0 >= 0 && idx0 < len(streamed.Slides) {
 				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: refined}}

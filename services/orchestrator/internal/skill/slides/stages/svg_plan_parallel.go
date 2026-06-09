@@ -61,6 +61,9 @@ type plannedSlide struct {
 	KeyMessage   string          `json:"key_message"`
 	Facts        []string        `json:"facts"`
 	Chart        *ChartPlan      `json:"chart"`
+	Focal        string          `json:"focal"`         // SVQ Phase 1 art-direction
+	AccentTarget string          `json:"accent_target"` // SVQ Phase 1 art-direction
+	Depth        string          `json:"depth"`         // SVQ Phase 1 art-direction
 }
 
 type sectionPlanResult struct {
@@ -126,12 +129,15 @@ func PlanDeckParallel(ctx context.Context, router llm.Router, in OutlineParams, 
 				SpeakerNotes: ps.SpeakerNotes,
 			})
 			specs = append(specs, SlideSpec{
-				Index:      idx,
-				Layout:     ps.Layout,
-				Density:    ps.Density,
-				KeyMessage: ps.KeyMessage,
-				Facts:      ps.Facts,
-				Chart:      ps.Chart,
+				Index:        idx,
+				Layout:       ps.Layout,
+				Density:      ps.Density,
+				KeyMessage:   ps.KeyMessage,
+				Facts:        ps.Facts,
+				Chart:        ps.Chart,
+				Focal:        ps.Focal,
+				AccentTarget: ps.AccentTarget,
+				Depth:        ps.Depth,
 			})
 		}
 	}

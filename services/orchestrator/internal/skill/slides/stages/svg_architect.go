@@ -46,6 +46,14 @@ type SlideSpec struct {
 	KeyMessage string     `json:"key_message"` // the slide's one-line assertion
 	Facts      []string   `json:"facts"`       // concrete facts/numbers (single source of truth)
 	Chart      *ChartPlan `json:"chart"`       // nil unless the slide's substance IS data
+	// SVQ Phase 1 — art-direction (LLM-set): the planner pins the visual choices
+	// so all N authors execute ONE coherent look instead of each guessing.
+	Focal        string `json:"focal"`         // the ONE element the eye lands on first
+	AccentTarget string `json:"accent_target"` // the single thing the accent colour highlights
+	Depth        string `json:"depth"`         // the one raised element (one shadow), or "none"
+	// Derived in normalize (not LLM-set):
+	Exemplar int  `json:"-"` // which GOLD EXEMPLAR (1-6) to emulate, from Layout+Chart
+	Hero     bool `json:"-"` // gets the full critique/refine budget (SVQ Phase 2)
 }
 
 // DeckSpec is the whole-deck plan: one SlideSpec per outline slide, in order.
@@ -124,7 +132,55 @@ func (d *DeckSpec) normalize(n int) {
 				s.Chart.Type = t
 			}
 		}
+		// SVQ Phase 1/2 — trim art-direction + derive the exemplar pointer and
+		// the hero/simple budget tier (both deterministic, zero planner tokens).
+		s.Focal = strings.TrimSpace(s.Focal)
+		s.AccentTarget = strings.TrimSpace(s.AccentTarget)
+		s.Depth = strings.TrimSpace(s.Depth)
+		s.Exemplar = exemplarFor(s.Layout, s.Chart)
+		s.Hero = isHeroSlide(s)
 	}
+}
+
+// exemplarFor maps a slide's layout + chart to the GOLD EXEMPLAR (1-6) the
+// author should emulate. Deterministic — costs zero planner tokens and zero
+// cache risk (it rides in the user message, not the cached system prompt).
+func exemplarFor(layout string, chart *ChartPlan) int {
+	if chart != nil {
+		switch chart.Type {
+		case "donut":
+			return 5
+		case "line":
+			return 6
+		default: // bar
+			return 3
+		}
+	}
+	l := strings.ToLower(layout)
+	switch {
+	case strings.Contains(l, "cover") || strings.Contains(l, "title"):
+		return 1
+	case strings.Contains(l, "hero") || strings.Contains(l, "big") || strings.Contains(l, "statement"):
+		return 4
+	default: // metric-row / cards / comparison / generic
+		return 2
+	}
+}
+
+// isHeroSlide marks a slide that earns the full critique/refine budget (SVQ
+// Phase 2): data / chart / dense pages where polish pays off, vs sparse
+// dividers/covers that rarely need a 12K rewrite. The cheap measure-repair
+// still runs globally, so a "simple" slide never ships broken geometry.
+func isHeroSlide(s *SlideSpec) bool {
+	if s.Chart != nil || s.Density == "dense" {
+		return true
+	}
+	switch strings.ToLower(s.Layout) {
+	case "chart", "metric-row", "metric-hero", "two-col-compare", "comparison",
+		"bento", "bento-grid", "timeline", "flow-diagram", "process-flow", "multi-metric":
+		return true
+	}
+	return false
 }
 
 // SpecFor returns the spec for a 0-based slide index, or nil when the deck has
@@ -168,6 +224,23 @@ func (s *SlideSpec) promptBlock() string {
 			fmt.Fprintf(&b, "  • %s = %s\n", p.Label, trimFloat(p.Value))
 		}
 		b.WriteString("The chart values and any facts above MUST agree (no 38% vs 28% on the same slide).\n")
+	}
+	// SVQ Phase 1 — pin the visual treatment so the deck reads coherent (one
+	// accent target per slide, one focal point, one unified shadow language).
+	if s.Focal != "" || s.AccentTarget != "" || s.Depth != "" {
+		b.WriteString("\n── VISUAL DIRECTION (execute exactly; keep the deck coherent) ──\n")
+		if s.Focal != "" {
+			fmt.Fprintf(&b, "Focal point (make it clearly dominant): %s\n", s.Focal)
+		}
+		if s.AccentTarget != "" {
+			fmt.Fprintf(&b, "Accent colour highlights ONLY: %s\n", s.AccentTarget)
+		}
+		if s.Depth != "" {
+			fmt.Fprintf(&b, "Raised element (one z-level / one soft shadow): %s\n", s.Depth)
+		}
+	}
+	if s.Exemplar > 0 {
+		fmt.Fprintf(&b, "Emulate GOLD EXEMPLAR %d for structure.\n", s.Exemplar)
 	}
 	return b.String()
 }

@@ -78,7 +78,7 @@ Each fix is ONE actionable sentence naming what to change and how (e.g. "Rewrite
 // leaves the original slide in place. Returns the usage it spent.
 // onRefined(index0, refinedSVG) fires once per slide that was actually
 // improved, so the caller can refresh the live preview for that page.
-func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, onRefined func(index0 int, refinedSVG string)) (*ContentResult, llm.Usage, error) {
+func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, spec *DeckSpec, onRefined func(index0 int, refinedSVG string)) (*ContentResult, llm.Usage, error) {
 	var total llm.Usage
 	if content == nil || len(content.Slides) == 0 || !svgSelfCritiqueEnabled() {
 		return content, total, nil
@@ -110,7 +110,16 @@ func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme strin
 			// the last good version — never regress), or after maxRounds.
 			cur := svg
 			improved := false
-			for round := 1; round <= svgCritiqueMaxRounds; round++ {
+			// SVQ Phase 2 (balanced): heroes (charts / dense / data layouts) get
+			// the full author↔critic loop; simple slides (dividers / sparse) get
+			// at most ONE round — a 12K refine rarely earns its tokens on a sparse
+			// slide, and the global measure-repair still guards their geometry. No
+			// plan (spec nil) → no gating, full loop (safe default).
+			maxRounds := svgCritiqueMaxRounds
+			if sp := spec.SpecFor(i); sp != nil && !sp.Hero {
+				maxRounds = 1
+			}
+			for round := 1; round <= maxRounds; round++ {
 				notes, u1, err := critiqueOneSVG(ctx, client, model, cur)
 				mu.Lock()
 				total.InputTokens += u1.InputTokens
