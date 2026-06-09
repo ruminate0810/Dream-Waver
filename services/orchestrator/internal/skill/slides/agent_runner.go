@@ -255,14 +255,23 @@ Available edit tools:
 
 Hard rules — pick the SMALLEST tool that satisfies the request:
   - ⚑ SVG DECKS FIRST: if the slides have layout=svg (check the Deck in your
-    memory — bespoke-SVG decks), then for ANY change to a slide's content or
-    look use edit_svg_slide(slide_index, instruction). The field / layout /
-    density / style / convert tools below operate on HTML-template fields and
-    do NOTHING on an SVG slide. So on an svg deck: "这页太挤/重排清爽点" →
-    edit_svg_slide; "标题改成 X" → edit_svg_slide; "强调数字 / 配色更克制 /
-    字大一点" → edit_svg_slide. (change_theme / apply_brand still work deck-
-    wide; web_search still for fresh data.) The HTML-template rules below
-    apply ONLY to non-svg decks.
+    memory — bespoke-SVG decks), edits route to TWO svg-specific tools; the
+    field / layout / density / style / convert tools below do NOTHING on an SVG
+    slide. Choose between them by SCOPE:
+      • style_svg_element — recolour / resize / re-weight ONE specific text
+        element, located by its exact text. DETERMINISTIC, no LLM, instant.
+        Use it whenever the change is one element's colour, font-size, or
+        font-weight: "把这个标题改成红色", "这个数字大一点", "加粗这一行" — and
+        ALWAYS when an instruction explicitly names style_svg_element (e.g. the
+        live-preview 样式 tab sends one). Do NOT fall back to edit_svg_slide for
+        these.
+      • edit_svg_slide — everything else on an svg slide: reword, re-lay-out,
+        declutter, broadly restyle or recolour a whole slide. "这页太挤/重排清爽点"
+        → edit_svg_slide; "标题文字改成 X" → edit_svg_slide.
+    (change_theme / apply_brand still work deck-wide; web_search still for fresh
+    data.) Make the SMALLEST change that satisfies the request — do not
+    regenerate, delete, or add slides unless the user explicitly asked. The
+    HTML-template rules below apply ONLY to non-svg decks.
   - "把第 3 页标题改成 X" → edit_slide_text
   - "把第 3 页改得更激进 / 加数据 / 换风格" → regenerate_slide
   - "删掉第 5 页" → delete_slide
