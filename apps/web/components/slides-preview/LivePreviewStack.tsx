@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Eye, FileWarning, Pencil } from "lucide-react";
+import { Download, Eye, FileDown, FileWarning, Pencil, Presentation } from "lucide-react";
 import clsx from "clsx";
 
-import { postSlideMessage, type SlideJob } from "@/lib/api";
+import { exportPdfURL, postSlideMessage, presentURL, type SlideJob } from "@/lib/api";
 import { useAgentEventStream } from "@/components/chat/transport";
 import { SlideFrame, type EditRequest } from "./SlideFrame";
 import { EditPopover, type EditSubmit, type EditTarget } from "./EditPopover";
+import { SlideToolbar } from "./SlideToolbar";
 
 // LivePreviewStack is the right-hand pane of the two-column slide editor.
 // It renders one live SlideFrame per slide, listens for slides.updated
@@ -93,6 +94,9 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
     const prev = prevCountRef.current;
     if (slideCount !== prev) {
       prevCountRef.current = slideCount;
+      // A structural op that changed the deck size (add/delete/duplicate)
+      // landed — release the toolbars.
+      setMgmtBusy(false);
       // The deck grew → scroll-focus the new last slide so the user
       // immediately sees the addition. The deck shrunk → scroll-focus
       // whichever slide now sits at the deleted position so the user
@@ -145,6 +149,9 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
       if (idx > 0) {
         setRenderedMax((m) => Math.max(m, idx));
       }
+      // A structural op (reorder keeps slide_count, so the count effect
+      // below won't fire) just landed — release the per-slide toolbars.
+      setMgmtBusy(false);
 
       const now = Date.now();
       // Slide window: keep only events within the last 250ms — the
@@ -215,6 +222,12 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   // it inline + the user can click submit to retry. Cleared on submit
   // start and on close.
   const [editError, setEditError] = useState<string | null>(null);
+  // Sprint AG.1b — structural slide-management (add/duplicate/reorder/delete)
+  // posts a deterministic instruction naming the exact tool; the existing
+  // slides.updated / slide_count machinery then re-renders the deck. One global
+  // flag disables every per-slide toolbar while an op is in flight — we never
+  // want two concurrent structural edits racing on the deck shape.
+  const [mgmtBusy, setMgmtBusy] = useState(false);
 
   const handleEditOpen = useCallback((req: EditRequest, anchorRect: DOMRect) => {
     setTarget({ slideIndex: req.slideIndex, text: req.text, role: req.role });
@@ -267,6 +280,23 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
     [job.job_id],
   );
 
+  // runMgmt posts a structural-edit instruction and arms the global busy
+  // flag; the slides.updated / slide_count effects above clear it once the
+  // deck reflects the change. The 10s failsafe covers a dropped event.
+  const runMgmt = useCallback(
+    async (instruction: string) => {
+      try {
+        setMgmtBusy(true);
+        await postSlideMessage(job.job_id, instruction);
+      } catch {
+        setMgmtBusy(false);
+        return;
+      }
+      setTimeout(() => setMgmtBusy(false), 10_000);
+    },
+    [job.job_id],
+  );
+
   // ────────── Render branches ──────────
 
   if (!ready) {
@@ -291,6 +321,9 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
   // the user knows the deck is still typesetting rather than thinking
   // every slide is broken because effectiveCount < slideCount.
   const composing = effectiveCount < slideCount && job.status === "running";
+  // The structural toolbar only makes sense on a finished deck — restructuring
+  // mid-generation would race the render pipeline.
+  const finished = job.status === "finished";
   const subtitleText = composing
     ? `${effectiveCount}/${slideCount} slides · composing…`
     : `${slideCount} slide${slideCount === 1 ? "" : "s"}`;
@@ -300,6 +333,7 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
       <div className="sticky top-0 z-10 -mx-2 bg-paper/85 px-2 pb-3 pt-1 backdrop-blur-sm">
         <PaneHeader
           subtitle={subtitleText}
+          jobId={job.job_id}
           downloadHref={job.download_url ?? undefined}
         />
         <HintRow />
@@ -323,17 +357,31 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
               style={{ animationDelay: staggerDelay }}
             >
               <NumberMarker oneBased={oneBased} active={isActive} />
-              <SlideFrame
-                jobId={job.job_id}
-                index={oneBased}
-                version={versions[i] ?? 1}
-                active={isActive}
-                focusTick={focusTicks[oneBased]}
-                clearActiveTick={clearTicks[oneBased]}
-                successTick={successTicks[oneBased]}
-                onEdit={handleEditOpen}
-                numberLabel={`P · ${String(oneBased).padStart(2, "0")}`}
-              />
+              <div className="relative">
+                {finished ? (
+                  <SlideToolbar
+                    oneBased={oneBased}
+                    total={slideCount}
+                    busy={mgmtBusy}
+                    onAdd={() => runMgmt(addAfterInstruction(oneBased))}
+                    onDuplicate={() => runMgmt(duplicateInstruction(oneBased))}
+                    onMoveUp={() => runMgmt(moveInstruction(oneBased, oneBased - 1))}
+                    onMoveDown={() => runMgmt(moveInstruction(oneBased, oneBased + 1))}
+                    onDelete={() => runMgmt(deleteInstruction(oneBased))}
+                  />
+                ) : null}
+                <SlideFrame
+                  jobId={job.job_id}
+                  index={oneBased}
+                  version={versions[i] ?? 1}
+                  active={isActive}
+                  focusTick={focusTicks[oneBased]}
+                  clearActiveTick={clearTicks[oneBased]}
+                  successTick={successTicks[oneBased]}
+                  onEdit={handleEditOpen}
+                  numberLabel={`P · ${String(oneBased).padStart(2, "0")}`}
+                />
+              </div>
             </li>
           );
         })}
@@ -353,13 +401,25 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
 
 // ─── Header / numbering / hint ────────────────────────────────────────
 
+// Shared style for the secondary deck actions (演示 / PDF). Quiet mono caps in
+// the pixel theme's palette so they sit beside the primary .pptx button without
+// competing with it. font-mono (not font-pixel) keeps the CJK "演示" legible.
+const DECK_ACTION_CLS =
+  "group inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-[0.2em] text-muted transition-colors hover:text-ink";
+
 function PaneHeader({
   subtitle,
+  jobId,
   downloadHref,
 }: {
   subtitle: string;
+  jobId?: string;
   downloadHref?: string;
 }) {
+  // The action cluster only appears once the deck is servable. `downloadHref`
+  // is set when status=finished, so its presence (plus a jobId) is our gate —
+  // 演示 + PDF endpoints are only meaningful on a finished deck too.
+  const showActions = Boolean(downloadHref && jobId);
   return (
     <div className="mb-3 flex items-baseline justify-between border-b border-line pb-2">
       <div className="flex items-baseline gap-3">
@@ -371,18 +431,39 @@ function PaneHeader({
           {subtitle}
         </span>
       </div>
-      {downloadHref ? (
-        <a
-          href={downloadHref}
-          className="group inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink shadow-pixel-sm transition-transform duration-100 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
-        >
-          <Download
-            size={11}
-            strokeWidth={1.8}
-            className="translate-y-[1px]"
-          />
-          .pptx
-        </a>
+      {showActions ? (
+        <div className="flex items-center gap-4">
+          <a
+            href={presentURL(jobId!)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={DECK_ACTION_CLS}
+            title="全屏演示这套幻灯片（新标签页打开）"
+          >
+            <Presentation
+              size={11}
+              strokeWidth={1.6}
+              className="translate-y-[1px] transition-transform group-hover:-translate-y-[1px]"
+            />
+            演示
+          </a>
+          <a href={exportPdfURL(jobId!)} className={DECK_ACTION_CLS} title="导出整套 PDF">
+            <FileDown
+              size={11}
+              strokeWidth={1.6}
+              className="translate-y-[1px] transition-transform group-hover:-translate-y-[1px]"
+            />
+            PDF
+          </a>
+          <a
+            href={downloadHref}
+            title="下载可编辑 .pptx"
+            className="group inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink shadow-pixel-sm transition-transform duration-100 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
+          >
+            <Download size={11} strokeWidth={1.8} className="translate-y-[1px]" />
+            .pptx
+          </a>
+        </div>
       ) : null}
     </div>
   );
@@ -539,4 +620,28 @@ function roleToFieldZh(role: string): string {
     default:
       return "正文文本(body)";
   }
+}
+
+// ─── Structural-edit instruction synthesis (Sprint AG.1b) ─────────────
+//
+// Each toolbar action posts a deterministic instruction that names the exact
+// tool + its 1-based positions, so the agent executes the structural edit
+// without any LLM reasoning about which tool to pick. Param vocabulary matches
+// each tool's schema (add_slide: position/instruction; delete_slide: slide_index;
+// reorder_slide: from_position/to_position; duplicate_slide: slide_index).
+
+function addAfterInstruction(oneBased: number): string {
+  return `请使用 add_slide 工具在第 ${oneBased} 页之后新增一页（position=${oneBased + 1}，instruction="延续本页主题，自然承接展开"）。只调用 add_slide，不要调用其他工具。`;
+}
+
+function duplicateInstruction(oneBased: number): string {
+  return `请使用 duplicate_slide 工具复制第 ${oneBased} 页（slide_index=${oneBased}）。只调用 duplicate_slide，不要调用其他工具。`;
+}
+
+function moveInstruction(from: number, to: number): string {
+  return `请使用 reorder_slide 工具把第 ${from} 页移动到第 ${to} 页的位置（from_position=${from}, to_position=${to}）。只调用 reorder_slide，不要调用其他工具。`;
+}
+
+function deleteInstruction(oneBased: number): string {
+  return `请使用 delete_slide 工具删除第 ${oneBased} 页（slide_index=${oneBased}）。只调用 delete_slide，不要调用其他工具。`;
 }

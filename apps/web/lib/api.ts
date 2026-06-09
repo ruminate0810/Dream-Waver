@@ -425,6 +425,20 @@ export function eventsURL(sessionId: string): string {
   return `${base}/api/v1/sessions/${sessionId}/events`;
 }
 
+// Same-origin URL for the self-contained web-presentation shell — a
+// shareable, navigable HTML slideshow that wraps the deck's SVG pages
+// (backend: GET /slides/{id}/present, server.go:155). Open in a new tab.
+export function presentURL(jobId: string): string {
+  return `/api/v1/slides/${jobId}/present`;
+}
+
+// Same-origin URL that streams the whole deck as a single multi-page PDF
+// (backend: GET /slides/{id}/export.pdf, server.go:154). Use as an <a href>
+// so the browser downloads it directly.
+export function exportPdfURL(jobId: string): string {
+  return `/api/v1/slides/${jobId}/export.pdf`;
+}
+
 // ─── Games ────────────────────────────────────────────────────────────
 //
 // Single-shot pipeline that turns a natural-language brief into one
