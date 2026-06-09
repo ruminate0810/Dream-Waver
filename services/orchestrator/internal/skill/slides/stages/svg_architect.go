@@ -175,7 +175,13 @@ func isHeroSlide(s *SlideSpec) bool {
 	if s.Chart != nil || s.Density == "dense" {
 		return true
 	}
-	switch strings.ToLower(s.Layout) {
+	l := strings.ToLower(s.Layout)
+	// SVQ Phase 4 floor: the cover and the closing always earn full polish —
+	// first and last impression — even though they're sparse "anchor" slides.
+	if strings.Contains(l, "cover") || strings.Contains(l, "closing") {
+		return true
+	}
+	switch l {
 	case "chart", "metric-row", "metric-hero", "two-col-compare", "comparison",
 		"bento", "bento-grid", "timeline", "flow-diagram", "process-flow", "multi-metric":
 		return true
