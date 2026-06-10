@@ -121,7 +121,7 @@ export type SlideJob = {
     | "awaiting_wizard"
     | "awaiting_outline_approval"
     | "awaiting_clarification";
-  mode?: "agent" | "pipeline";
+  mode?: "agent" | "pipeline" | "svg";
   input?: {
     topic?: string;
     audience?: string;

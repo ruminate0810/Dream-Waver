@@ -198,6 +198,12 @@ export type Turn = {
   outlineSlideCount?: number;
   slidesRendered: number;
   slidesTotal: number;
+  // Distinct 1-based slide indices that have rendered so far. Unlike
+  // slidesRendered (a max), this is an accurate COUNT — needed because SVG
+  // mode authors slides in parallel, so indices arrive out of order and a
+  // max would jump to "done" before the laggards finish. Drives the SVG
+  // pipeline-progress card.
+  svgRendered?: number[];
   status: TurnStatus;
   errorMsg?: string;
   // Sprint L1 — HILT pause payload. Non-null while waiting on user
@@ -642,6 +648,10 @@ function reduceWS(state: State, ev: AgentEvent): State {
         turns: patchTurn(state.turns, lastIdx, (t) => ({
           ...t,
           slidesRendered: Math.max(t.slidesRendered, idx),
+          svgRendered:
+            idx > 0 && !(t.svgRendered ?? []).includes(idx)
+              ? [...(t.svgRendered ?? []), idx]
+              : t.svgRendered,
           // Sprint O.5 — tick off the compose checklist as render
           // events arrive. Compose strip uses this to flip the per-
           // slide indicator from "queued" → "done".

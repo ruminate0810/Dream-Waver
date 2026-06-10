@@ -35,6 +35,7 @@ import { useAgentSession, type Step, type ToolCallEntry, type Turn } from "./ses
 import { ClarificationCard } from "./ClarificationCard";
 import { ComposeStrip } from "./ComposeStrip";
 import { GamePlanCard } from "./GamePlanCard";
+import { SvgPipelineProgress } from "./SvgPipelineProgress";
 import { OutlineReviewCard } from "./OutlineReviewCard";
 // Sprint AA.4 — WizardCard retired from the chat thread in favour of
 // the inline QuestionBubble dialogue. The file remains in-tree as a
@@ -126,6 +127,9 @@ export function ChatThread({
               <>
                 {lastTurn.gamePlan ? <GamePlanCard plan={lastTurn.gamePlan} /> : null}
                 {lastTurn.compose ? <ComposeStrip compose={lastTurn.compose} /> : null}
+                {job.mode === "svg" && session.busy ? (
+                  <SvgPipelineProgress turn={lastTurn} busy={session.busy} />
+                ) : null}
               </>
             );
           })()}
