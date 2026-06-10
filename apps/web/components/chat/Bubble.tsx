@@ -3,13 +3,13 @@
 import clsx from "clsx";
 import type { ReactNode } from "react";
 
-// Editorial timeline primitives. The page now reads as a typeset article
-// being written before the reader: a numbered left rail, a single body
-// column, hairline rules between sections. NO chat bubbles. NO emoji
-// stand-ins. Status is conveyed by a 2.5px vermillion dot (running),
-// a hand-drawn check (done), or an X (error) sitting under the section
-// number — same visual weight as the number itself, so the rhythm reads
-// as bullet points in a published table of contents.
+// Pixel timeline primitives. The page reads as a retro-terminal build
+// log being written before the reader: a numbered left rail, a single
+// body column, hairline rules between sections. NO chat bubbles. NO
+// emoji stand-ins. Status is conveyed by a pulsing violet dot (running),
+// a check (done), or an X (error) sitting under the section number —
+// same visual weight as the number itself, so the rhythm reads as
+// bullet points in a table of contents.
 //
 // Exports:
 //   <Brief … />   — the opening section that frames the user's prompt
@@ -20,7 +20,7 @@ import type { ReactNode } from "react";
 
 export type SectionStatus = "pending" | "running" | "done" | "error";
 
-// ── Brief: the user's prompt, framed as a published epigraph ────────
+// ── Brief: the user's prompt, framed as an opening epigraph ─────────
 
 export function Brief({
   topic,
@@ -34,14 +34,14 @@ export function Brief({
   style?: string;
 }) {
   return (
-    <section className="grid grid-cols-[64px_1fr] gap-x-8 gap-y-0 border-b border-[color:var(--rule)] pb-14 md:grid-cols-[96px_1fr] md:gap-x-12">
+    <section className="grid grid-cols-[64px_1fr] gap-x-8 gap-y-0 border-b border-line-2 pb-14 md:grid-cols-[96px_1fr] md:gap-x-12">
       <Rail index="00" label="Brief" status="done" hideStatus />
       <div className="min-w-0">
-        <blockquote className="border-l-[3px] border-[color:var(--vermillion)] pl-6 font-display text-[34px] italic leading-[1.18] tracking-tight text-[color:var(--ink)] md:text-[40px]">
+        <blockquote className="border-l-4 border-accent pl-6 font-mono text-[26px] font-extrabold leading-[1.25] tracking-tight text-ink md:text-[30px]">
           {topic || "（无主题）"}
         </blockquote>
         {(audience || slides || style) && (
-          <dl className="mt-10 grid grid-cols-3 gap-x-8 border-t border-[color:var(--rule)] pt-5">
+          <dl className="mt-10 grid grid-cols-3 gap-x-8 border-t border-line pt-5">
             {audience && <Pair label="Audience" value={audience} />}
             {slides ? <Pair label="Length" value={`${slides} pp.`} /> : null}
             {style && <Pair label="Style" value={style} />}
@@ -55,10 +55,10 @@ export function Brief({
 function Pair({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+      <dt className="font-pixel text-[0.55rem] tracking-wide text-muted">
         {label}
       </dt>
-      <dd className="mt-1.5 truncate font-display text-lg text-[color:var(--ink)]">
+      <dd className="mt-1.5 truncate font-mono text-base font-semibold text-ink">
         {value}
       </dd>
     </div>
@@ -87,7 +87,7 @@ export function Phase({
   return (
     <section
       className={clsx(
-        "grid grid-cols-[64px_1fr] gap-x-8 border-t border-[color:var(--rule)] py-14 md:grid-cols-[96px_1fr] md:gap-x-12",
+        "grid grid-cols-[64px_1fr] gap-x-8 border-t border-line-2 py-14 md:grid-cols-[96px_1fr] md:gap-x-12",
         status !== "pending" && "animate-phase-in",
         status === "pending" && "opacity-45",
       )}
@@ -96,21 +96,21 @@ export function Phase({
       <div className="min-w-0">
         <h2
           className={clsx(
-            "font-display tracking-tight text-[color:var(--ink)]",
+            "font-mono font-extrabold tracking-tight text-ink",
             emphasis
-              ? "text-[56px] leading-[0.98]"
-              : "text-[46px] leading-[1.02] md:text-[52px]",
+              ? "text-[40px] leading-[1.02]"
+              : "text-[32px] leading-[1.05] md:text-[36px]",
           )}
         >
           {zhTitle}
         </h2>
         {enSubtitle && (
-          <p className="mt-2 font-display italic text-[20px] leading-snug text-[color:var(--ink-faint)]">
+          <p className="mt-2 font-mono text-[15px] leading-snug text-muted">
             {enSubtitle}
           </p>
         )}
         {children && (
-          <div className="mt-8 space-y-4 text-[15px] leading-relaxed text-[color:var(--ink-soft)]">
+          <div className="mt-8 space-y-4 text-[15px] leading-relaxed text-ink-2">
             {children}
           </div>
         )}
@@ -136,19 +136,19 @@ function Rail({
     <aside className="flex flex-col">
       <span
         className={clsx(
-          "font-mono-jb text-[11px] font-medium uppercase tracking-[0.24em] tabular-nums",
-          status === "pending" ? "text-[color:var(--ink-faint)]" : "text-[color:var(--ink)]",
+          "font-pixel text-[0.6rem] tracking-wide tabular-nums",
+          status === "pending" ? "text-muted" : "text-ink",
         )}
       >
         {index}
       </span>
       <span
         className={clsx(
-          "mt-1 font-mono-jb text-[10px] uppercase tracking-[0.22em]",
-          status === "running" && "text-[color:var(--vermillion)]",
-          status === "done" && "text-[color:var(--ink-soft)]",
-          status === "error" && "text-red-700",
-          status === "pending" && "text-[color:var(--ink-faint)]",
+          "mt-1 font-pixel text-[0.55rem] tracking-wide",
+          status === "running" && "text-accent",
+          status === "done" && "text-ink-2",
+          status === "error" && "text-[#a23a2a]",
+          status === "pending" && "text-muted",
         )}
       >
         {label}
@@ -176,7 +176,7 @@ function StatusGlyph({
       {status === "pending" ? (
         <span
           aria-hidden
-          className="block h-2 w-2 rounded-full border border-[color:var(--ink-faint)]"
+          className="block h-2 w-2 rounded-full border border-muted"
         />
       ) : status === "running" ? (
         <span
@@ -184,10 +184,10 @@ function StatusGlyph({
           aria-label="running"
           className="relative block h-2 w-2"
         >
-          <span className="absolute inset-0 rounded-full bg-[color:var(--vermillion)]" />
+          <span className="absolute inset-0 rounded-full bg-accent" />
           <span
             aria-hidden
-            className="absolute -inset-[5px] rounded-full border border-[color:var(--vermillion)]/40"
+            className="absolute -inset-[5px] rounded-full border border-accent/40"
             style={{ animation: "ping 1800ms cubic-bezier(0,0,0.2,1) infinite" }}
           />
         </span>
@@ -195,7 +195,7 @@ function StatusGlyph({
         <svg
           aria-label="done"
           viewBox="0 0 14 14"
-          className="h-3.5 w-3.5 text-[color:var(--ink)]"
+          className="h-3.5 w-3.5 text-grass"
           fill="none"
         >
           <path
@@ -210,7 +210,7 @@ function StatusGlyph({
         <svg
           aria-label="error"
           viewBox="0 0 14 14"
-          className="h-3 w-3 text-red-700"
+          className="h-3 w-3 text-[#d4503a]"
           fill="none"
         >
           <path
@@ -238,14 +238,14 @@ export function PressTicker({
   const cells = Math.max(total, 1);
   return (
     <div>
-      <div className="flex items-baseline justify-between font-mono-jb text-[11px] uppercase tracking-[0.22em] text-[color:var(--ink-soft)]">
+      <div className="flex items-baseline justify-between font-pixel text-[0.55rem] tracking-wide text-ink-2">
         <span>
-          <span className="tabular-nums text-[color:var(--ink)]">{now}</span>
-          <span className="mx-1.5 text-[color:var(--ink-faint)]">of</span>
+          <span className="tabular-nums text-ink">{now}</span>
+          <span className="mx-1.5 text-muted">of</span>
           <span className="tabular-nums">{total}</span>
-          <span className="ml-2 text-[color:var(--ink-faint)]">plates set</span>
+          <span className="ml-2 text-muted">plates set</span>
         </span>
-        <span className="tabular-nums text-[color:var(--ink-faint)]">{pct}%</span>
+        <span className="tabular-nums text-muted">{pct}%</span>
       </div>
       <div
         className="mt-3 grid gap-1.5"
@@ -257,10 +257,8 @@ export function PressTicker({
           <span
             key={i}
             className={clsx(
-              "h-[3px] rounded-full transition-colors duration-500",
-              i < now
-                ? "bg-[color:var(--vermillion)]"
-                : "bg-[color:var(--rule)]",
+              "h-[5px] transition-colors duration-500",
+              i < now ? "bg-accent" : "bg-line",
             )}
           />
         ))}

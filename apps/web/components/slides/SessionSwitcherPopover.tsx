@@ -63,32 +63,32 @@ export function SessionSwitcherPopover({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={clsx(
-          "group inline-flex items-baseline gap-2 border-b-[1.5px] pb-1 transition-colors",
+          "group inline-flex items-center gap-2 rounded-pixel border-2 px-2.5 py-1 transition-all",
           open
-            ? "border-[color:var(--vermillion)]"
-            : "border-transparent hover:border-[color:var(--ink-soft)]/40",
+            ? "border-ink bg-accent-soft shadow-pixel-sm"
+            : "border-line-2 bg-surface text-ink-2 hover:border-ink",
         )}
         aria-haspopup="listbox"
         aria-expanded={open}
       >
         <FileText
           size={11}
-          strokeWidth={1.6}
-          className="translate-y-[1px] text-[color:var(--ink-soft)]"
+          strokeWidth={1.8}
+          className="text-ink-2"
         />
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
+        <span className="font-pixel text-[0.55rem] tracking-wide text-ink-2">
           Sessions
         </span>
         {otherCount > 0 ? (
-          <span className="font-mono-jb text-[9px] tracking-[0.18em] text-[color:var(--ink-faint)]">
+          <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
             · {decks.length}
           </span>
         ) : null}
         <ChevronDown
           size={11}
-          strokeWidth={1.6}
+          strokeWidth={1.8}
           className={clsx(
-            "translate-y-[1px] text-[color:var(--ink-faint)] transition-transform",
+            "text-muted transition-transform",
             open && "rotate-180",
           )}
         />
@@ -97,16 +97,16 @@ export function SessionSwitcherPopover({
       {open ? (
         <div
           role="listbox"
-          className="absolute right-0 top-[calc(100%+8px)] z-30 w-[340px] origin-top-right overflow-hidden border border-[color:var(--rule)] bg-[color:var(--paper)] shadow-[0_22px_50px_-22px_rgba(26,22,20,0.28),0_1px_0_rgba(26,22,20,0.04)]"
+          className="animate-rise absolute right-0 top-[calc(100%+8px)] z-30 w-[340px] origin-top-right overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
         >
-          {/* Vermillion bleed strip — registration mark, same as gates */}
-          <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
+          {/* Accent bleed strip — registration mark, same as gates */}
+          <div className="h-[3px] w-[42px] bg-accent" />
 
-          <div className="border-b border-[color:var(--rule)] px-4 pt-3 pb-3">
-            <p className="font-mono-jb text-[9px] uppercase tracking-[0.28em] text-[color:var(--vermillion)]">
-              Vol. 01 · 当前
+          <div className="border-b border-line px-4 pt-3 pb-3">
+            <p className="font-pixel text-[0.55rem] tracking-wide text-accent">
+              Vol. 01 · <span className="font-mono text-[10px] font-semibold">当前</span>
             </p>
-            <p className="mt-1 truncate font-display text-[15px] leading-tight text-[color:var(--ink)]">
+            <p className="mt-1 truncate font-mono text-[15px] font-bold tracking-tight text-ink">
               {currentLabel}
             </p>
           </div>
@@ -124,7 +124,7 @@ export function SessionSwitcherPopover({
               ))}
 
             {otherCount === 0 ? (
-              <li className="px-4 py-3 font-display text-[13px] italic text-[color:var(--ink-faint)]">
+              <li className="px-4 py-3 font-mono text-[13px] text-muted">
                 还没有其他卷宗。
               </li>
             ) : null}
@@ -133,19 +133,19 @@ export function SessionSwitcherPopover({
           <Link
             href="/slides/new"
             onClick={() => setOpen(false)}
-            className="group flex items-center justify-between border-t border-[color:var(--rule)] px-4 py-3 transition-colors hover:bg-[color:var(--vermillion)]/[0.04]"
+            className="group flex items-center justify-between border-t border-line px-4 py-3 transition-colors hover:bg-accent-soft"
           >
-            <span className="flex items-baseline gap-2">
+            <span className="flex items-center gap-2">
               <Plus
                 size={11}
                 strokeWidth={1.8}
-                className="translate-y-[1px] text-[color:var(--vermillion)]"
+                className="text-accent"
               />
-              <span className="font-display text-[14px] text-[color:var(--ink)] group-hover:text-[color:var(--vermillion)]">
+              <span className="font-mono text-[14px] font-semibold text-ink group-hover:text-accent">
                 新建卷宗
               </span>
             </span>
-            <span className="font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
               /slides/new
             </span>
           </Link>
@@ -172,19 +172,19 @@ function SessionRow({
       <Link
         href={`/slides/${deck.jobId}?session=${deck.sessionId}`}
         onClick={onPick}
-        className="group flex items-baseline gap-2 px-4 py-2 transition-colors hover:bg-[color:var(--vermillion)]/[0.04]"
+        className="group flex items-baseline gap-2 px-4 py-2 transition-colors hover:bg-accent-soft"
       >
         <div className="min-w-0 flex-1">
-          <p className="truncate font-display text-[14px] leading-tight text-[color:var(--ink)] group-hover:text-[color:var(--vermillion)]">
+          <p className="truncate font-mono text-[14px] font-semibold leading-tight text-ink group-hover:text-accent">
             {title}
           </p>
           {topic ? (
-            <p className="mt-0.5 truncate font-display text-[11px] italic text-[color:var(--ink-faint)]">
+            <p className="mt-0.5 truncate font-mono text-[11px] text-muted">
               {topic}
             </p>
           ) : null}
         </div>
-        <span className="shrink-0 font-mono-jb text-[9px] uppercase tracking-[0.2em] text-[color:var(--ink-faint)]">
+        <span className="shrink-0 font-mono text-[10px] font-semibold tracking-wide text-muted">
           {ago}
         </span>
       </Link>

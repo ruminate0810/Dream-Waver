@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowUpRight, Loader2, Trash2 } from "lucide-react";
 import clsx from "clsx";
 
 import type { OutlineForReview, OutlineEditsPayload } from "./session";
-import { useCardMotion } from "@/lib/motion";
+import { WindowCard } from "@/components/ui/pixel";
 
 // OutlineReviewCard — Sprint L1.H1 gate, Sprint S selection upgrade.
 //
@@ -183,49 +183,35 @@ export function OutlineReviewCard({
     (edits?.delete_indices?.length ?? 0) +
     (edits?.theme ? 1 : 0);
 
-  // Sprint Z.2 — mount entrance.
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useCardMotion(rootRef);
-
   return (
-    <div ref={rootRef} className="mx-auto my-4 w-full max-w-3xl">
-      {/* Top vermillion bleed strip */}
-      <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
-
-      <div
-        className="relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] p-6"
-        style={{
-          boxShadow:
-            "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32)",
-        }}
-      >
-        {/* Header */}
-        <div className="mb-1 flex items-baseline justify-between gap-3">
-          <div className="flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
-            <span className="text-[color:var(--vermillion)]">§</span>
-            <span>Outline Review</span>
-            <span className="text-[color:var(--ink-faint)]">/</span>
-            <span>
-              {remaining} slide{remaining !== 1 ? "s" : ""}
-            </span>
-          </div>
-          {changeCount > 0 ? (
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--vermillion)]">
+    <div className="mx-auto my-4 w-full max-w-3xl animate-rise">
+      <WindowCard
+        title={
+          <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
+            <span className="text-accent">§</span> Outline Review{" "}
+            <span className="text-line-2">/</span>{" "}
+            {remaining} slide{remaining !== 1 ? "s" : ""}
+          </span>
+        }
+        right={
+          changeCount > 0 ? (
+            <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-accent">
               {changeCount} change{changeCount > 1 ? "s" : ""}
             </span>
           ) : (
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
               No changes
             </span>
-          )}
-        </div>
-
+          )
+        }
+        bodyClassName="p-6"
+      >
         {/* Deck title (read-only display) */}
-        <h3 className="mb-1 font-display text-[24px] leading-tight tracking-tight text-[color:var(--ink)]">
+        <h3 className="mb-1 font-mono text-[22px] font-extrabold leading-tight tracking-tight text-ink">
           {outline.title}
         </h3>
         {outline.subtitle ? (
-          <p className="mb-3 font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
+          <p className="mb-3 font-mono text-[13px] leading-snug text-ink-2">
             {outline.subtitle}
           </p>
         ) : (
@@ -237,31 +223,31 @@ export function OutlineReviewCard({
             its density/voice. Hidden entirely when neither is set, so
             free-form decks read unchanged. */}
         {(outline.blueprint_id || (outline.reference_slugs && outline.reference_slugs.length > 0)) ? (
-          <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+          <div className="mb-5 flex flex-wrap items-baseline gap-x-3 gap-y-1 font-mono text-[10px] font-semibold tracking-wide text-muted">
             {outline.blueprint_id ? (
               <span>
-                框架 <span className="text-[color:var(--ink-soft)] normal-case tracking-normal">· {outline.blueprint_id}</span>
+                框架 <span className="font-normal text-ink-2">· {outline.blueprint_id}</span>
               </span>
             ) : null}
             {outline.reference_slugs && outline.reference_slugs.length > 0 ? (
               <span>
-                灵感来自 <span className="text-[color:var(--ink-soft)] normal-case tracking-normal">· {outline.reference_slugs.join(' · ')}</span>
+                灵感来自 <span className="font-normal text-ink-2">· {outline.reference_slugs.join(' · ')}</span>
               </span>
             ) : null}
           </div>
         ) : null}
 
         {/* ─── Theme picker — visual chips ─────────────────────────── */}
-        <div className="mb-5 border-y border-[color:var(--ink)]/10 py-3">
+        <div className="mb-5 border-y border-line py-3">
           <div className="mb-2 flex items-baseline gap-2">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
               Theme
             </span>
-            <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+            <span className="font-mono text-[12px] text-ink-2">
               {THEME_OPTIONS.find((t) => t.value === theme)?.blurb ?? ""}
             </span>
             {theme !== outline.theme ? (
-              <span className="ml-auto font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--vermillion)]">
+              <span className="ml-auto font-pixel text-[0.5rem] uppercase tracking-wide text-accent">
                 changed
               </span>
             ) : null}
@@ -284,10 +270,10 @@ export function OutlineReviewCard({
                 >
                   <div
                     className={clsx(
-                      "relative aspect-[16/10] w-full overflow-hidden border bg-white transition-all",
+                      "relative aspect-[16/10] w-full overflow-hidden rounded-pixel border-2 bg-surface transition-all",
                       isPicked
-                        ? "border-[color:var(--vermillion)] shadow-[0_0_0_2px_var(--vermillion)]"
-                        : "border-[color:var(--ink)]/15 group-hover:border-[color:var(--ink)]/40",
+                        ? "border-ink shadow-pixel-sm"
+                        : "border-line-2 group-hover:border-ink",
                     )}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -301,10 +287,10 @@ export function OutlineReviewCard({
                   </div>
                   <span
                     className={clsx(
-                      "font-mono-jb text-[9px] uppercase tracking-[0.18em] transition-colors",
+                      "font-pixel text-[0.5rem] uppercase tracking-wide transition-colors",
                       isPicked
-                        ? "text-[color:var(--vermillion)]"
-                        : "text-[color:var(--ink-soft)] group-hover:text-[color:var(--ink)]",
+                        ? "text-accent"
+                        : "text-muted group-hover:text-ink",
                     )}
                   >
                     {t.label}
@@ -325,13 +311,13 @@ export function OutlineReviewCard({
               <li
                 key={i}
                 className={clsx(
-                  "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 rounded-sm border px-3 py-2 transition-all",
+                  "grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-3 rounded-pixel border px-3 py-2 transition-all",
                   isDeleted
-                    ? "border-dashed border-[color:var(--ink)]/15 bg-transparent opacity-50"
-                    : "border-[color:var(--ink)]/10 bg-white/60",
+                    ? "border-dashed border-line-2 bg-transparent opacity-50"
+                    : "border-line bg-surface-2/60",
                 )}
               >
-                <span className="font-mono-jb text-[10px] uppercase tracking-[0.18em] text-[color:var(--vermillion)]">
+                <span className="font-pixel text-[0.55rem] tracking-wide text-accent">
                   {String(i + 1).padStart(2, "0")}
                 </span>
 
@@ -347,12 +333,12 @@ export function OutlineReviewCard({
                     }}
                     disabled={busy || isDeleted}
                     className={clsx(
-                      "min-w-0 border-b border-transparent bg-transparent pb-0.5 font-display text-[15px] leading-snug text-[color:var(--ink)] focus:border-[color:var(--vermillion)] focus:outline-none",
+                      "min-w-0 border-b border-line-2 bg-transparent pb-0.5 font-mono text-[14px] font-semibold leading-snug text-ink focus:border-accent focus:outline-none",
                       isDeleted && "line-through",
                     )}
                   />
                   <div className="flex items-center gap-2">
-                    <span className="font-mono-jb text-[9px] uppercase tracking-[0.18em] text-[color:var(--ink-faint)]">
+                    <span className="font-pixel text-[0.5rem] uppercase tracking-wide text-muted">
                       Layout
                     </span>
                     <div className="relative">
@@ -366,10 +352,10 @@ export function OutlineReviewCard({
                         }}
                         disabled={busy || isDeleted}
                         className={clsx(
-                          "appearance-none border-b border-transparent bg-transparent pb-0.5 pr-4 font-mono-jb text-[10px] uppercase tracking-[0.18em] focus:border-[color:var(--vermillion)] focus:outline-none disabled:opacity-50",
+                          "appearance-none border-b border-transparent bg-transparent pb-0.5 pr-4 font-mono text-[10px] uppercase tracking-wide focus:border-accent focus:outline-none disabled:opacity-50",
                           layoutChanged
-                            ? "text-[color:var(--vermillion)]"
-                            : "text-[color:var(--ink-soft)]",
+                            ? "text-accent"
+                            : "text-ink-2",
                         )}
                       >
                         {LAYOUT_GROUPS.map((g) => (
@@ -385,13 +371,13 @@ export function OutlineReviewCard({
                       {/* chevron tick */}
                       <span
                         aria-hidden
-                        className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 font-mono-jb text-[10px] text-[color:var(--ink-faint)]"
+                        className="pointer-events-none absolute right-0 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted"
                       >
                         ▾
                       </span>
                     </div>
                     {layoutChanged ? (
-                      <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--vermillion)]">
+                      <span className="font-pixel text-[0.5rem] uppercase tracking-wide text-accent">
                         forced
                       </span>
                     ) : null}
@@ -408,7 +394,7 @@ export function OutlineReviewCard({
                     setDeleted(next);
                   }}
                   aria-label={isDeleted ? "Restore slide" : "Delete slide"}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--vermillion)] disabled:opacity-50"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-muted transition-colors hover:text-[#d4503a] disabled:opacity-50"
                   disabled={busy}
                 >
                   <Trash2 size={13} strokeWidth={1.6} />
@@ -419,8 +405,8 @@ export function OutlineReviewCard({
         </ol>
 
         {/* Footer */}
-        <div className="mt-6 flex items-center justify-between border-t border-[color:var(--ink)]/10 pt-4">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+        <div className="mt-6 flex items-center justify-between border-t border-line pt-4">
+          <span className="font-mono text-[11px] text-muted">
             {busy
               ? "agent 即将撰写内容..."
               : "点继续后 agent 开始写内容 + 渲染"}
@@ -430,14 +416,14 @@ export function OutlineReviewCard({
             onClick={handleApprove}
             disabled={busy}
             className={clsx(
-              "group inline-flex items-center gap-2 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
+              "group inline-flex items-center gap-2 rounded-pixel border-2 px-4 py-2 font-mono text-[12px] font-semibold transition-all duration-150",
               busy
-                ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-                : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
+                ? "cursor-not-allowed border-line-2 bg-surface-2 text-muted"
+                : "border-ink bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
             )}
           >
             {busy ? (
-              <Loader2 size={12} strokeWidth={1.8} className="animate-spin" />
+              <Loader2 size={12} strokeWidth={1.8} className="animate-spin text-accent" />
             ) : (
               <ArrowUpRight
                 size={12}
@@ -456,11 +442,11 @@ export function OutlineReviewCard({
             render); without this caption the user sees the spinner
             on the button but doesn't know how long to wait. */}
         {busy ? (
-          <p className="mt-3 font-display text-[13px] italic text-[color:var(--ink-soft)]">
+          <p className="mt-3 font-mono text-[12px] text-ink-2">
             撰写 + 渲染通常 1-2 分钟。下方的进度条会逐张点亮。
           </p>
         ) : null}
-      </div>
+      </WindowCard>
     </div>
   );
 }

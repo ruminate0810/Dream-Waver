@@ -14,11 +14,10 @@ import { Loader2 } from "lucide-react";
 // So this component just renders if busyHint is set; it doesn't own
 // any timing logic.
 //
-// Visual language: vermillion left rule + monospace caps kicker +
-// italic serif zh phrase + spinning Loader — same chrome as
-// EditTurnTrace's userMessage blockquote and the existing
-// "Drafting each page…" italics in SlidesOpening, so the surface
-// reads as one continuous editorial voice.
+// Visual language: ink-framed pixel chip on the violet-soft accent
+// wash + pixel-face kicker + mono zh phrase + spinning Loader — same
+// chrome as the StatusChip "working" state, so the surface reads as
+// one continuous pixel voice.
 
 export function BusyHint({ kind }: { kind: "preparing" | "editing" }) {
   const kicker = kind === "editing" ? "Editing" : "Preparing";
@@ -28,17 +27,17 @@ export function BusyHint({ kind }: { kind: "preparing" | "editing" }) {
     <div
       role="status"
       aria-live="polite"
-      className="animate-phase-in mt-5 flex items-center gap-3 border-l-[2px] border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] py-2.5 pl-3.5 pr-5"
+      className="animate-phase-in mt-5 flex items-center gap-3 rounded-pixel border-2 border-ink bg-accent-soft px-4 py-2.5 shadow-pixel-sm"
     >
       <Loader2
         size={13}
         strokeWidth={1.9}
-        className="shrink-0 animate-spin text-[color:var(--vermillion)]"
+        className="shrink-0 animate-spin text-accent"
       />
-      <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+      <span className="font-pixel text-[0.55rem] tracking-wide text-accent">
         {kicker}
       </span>
-      <span className="font-display text-[13px] italic leading-snug text-[color:var(--ink)]/85">
+      <span className="font-mono text-[13px] leading-snug text-ink-2">
         {zh}
       </span>
     </div>

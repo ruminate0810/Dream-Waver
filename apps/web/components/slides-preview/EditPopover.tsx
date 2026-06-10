@@ -14,11 +14,11 @@ import { ArrowUpRight, Loader2, Sparkles, X } from "lucide-react";
 import clsx from "clsx";
 
 // EditPopover is the floating editor that opens when the user clicks any
-// text inside a SlideFrame iframe. It feels — by design — like a margin
-// annotation pinned to a printed magazine: warm paper, hairline rules,
-// a top vermillion bleed strip, file-folder tabs that "lift" into the
-// body, italic serif marginalia quoting the captured text, and a single
-// ink-on-paper rectangle action button.
+// text inside a SlideFrame iframe. It reads — by design — like a tiny
+// retro-terminal window pinned over the slide: hard 2px ink border +
+// offset pixel shadow, traffic-dot title bar with a breadcrumb, a
+// segmented tab switch, mono marginalia quoting the captured text, and
+// a single accent press-button action.
 //
 // Two surfaces:
 //   - 直接改 (DirectEdit)  — single-line input pre-filled with the
@@ -191,12 +191,6 @@ function PopoverBody({
 
   const roleLabel = useMemo(() => roleToLabel(target.role), [target.role]);
 
-  // Tiny SVG noise filter painted at very low opacity — gives the paper
-  // a tactile fibre; pulls the card away from the LLM-default flat-plastic
-  // surface.
-  const paperNoise =
-    "url(\"data:image/svg+xml;utf8,%3Csvg viewBox='0 0 220 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3CfeColorMatrix values='0 0 0 0 0.07 0 0 0 0 0.04 0 0 0 0 0.03 0 0 0 0.55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
   const transform = enter
     ? "translateY(0) scale(1)"
     : pos.placement === "below"
@@ -220,79 +214,67 @@ function PopoverBody({
           "opacity 180ms cubic-bezier(0.16, 1, 0.3, 1), transform 220ms cubic-bezier(0.16, 1, 0.3, 1)",
       }}
     >
-      {/* Top vermillion bleed strip — the press registration mark.
-          Sits flush with the paper card so the card feels printed, not
-          floated. */}
-      <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
-
-      <div
-        className="relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] text-[color:var(--ink)]"
-        style={{
-          boxShadow:
-            // soft tinted shadow — warm-grey rather than pure black so it
-            // sits on top of the paper canvas without a "Material card" tell
-            "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32), 0 38px 60px -30px rgba(50,40,32,0.18)",
-        }}
-      >
-        {/* Paper grain — never block clicks. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 z-0 opacity-[0.045] mix-blend-multiply"
-          style={{ backgroundImage: paperNoise, backgroundSize: "180px 180px" }}
-        />
-
-        {/* ────────── Header strip: breadcrumb + close ────────── */}
-        <div className="relative z-10 flex items-center justify-between border-b border-[color:var(--ink)]/12 px-5 pb-3 pt-4">
-          <div className="flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
-            <span className="text-[color:var(--vermillion)]">§</span>
-            <span>Marginalia</span>
-            <span className="text-[color:var(--ink-faint)]">/</span>
-            <span>Slide {String(target.slideIndex).padStart(2, "0")}</span>
-            <span className="text-[color:var(--ink-faint)]">/</span>
-            <span>{roleLabel}</span>
+      <div className="relative overflow-hidden rounded-pixel border-2 border-ink bg-surface text-ink shadow-pixel-lg">
+        {/* ────────── Window bar: traffic dots + breadcrumb + close ────────── */}
+        <div className="flex items-center justify-between gap-3 border-b-2 border-ink bg-surface-2 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span aria-hidden className="flex flex-none gap-1.5">
+              <i className="h-[9px] w-[9px] rounded-full border border-ink bg-[#ff8a8a]" />
+              <i className="h-[9px] w-[9px] rounded-full border border-ink bg-gold" />
+              <i className="h-[9px] w-[9px] rounded-full border border-ink bg-grass" />
+            </span>
+            <div className="flex min-w-0 items-baseline gap-1.5 truncate font-pixel text-[0.55rem] tracking-wide text-muted">
+              <span className="text-accent">§</span>
+              <span>Marginalia</span>
+              <span className="text-line-2">/</span>
+              <span>Slide {String(target.slideIndex).padStart(2, "0")}</span>
+              <span className="text-line-2">/</span>
+              <span>{roleLabel}</span>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="-mr-1 inline-flex h-6 w-6 items-center justify-center text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--ink)]"
+            className="-mr-1 inline-flex h-6 w-6 flex-none items-center justify-center rounded-[4px] text-muted transition-colors hover:bg-paper hover:text-ink"
           >
             <X size={13} strokeWidth={1.6} />
           </button>
         </div>
 
-        {/* ────────── Quoted text — italic serif marginalia ────────── */}
-        <blockquote className="relative z-10 px-5 pb-1 pt-3">
-          <span className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+        {/* ────────── Quoted text — mono marginalia ────────── */}
+        <blockquote className="px-4 pb-1 pt-3">
+          <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
             Quoting
           </span>
-          <p className="mt-1.5 font-display text-[15px] italic leading-snug text-[color:var(--ink-soft)] before:mr-1 before:content-['“'] after:ml-1 after:content-['”']">
+          <p className="mt-1.5 font-mono text-[13px] leading-relaxed text-ink-2 before:mr-1 before:content-['“'] after:ml-1 after:content-['”']">
             {target.text}
           </p>
         </blockquote>
 
-        {/* ────────── File-folder tabs ────────── */}
-        <div className="relative z-10 mt-3 flex items-end gap-1 px-5">
-          <FolderTab active={tab === "direct"} onClick={() => setTab("direct")}>
-            直接改
-          </FolderTab>
-          <FolderTab active={tab === "rewrite"} onClick={() => setTab("rewrite")}>
-            <span className="inline-flex items-baseline gap-1">
-              让 AI 重写
-              <Sparkles size={9} strokeWidth={1.8} className="translate-y-[1px]" />
-            </span>
-          </FolderTab>
-          <div className="flex-1 border-b border-[color:var(--ink)]/15" />
+        {/* ────────── Mode tabs — segmented pixel switch ────────── */}
+        <div className="mt-3 px-4">
+          <div className="inline-flex overflow-hidden rounded-pixel border-2 border-ink">
+            <FolderTab active={tab === "direct"} onClick={() => setTab("direct")}>
+              直接改
+            </FolderTab>
+            <FolderTab active={tab === "rewrite"} onClick={() => setTab("rewrite")}>
+              <span className="inline-flex items-baseline gap-1">
+                让 AI 重写
+                <Sparkles size={9} strokeWidth={1.8} className="translate-y-[1px]" />
+              </span>
+            </FolderTab>
+          </div>
         </div>
 
         {/* ────────── Body ────────── */}
-        <div className="relative z-10 px-5 pb-4 pt-4">
+        <div className="px-4 pb-4 pt-4">
           {tab === "direct" ? (
             <form onSubmit={submitDirect}>
-              <label className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+              <label className="font-pixel text-[0.55rem] tracking-wide text-muted">
                 Revised wording
               </label>
-              <div className="mt-2 border-b border-[color:var(--ink)]/40 pb-1.5 transition-colors focus-within:border-[color:var(--vermillion)]">
+              <div className="mt-2 border-b-2 border-line-2 pb-1.5 transition-colors focus-within:border-accent">
                 <input
                   ref={inputRef}
                   value={direct}
@@ -302,7 +284,7 @@ function PopoverBody({
                   }}
                   disabled={busy}
                   placeholder="改写后的文本…"
-                  className="w-full bg-transparent font-display text-[18px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+                  className="w-full bg-transparent font-mono text-[15px] font-medium leading-snug text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
                 />
               </div>
               {error && !busy ? <ErrorRow message={error} /> : null}
@@ -316,10 +298,10 @@ function PopoverBody({
             </form>
           ) : (
             <form onSubmit={submitRewrite}>
-              <label className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+              <label className="font-mono text-[10px] font-semibold tracking-wide text-muted">
                 Instruction · 让 AI 重写整页
               </label>
-              <div className="mt-2 border-b border-[color:var(--ink)]/40 pb-1.5 transition-colors focus-within:border-[color:var(--vermillion)]">
+              <div className="mt-2 border-b-2 border-line-2 pb-1.5 transition-colors focus-within:border-accent">
                 <textarea
                   ref={textareaRef}
                   value={rewrite}
@@ -330,7 +312,7 @@ function PopoverBody({
                   rows={3}
                   disabled={busy}
                   placeholder={`例: "把这页改得更激进、加点数据"`}
-                  className="w-full resize-none bg-transparent font-display text-[16px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+                  className="w-full resize-none bg-transparent font-mono text-[14px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
                 />
               </div>
               {error && !busy ? <ErrorRow message={error} /> : null}
@@ -365,16 +347,12 @@ function FolderTab({
       type="button"
       onClick={onClick}
       className={clsx(
-        "relative -mb-[1px] inline-flex items-center px-3 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-colors",
+        "inline-flex items-center px-3 py-1.5 font-mono text-[11px] font-semibold transition-colors",
         active
-          ? "border border-b-0 border-[color:var(--ink)]/15 bg-[#FBF9F2] text-[color:var(--ink)]"
-          : "border border-transparent text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]",
+          ? "bg-ink text-paper"
+          : "bg-surface text-ink-2 hover:bg-surface-2 hover:text-ink",
       )}
     >
-      {/* hairline ink accent on the active tab's top edge */}
-      {active ? (
-        <span aria-hidden className="absolute left-0 right-0 top-0 h-[2px] bg-[color:var(--ink)]" />
-      ) : null}
       {children}
     </button>
   );
@@ -394,8 +372,8 @@ function Footer({
   onSubmit: () => void;
 }) {
   return (
-    <div className="mt-4 flex items-center justify-between">
-      <span className="font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+    <div className="mt-4 flex items-center justify-between gap-3">
+      <span className="font-mono text-[10px] text-muted">
         {hint}
       </span>
       <button
@@ -403,20 +381,16 @@ function Footer({
         onClick={onSubmit}
         disabled={disabled}
         className={clsx(
-          "group inline-flex items-center gap-2 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
+          "group inline-flex flex-none items-center gap-2 rounded-pixel border-2 px-3 py-1.5 font-mono text-[11px] font-semibold transition-all duration-100",
           disabled
-            ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-            : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
+            ? "cursor-not-allowed border-line-2 bg-surface-2 text-muted"
+            : "border-ink bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
         )}
       >
         {busy ? (
           <Loader2 size={11} strokeWidth={1.8} className="animate-spin" />
         ) : (
-          <ArrowUpRight
-            size={11}
-            strokeWidth={1.8}
-            className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]"
-          />
+          <ArrowUpRight size={11} strokeWidth={1.8} />
         )}
         <span>{actionLabel}</span>
       </button>
@@ -424,21 +398,20 @@ function Footer({
   );
 }
 
-// Sprint I0.3 — inline error pill rendered above Footer when the last
-// edit attempt failed. Single hairline rule + vermillion left-tab to
-// signal "something went sideways" without yelling — the popover
-// stays open and the existing submit button (now labelled 重试) is
-// the action.
+// Sprint I0.3 — inline error row rendered above Footer when the last
+// edit attempt failed. Hard pixel callout in the red family to signal
+// "something went sideways" without yelling — the popover stays open
+// and the existing submit button (now labelled 重试) is the action.
 function ErrorRow({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="mt-3 flex items-start gap-2 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.04] px-3 py-2"
+      className="mt-3 flex items-start gap-2 rounded-pixel border-2 border-ink bg-[#fdece9] px-3 py-2"
     >
-      <span className="mt-[2px] font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--vermillion)]">
+      <span className="mt-[2px] font-mono text-[10px] font-semibold uppercase tracking-wide text-[#a23a2a]">
         Err
       </span>
-      <span className="font-display text-[12px] italic leading-snug text-[color:var(--ink)]">
+      <span className="font-mono text-[12px] leading-snug text-ink">
         {message}
       </span>
     </div>

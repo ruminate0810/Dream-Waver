@@ -2,26 +2,156 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Display + body + mono. Fraunces is a variable serif with optical sizes;
-   we load 300–700 across the full optical-size range so headlines pick up
-   the calligraphic axis at large sizes. JetBrains Mono is the editorial
-   "metadata" face — small caps tracking, no ligatures. */
-@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap");
+/* JetBrains Mono — the whole UI is monospace (retro-terminal vibe).
+   Silkscreen — crisp pixel face for the logo + tiny eyebrow labels.
+   Fraunces stays for the handful of legacy `.font-display` surfaces
+   still mid-migration. */
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=JetBrains+Mono:wght@400;500;600;700;800&family=Silkscreen:wght@400;700&display=swap");
 
 :root {
   color-scheme: light;
-  /* The Dream-Waver paper/ink palette. Used by the generation timeline.
-     Kept as variables so we can switch to a dark "evening edition" later. */
-  --paper: #F7F4ED;
-  --ink: #1A1614;
-  --ink-soft: #57534E;     /* stone-600-ish, warm */
-  --ink-faint: #A8A29E;    /* stone-400 warm */
-  --rule: rgba(26, 22, 20, 0.08);
-  --vermillion: #B5371E;
+  /* Pixel / retro-terminal palette. Tokenized — the whole app re-skins
+     from here + tailwind.config.ts. Legacy vars (--ink-soft etc.) kept so
+     un-migrated surfaces still resolve. */
+  --paper: #f3efe5;        /* warm cream page          */
+  --paper-2: #ece6d8;
+  --surface: #ffffff;
+  --ink: #16140f;          /* warm near-black          */
+  --ink-2: #403a30;
+  --ink-soft: #57534E;     /* legacy                   */
+  --ink-faint: #A8A29E;    /* legacy                   */
+  --muted: #938b7b;
+  --line: #ddd5c3;
+  --line-2: #c9bfa9;
+  --rule: rgba(22, 20, 15, 0.08);
+  --rule-dot: #ddd5c3;     /* page dot-grid color      */
+  --accent: #6a55ff;       /* violet                   */
+  --accent-2: #5743e6;
+  --accent-soft: #ece8ff;
+  --amber: #e3a13a;
+  --grass: #3ea96a;
+  --vermillion: #B5371E;   /* legacy editorial accent  */
 }
 
 html, body { height: 100%; }
-body { @apply bg-white text-ink font-sans antialiased; }
+body {
+  @apply text-ink font-mono antialiased;
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--rule-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: -1px -1px;
+}
+/* Faint paper grain over the whole page (non-interactive). */
+body::before {
+  content: "";
+  position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ── Pixel / retro-terminal utilities ──────────────────────────────── */
+.pixel-edges { shape-rendering: crispEdges; image-rendering: pixelated; }
+.dot-grid {
+  background-image: radial-gradient(var(--rule-dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+/* Dashed agent connector — pair with Tailwind `animate-wireflow`. */
+.pixel-wire {
+  background: repeating-linear-gradient(90deg, var(--line-2) 0 6px, transparent 6px 12px);
+  background-size: 12px 2px;
+}
+
+/* Workspace home entrance — CSS-driven (not gsap.from) so it can NEVER
+   strand content at opacity:0. A delayed gsap.from() gets reverted by
+   React Strict Mode's dev double-mount and leaves elements invisible;
+   a CSS keyframe always resolves to the resting (visible) state. Staggered
+   via nth-child; honors reduced-motion. */
+/* Transform-only (no opacity) so a frozen/throttled animation — e.g. a
+   backgrounded tab, or a paused playhead — never leaves content invisible;
+   worst case it's offset a few px. The fade is intentionally dropped in
+   favor of guaranteed visibility. */
+@keyframes dw-rise {
+  from { transform: translateY(14px); }
+  to   { transform: none; }
+}
+.dw-grid-group { animation: dw-rise 0.5s var(--ease-entrance) backwards; }
+.dw-grid-group:nth-child(2) { animation-delay: 0.06s; }
+.dw-grid-group:nth-child(3) { animation-delay: 0.12s; }
+.dw-grid-group:nth-child(4) { animation-delay: 0.18s; }
+.dw-grid-group:nth-child(5) { animation-delay: 0.24s; }
+.dw-recent-card { animation: dw-rise 0.5s var(--ease-entrance) backwards; }
+.dw-recent-card:nth-child(2) { animation-delay: 0.05s; }
+.dw-recent-card:nth-child(3) { animation-delay: 0.10s; }
+.dw-recent-card:nth-child(4) { animation-delay: 0.15s; }
+.dw-recent-card:nth-child(5) { animation-delay: 0.20s; }
+.dw-recent-card:nth-child(6) { animation-delay: 0.25s; }
+.dw-sidebar-nav-item { animation: dw-rise 0.4s var(--ease-entrance) backwards; }
+.dw-hero-title { animation: dw-rise 0.5s var(--ease-entrance) backwards; }
+.dw-hero-form { animation: dw-rise 0.55s var(--ease-entrance) 0.08s backwards; }
+.dw-hero-hint { animation: dw-rise 0.5s var(--ease-entrance) 0.16s backwards; }
+.dw-deck-header { animation: dw-rise 0.45s var(--ease-entrance) backwards; }
+.dw-deck-chat { animation: dw-rise 0.5s var(--ease-entrance) backwards; }
+.dw-deck-preview { animation: dw-rise 0.5s var(--ease-entrance) 0.06s backwards; }
+.dw-deck-loading { animation: dw-rise 0.4s var(--ease-entrance) 0.1s backwards; }
+.dw-deck-notfound { animation: dw-rise 0.45s var(--ease-entrance) backwards; }
+@media (prefers-reduced-motion: reduce) {
+  .dw-grid-group, .dw-recent-card, .dw-sidebar-nav-item,
+  .dw-hero-title, .dw-hero-form, .dw-hero-hint,
+  .dw-deck-header, .dw-deck-chat, .dw-deck-preview,
+  .dw-deck-loading, .dw-deck-notfound { animation: none; }
+}
+
+/* ── Keyboard focus ring ─────────────────────────────────────────────
+   Accent outline shown ONLY on keyboard focus (:focus-visible), never on
+   a mouse click. A baseline for interactive elements that don't already
+   define their own focus treatment (inputs keep their focus-within shadow). */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[role="radio"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="option"]:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Skeleton shimmer (loading states) ───────────────────────────────
+   A warm left-to-right sweep over a paper-toned block. Apply `dw-shimmer`
+   to any placeholder while content is loading. */
+@keyframes dw-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.dw-shimmer {
+  background-image: linear-gradient(90deg, #e6dfce 0%, #f4efe4 50%, #e6dfce 100%);
+  background-size: 200% 100%;
+  animation: dw-shimmer 1.5s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dw-shimmer { animation: none; background-image: linear-gradient(90deg, #e6dfce, #e6dfce); }
+}
+
+/* ── Indeterminate progress bar (running tool calls) ─────────────────
+   A short accent segment sweeps across a thin track — honest "in-flight"
+   feedback when we don't have a real %. Track is styled at the call site
+   (h, border, bg); this is just the moving segment. */
+@keyframes dw-progress-sweep {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(380%); }
+}
+.dw-progress-bar {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 33%;
+  background: var(--accent);
+  animation: dw-progress-sweep 1.15s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dw-progress-bar { animation: none; transform: translateX(120%); }
+}
 
 /* ── Utility type classes ──────────────────────────────────────────── */
 .font-display {

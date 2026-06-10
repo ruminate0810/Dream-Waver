@@ -10,8 +10,6 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
 import { ArrowLeft, ArrowUpRight, ChevronDown, FileText, Loader2, Paperclip, Plus, Trash2, X } from "lucide-react";
 import clsx from "clsx";
 
@@ -24,7 +22,8 @@ import {
 } from "@/lib/api";
 import { parseTopic } from "@/lib/parseHints";
 import { rememberDeck } from "@/lib/recentDecks";
-import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
+import { useSlideMode } from "@/lib/slideMode";
+import { ModeToggle } from "@/components/slides/ModeToggle";
 import {
   TEMPLATES,
   findTemplate,
@@ -36,10 +35,9 @@ import {
   TemplateCard,
 } from "@/components/slides/TemplateCard";
 import { TemplateCreator } from "@/components/slides/TemplateCreator";
+import { PixelButton, WindowCard } from "@/components/ui/pixel";
 
-gsap.registerPlugin(useGSAP);
-
-// /slides/new — Sprint AC layout (tab bar restored).
+// /slides/new — Sprint AC layout (tab bar restored), pixel re-skin.
 //
 // Layout:
 //   § 01 Brief         — textarea + Begin (kept)
@@ -74,6 +72,7 @@ function NewSlidesChat() {
   const [topic, setTopic] = useState("");
   const [slideCount, setSlideCount] = useState(8);
   const [style, setStyle] = useState("minimalist");
+  const [mode, setMode] = useSlideMode();
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
@@ -101,7 +100,6 @@ function NewSlidesChat() {
   const [docErr, setDocErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const mainRef = useRef<HTMLElement | null>(null);
 
   // Prefill from ?topic= so the homepage hero hand-off still works.
   useEffect(() => {
@@ -140,76 +138,10 @@ function NewSlidesChat() {
     };
   }, []);
 
-  // Entrance choreography. Header settles first, then the brief settles,
-  // then the form, then the helper. Style Atlas + Composition galleries
-  // reveal via ScrollTrigger when they approach the viewport — first-fold
-  // visitors see the brief settle, scrolling reveals the galleries.
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-
-      mm.add(PREFERS_FULL_MOTION, () => {
-        const tl = gsap.timeline({
-          defaults: { ease: EASE.entrance, duration: DUR.entrance },
-        });
-        tl.from(".dw-new-header", { y: -8, opacity: 0, duration: DUR.secondary })
-          .from(".dw-new-caption", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.3")
-          .from(".dw-new-title", { y: 28, opacity: 0 }, "-=0.2")
-          .from(".dw-new-dek", { y: 14, opacity: 0, duration: DUR.secondary }, "-=0.4")
-          .from(".dw-new-form", { y: 18, opacity: 0, duration: DUR.secondary }, "-=0.35")
-          .from(".dw-new-helper", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.25")
-          .from(".dw-new-starters", { y: 12, opacity: 0, duration: DUR.secondary }, "-=0.15");
-
-        // Style Atlas — section header settles first, cards stagger up.
-        gsap.from(".dw-new-template-head", {
-          y: 12,
-          opacity: 0,
-          duration: DUR.reveal,
-          ease: EASE.entrance,
-          scrollTrigger: {
-            trigger: ".dw-new-template-head",
-            start: "top 90%",
-            once: true,
-          },
-        });
-        gsap.from(".dw-new-template-card", {
-          y: 16,
-          opacity: 0,
-          stagger: STAGGER.card,
-          duration: DUR.reveal,
-          ease: EASE.entrance,
-          scrollTrigger: {
-            trigger: ".dw-new-template-grid",
-            start: "top 88%",
-            once: true,
-          },
-        });
-
-        // Composition gallery was removed in Sprint AB — no longer a
-        // second scroll-trigger to wire. Tab switches (探索 ↔ 我的模板)
-        // re-mount their respective grid but those re-mounts are tiny;
-        // we skip animating them to keep the tab flip snappy.
-      });
-
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.from(
-          ".dw-new-header, .dw-new-caption, .dw-new-title, .dw-new-dek, .dw-new-form, .dw-new-helper, .dw-new-starters",
-          { opacity: 0, duration: 0.2, stagger: 0.04 },
-        );
-        gsap.from(".dw-new-template-card", {
-          opacity: 0,
-          duration: 0.2,
-          stagger: 0.02,
-          scrollTrigger: {
-            trigger: ".dw-new-template-grid",
-            start: "top 95%",
-            once: true,
-          },
-        });
-      });
-    },
-    { scope: mainRef },
-  );
+  // Entrance — CSS-driven (`animate-rise`, transform-only) so nothing can
+  // strand at opacity:0 under React Strict Mode or a backgrounded tab.
+  // The old GSAP timeline + ScrollTrigger choreography is gone with the
+  // pixel re-skin.
 
   async function submit(e?: FormEvent | KeyboardEvent) {
     e?.preventDefault();
@@ -240,6 +172,7 @@ function NewSlidesChat() {
         topic: cleanTopic,
         slide_count: finalCount,
         force_theme: style,
+        mode,
         brand,
         // PMQ C1 — ground the outline in the uploaded document when present.
         reference_text: docText || undefined,
@@ -323,22 +256,19 @@ function NewSlidesChat() {
   );
 
   return (
-    <main
-      ref={mainRef}
-      className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased"
-    >
-      <Grain />
-
-      <header className="dw-new-header relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
-        <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
+    <main className="dot-grid relative min-h-[100dvh] bg-paper text-ink antialiased">
+      <header className="relative z-10 border-b-2 border-ink bg-paper/85 backdrop-blur-[2px]">
+        <div className="mx-auto flex max-w-[1480px] items-center justify-between px-6 py-3.5 md:px-10">
           <a
             href="/"
-            className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+            className="group inline-flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-ink-2 transition-colors hover:text-ink"
           >
-            <ArrowLeft size={11} strokeWidth={1.8} className="translate-y-[1px] transition-transform group-hover:-translate-x-0.5" />
+            <span className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform group-hover:-translate-x-0.5">
+              <ArrowLeft size={11} strokeWidth={2} />
+            </span>
             <span>Dream-Waver / Index</span>
           </a>
-          <span className="hidden font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)] md:inline">
+          <span className="hidden font-pixel text-[0.55rem] uppercase tracking-wide text-muted md:inline">
             New Conversation
           </span>
         </div>
@@ -346,33 +276,36 @@ function NewSlidesChat() {
 
       <div className="relative z-10 mx-auto max-w-6xl px-6 pt-20 md:px-12 md:pt-24">
         {/* ── § 01 — Brief / hero ───────────────────────────────────
-            Editorial hero: chapter mark + oversized title + italic
-            dek. Sprint T1 keeps Sprint R's minimal hero — gallery
-            sections sit below, scroll-triggered. */}
-        <section className="mb-24 max-w-4xl">
-          <div className="dw-new-caption mb-10 flex items-baseline gap-4">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+            Pixel hero: chapter mark + bold mono title + the form in a
+            terminal WindowCard. Gallery sections sit below. */}
+        <section className="animate-rise mb-24 max-w-4xl">
+          <div className="mb-10 flex items-baseline gap-4">
+            <span className="font-pixel text-[0.6rem] tracking-wide text-accent">
               § 01
             </span>
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">
               Brief · 一句话开始
             </span>
-            <span className="ml-2 h-px flex-1 bg-[color:var(--rule)]" />
+            <span className="ml-2 h-px flex-1 bg-line-2" />
           </div>
 
-          <h1 className="dw-new-title font-display text-[56px] leading-[0.98] tracking-tight text-[color:var(--ink)] md:text-[88px]">
-            想做<span className="italic text-[color:var(--vermillion)]">什么样</span>
+          <h1 className="font-mono text-[42px] font-extrabold leading-[1.04] tracking-tight text-ink md:text-[64px]">
+            想做
+            <span className="relative whitespace-nowrap text-accent">
+              什么样
+              <span className="absolute -bottom-1 left-0 right-0 -z-10 h-3 bg-accent-soft" aria-hidden />
+            </span>
             <br className="hidden md:inline" />
             的演讲？
           </h1>
 
-          <p className="dw-new-dek mt-8 max-w-[640px] font-display text-[17px] italic leading-relaxed text-[color:var(--ink-soft)] md:text-[19px]">
+          <p className="mt-8 max-w-[640px] font-mono text-[15px] leading-relaxed text-ink-2 md:text-[16px]">
             写一句话给 agent —— 它会先
-            <span className="not-italic text-[color:var(--ink)]"> 规划大纲 </span>
+            <span className="font-semibold text-ink"> 规划大纲 </span>
             让你审阅，再
-            <span className="not-italic text-[color:var(--ink)]"> 写完每张幻灯片 </span>
+            <span className="font-semibold text-ink"> 写完每张幻灯片 </span>
             ，最后
-            <span className="not-italic text-[color:var(--ink)]"> 渲染成 .pptx </span>
+            <span className="font-semibold text-ink"> 渲染成 .pptx </span>
             。下面挑一个风格或者直接 Begin。
           </p>
 
@@ -389,8 +322,15 @@ function NewSlidesChat() {
             </div>
           ) : null}
 
-          <form onSubmit={submit} className="dw-new-form mt-12 flex flex-col gap-6">
-            <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
+          <form onSubmit={submit} className="mt-12">
+            {/* Terminal composer — same WindowCard language as the home
+                hero (~/new-deck). Textarea on top, controls in a chrome
+                bar under a hard hairline. */}
+            <WindowCard
+              title="~/slides/new — 描述你想做什么"
+              className="shadow-pixel-lg"
+              bodyClassName="!p-0"
+            >
               <textarea
                 ref={textareaRef}
                 value={topic}
@@ -401,118 +341,116 @@ function NewSlidesChat() {
                 rows={3}
                 disabled={submitting}
                 placeholder='例: "做一份介绍 DeepSeek V4 的 10 页投资路演 PPT，目标是 Series A 投资人"'
-                className="w-full resize-none bg-transparent font-display text-[22px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:text-[20px] placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+                className="w-full resize-none bg-transparent px-5 pb-3 pt-4 font-mono text-[16px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-50 md:text-[17px]"
               />
-            </div>
 
-            {/* PMQ C1 — attached document chip + parse error + hidden picker */}
-            {docMeta ? (
-              <div className="flex items-center gap-3 border border-[color:var(--rule)] bg-[color:var(--ink)]/[0.02] px-3 py-2">
-                <FileText
-                  size={14}
-                  strokeWidth={1.6}
-                  className="shrink-0 text-[color:var(--vermillion)]"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono-jb text-[11px] text-[color:var(--ink)]">
-                    {docMeta.filename}
-                  </p>
-                  <p className="font-mono-jb text-[9px] uppercase tracking-[0.18em] text-[color:var(--ink-faint)]">
-                    已抽取 {docMeta.chars.toLocaleString()} 字 · 作为参考资料
-                    {docMeta.truncated ? " · 已截断" : ""}
-                  </p>
+              {/* PMQ C1 — attached document chip + parse error + hidden picker */}
+              {docMeta ? (
+                <div className="mx-5 mb-3 flex items-center gap-3 rounded-pixel border-2 border-line-2 bg-surface-2 px-3 py-2">
+                  <FileText
+                    size={14}
+                    strokeWidth={1.8}
+                    className="shrink-0 text-accent"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-mono text-[12px] font-semibold text-ink">
+                      {docMeta.filename}
+                    </p>
+                    <p className="font-mono text-[10px] text-muted">
+                      已抽取 {docMeta.chars.toLocaleString()} 字 · 作为参考资料
+                      {docMeta.truncated ? " · 已截断" : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearDoc}
+                    aria-label="移除文档"
+                    className="shrink-0 text-muted transition-colors hover:text-ink"
+                  >
+                    <X size={14} strokeWidth={1.8} />
+                  </button>
                 </div>
+              ) : null}
+              {docErr ? (
+                <p className="mx-5 mb-3 rounded-pixel border-2 border-[#d4503a]/60 bg-[#fdece9] px-3 py-2 font-mono text-[11px] leading-relaxed text-[#a23a2a]">
+                  {docErr}
+                </p>
+              ) : null}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.md,.markdown,.txt,.text,.csv,application/pdf,text/markdown,text/plain"
+                className="hidden"
+                onChange={(e) => handleFilePick(e.target.files?.[0])}
+              />
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-3 border-t-2 border-line px-4 py-3">
                 <button
                   type="button"
-                  onClick={clearDoc}
-                  aria-label="移除文档"
-                  className="shrink-0 text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--vermillion)]"
+                  onClick={() => setShowOptions((v) => !v)}
+                  className="group inline-flex items-center gap-1.5 rounded-pixel px-1.5 py-1 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink"
                 >
-                  <X size={14} strokeWidth={1.8} />
+                  <ChevronDown
+                    size={12}
+                    strokeWidth={2}
+                    className={clsx(
+                      "transition-transform",
+                      showOptions && "rotate-180",
+                    )}
+                  />
+                  <span>Fine-tune</span>
+                  <span className="text-muted">·</span>
+                  <span className="tabular-nums">{slideCount} pages</span>
+                  <span className="text-muted">·</span>
+                  <span>{selectedTemplate.label}</span>
                 </button>
-              </div>
-            ) : null}
-            {docErr ? (
-              <p className="font-mono-jb text-[10px] leading-relaxed tracking-[0.04em] text-[color:var(--vermillion)]">
-                {docErr}
-              </p>
-            ) : null}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.md,.markdown,.txt,.text,.csv,application/pdf,text/markdown,text/plain"
-              className="hidden"
-              onChange={(e) => handleFilePick(e.target.files?.[0])}
-            />
 
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-              <button
-                type="button"
-                onClick={() => setShowOptions((v) => !v)}
-                className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
-              >
-                <ChevronDown
-                  size={11}
-                  strokeWidth={1.6}
-                  className={clsx(
-                    "translate-y-[1px] transition-transform",
-                    showOptions && "rotate-180",
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={submitting || docBusy}
+                  title="上传 PDF / Markdown / txt，agent 会基于它生成"
+                  className="group inline-flex items-center gap-1.5 rounded-pixel px-1.5 py-1 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {docBusy ? (
+                    <Loader2 size={12} strokeWidth={2} className="animate-spin text-accent" />
+                  ) : (
+                    <Paperclip size={12} strokeWidth={2} />
                   )}
-                />
-                <span>Fine-tune</span>
-                <span className="text-[color:var(--ink-faint)]">·</span>
-                <span className="tabular-nums">{slideCount} pages</span>
-                <span className="text-[color:var(--ink-faint)]">·</span>
-                <span>{selectedTemplate.label}</span>
-              </button>
+                  <span>{docBusy ? "Reading" : docMeta ? "换文档" : "附文档"}</span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={submitting || docBusy}
-                title="上传 PDF / Markdown / txt，agent 会基于它生成"
-                className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {docBusy ? (
-                  <Loader2 size={11} strokeWidth={1.6} className="translate-y-[1px] animate-spin" />
-                ) : (
-                  <Paperclip size={11} strokeWidth={1.6} className="translate-y-[1px]" />
-                )}
-                <span>{docBusy ? "Reading" : docMeta ? "换文档" : "附文档"}</span>
-              </button>
+                <ModeToggle value={mode} onChange={setMode} />
 
-              <button
-                type="submit"
-                disabled={!topic.trim() || submitting}
-                className={clsx(
-                  "ml-auto group inline-flex h-11 items-center gap-2 px-5 transition-all duration-200",
-                  !topic.trim() || submitting
-                    ? "cursor-not-allowed border border-[color:var(--rule)] text-[color:var(--ink-faint)]"
-                    : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
-                )}
-              >
-                {submitting ? (
-                  <Loader2 size={13} strokeWidth={1.8} className="animate-spin" />
-                ) : (
-                  <ArrowUpRight size={14} strokeWidth={1.8} className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]" />
-                )}
-                <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em]">
-                  {submitting ? "Composing" : "Begin"}
-                </span>
-              </button>
-            </div>
+                <PixelButton
+                  type="submit"
+                  variant={topic.trim() && !submitting ? "accent" : "default"}
+                  disabled={!topic.trim() || submitting}
+                  className="ml-auto"
+                >
+                  {submitting ? (
+                    <Loader2 size={14} strokeWidth={2.2} className="animate-spin" />
+                  ) : (
+                    <ArrowUpRight size={14} strokeWidth={2.2} />
+                  )}
+                  <span>{submitting ? "Composing" : "Begin"}</span>
+                </PixelButton>
+              </div>
 
-            {showOptions ? (
-              <PagesPicker slideCount={slideCount} setSlideCount={setSlideCount} />
-            ) : null}
+              {showOptions ? (
+                <div className="border-t-2 border-line bg-surface-2 px-4 py-3">
+                  <PagesPicker slideCount={slideCount} setSlideCount={setSlideCount} />
+                </div>
+              ) : null}
+            </WindowCard>
 
-            <p className="dw-new-helper font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            <p className="mt-4 font-mono text-[11px] leading-relaxed text-muted">
               ⌘ / Ctrl + Enter 提交 · 可「附文档」让 agent 基于 PDF / Markdown 生成 · 会按需问你几个问题再开工
             </p>
           </form>
 
-          <div className="dw-new-starters mt-10">
-            <p className="mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+          <div className="mt-10">
+            <p className="mb-3 font-mono text-[10px] font-semibold tracking-wide text-muted">
               没灵感？从这些开始
             </p>
             <div className="flex flex-wrap gap-2">
@@ -524,7 +462,7 @@ function NewSlidesChat() {
                     setTopic(s);
                     textareaRef.current?.focus();
                   }}
-                  className="border border-[color:var(--rule)] bg-white/40 px-3 py-1.5 text-left font-display text-[13px] italic text-[color:var(--ink-soft)] transition-all hover:-translate-y-[1px] hover:border-[color:var(--ink)]/30 hover:bg-white hover:text-[color:var(--ink)]"
+                  className="rounded-pixel border-2 border-line-2 bg-surface px-3 py-1.5 text-left font-mono text-[12px] text-ink-2 transition-all duration-150 hover:-translate-x-[1px] hover:-translate-y-[1px] hover:border-ink hover:text-ink hover:shadow-pixel-sm"
                 >
                   {s}
                 </button>
@@ -537,24 +475,23 @@ function NewSlidesChat() {
             Sprint AC — one section, one viewport patch, two grids
             switched by tab. Default "explore" so first-load users
             see real choices instead of an empty "我的模板" state. */}
-        <section className="mb-32">
-          <div className="dw-new-template-head mb-6 flex flex-wrap items-baseline gap-4">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+        <section className="animate-rise mb-32" style={{ animationDelay: "0.1s" }}>
+          <div className="mb-6 flex flex-wrap items-baseline gap-4">
+            <span className="font-pixel text-[0.6rem] tracking-wide text-accent">
               § 02
             </span>
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">
               Style Atlas · 主题与品牌
             </span>
-            <span className="mx-2 hidden h-px flex-1 bg-[color:var(--rule)] md:block" />
-            {/* Tab bar — italic underline on active, mono-cap label */}
-            <div className="ml-auto flex items-baseline gap-5">
+            <span className="mx-2 hidden h-px flex-1 bg-line-2 md:block" />
+            {/* Tab bar — pixel chip tabs; active gets ink border + violet wash */}
+            <div className="ml-auto flex items-center gap-2">
               <StyleTabButton
                 active={styleTab === "explore"}
                 onClick={() => setStyleTab("explore")}
                 label="探索"
                 badge={`${TEMPLATES.length}`}
               />
-              <span className="font-mono-jb text-[10px] text-[color:var(--ink-faint)]">·</span>
               <StyleTabButton
                 active={styleTab === "mine"}
                 onClick={() => setStyleTab("mine")}
@@ -572,15 +509,15 @@ function NewSlidesChat() {
 
           {styleTab === "explore" ? (
             <>
-              <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+              <p className="mb-8 max-w-2xl font-mono text-[13px] leading-relaxed text-ink-2">
                 挑一个主题，Begin 时 agent 按这套色板和字体写所有幻灯片。当前选中
-                <span className="not-italic text-[color:var(--ink)]"> {selectedTemplate.label}</span>
+                <span className="font-semibold text-ink"> {selectedTemplate.label}</span>
                 。不挑也行 —— AI 会按 brief 自动选。
               </p>
 
               <FeaturedTemplateCard template={selectedTemplate} />
 
-              <div className="dw-new-template-grid mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {galleryTemplates.map((t) => (
                   <TemplateCard
                     key={t.name}
@@ -624,10 +561,9 @@ function NewSlidesChat() {
 }
 
 // StyleTabButton — single tab in the § 02 Style Atlas tab bar.
-// Visual: monospace caps label + tiny tabular badge counter; the
-// active tab gets a vermillion underline + ink-strength text, idle
-// tabs fade back to ink-faint. Matches the rest of the page's
-// editorial hairline language (no rounded chips, no shadows).
+// Pixel chip tabs: the active tab gets an ink border + violet wash +
+// hard pixel shadow (same selected-state language as option cards);
+// idle tabs are quiet bordered chips that sharpen on hover.
 function StyleTabButton({
   active,
   onClick,
@@ -644,17 +580,17 @@ function StyleTabButton({
       type="button"
       onClick={onClick}
       className={clsx(
-        "group inline-flex items-baseline gap-2 border-b-[2px] pb-1.5 font-mono-jb text-[11px] uppercase tracking-[0.26em] transition-colors",
+        "inline-flex items-baseline gap-2 rounded-pixel border-2 px-3 py-1.5 font-mono text-[11px] font-semibold tracking-wide transition-all duration-150",
         active
-          ? "border-[color:var(--vermillion)] text-[color:var(--ink)]"
-          : "border-transparent text-[color:var(--ink-faint)] hover:text-[color:var(--ink-soft)]",
+          ? "border-ink bg-accent-soft text-ink shadow-pixel-sm"
+          : "border-line-2 bg-surface text-muted hover:border-ink hover:text-ink",
       )}
     >
       <span>{label}</span>
       <span
         className={clsx(
-          "tabular-nums text-[9px] tracking-[0.18em]",
-          active ? "text-[color:var(--vermillion)]" : "text-[color:var(--ink-faint)]",
+          "tabular-nums text-[9px]",
+          active ? "text-accent" : "text-muted",
         )}
       >
         {badge}
@@ -682,16 +618,16 @@ function MyTemplatesGrid({
 }) {
   return (
     <>
-      <p className="mb-8 max-w-2xl font-display text-[16px] italic leading-relaxed text-[color:var(--ink-soft)]">
+      <p className="mb-8 max-w-2xl font-mono text-[13px] leading-relaxed text-ink-2">
         把常用的
-        <span className="not-italic text-[color:var(--ink)]"> 主题 + 品牌色 + 字体 </span>
+        <span className="font-semibold text-ink"> 主题 + 品牌色 + 字体 </span>
         组合存下来，下次一键复用 —— 不用每次重新挑色板。
       </p>
 
       {error ? (
         <div
           role="alert"
-          className="mb-4 border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] px-3 py-2 font-display text-[14px] italic text-[color:var(--ink)]"
+          className="mb-4 rounded-pixel border-2 border-[#d4503a]/60 bg-[#fdece9] px-3 py-2 font-mono text-[12px] leading-relaxed text-[#a23a2a]"
         >
           {error}
         </div>
@@ -702,17 +638,17 @@ function MyTemplatesGrid({
         <button
           type="button"
           onClick={onCreate}
-          className="dw-new-template-card group flex aspect-[16/12] w-full flex-col items-center justify-center gap-2 border border-dashed border-[color:var(--ink)]/30 bg-white/40 px-4 py-3 text-center transition-all hover:-translate-y-[2px] hover:border-[color:var(--vermillion)] hover:bg-white"
+          className="dw-new-template-card group flex aspect-[16/12] w-full flex-col items-center justify-center gap-2 rounded-pixel border-2 border-dashed border-line-2 bg-surface-2 px-4 py-3 text-center transition-all hover:border-ink hover:bg-surface hover:shadow-pixel-sm"
         >
           <Plus
             size={24}
-            strokeWidth={1.4}
-            className="text-[color:var(--ink-faint)] transition-colors group-hover:text-[color:var(--vermillion)]"
+            strokeWidth={1.6}
+            className="text-muted transition-colors group-hover:text-accent"
           />
-          <span className="font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)] transition-colors group-hover:text-[color:var(--ink)]">
+          <span className="font-mono text-[13px] font-semibold leading-snug text-ink-2 transition-colors group-hover:text-ink">
             添加我的模板
           </span>
-          <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
             theme + brand
           </span>
         </button>
@@ -731,9 +667,9 @@ function MyTemplatesGrid({
       </div>
 
       {!loading && templates.length === 0 ? (
-        <p className="mt-6 font-display text-[14px] italic text-[color:var(--ink-faint)]">
+        <p className="mt-6 font-mono text-[12px] text-muted">
           还没有保存的模板。点上方
-          <span className="not-italic text-[color:var(--ink)]"> 添加我的模板 </span>
+          <span className="font-semibold text-ink"> 添加我的模板 </span>
           开始 —— 几秒钟搞定。
         </p>
       ) : null}
@@ -762,10 +698,10 @@ function UserTemplateCard({
         type="button"
         onClick={onClick}
         className={clsx(
-          "relative flex w-full flex-col overflow-hidden border bg-white text-left transition-all duration-200",
+          "relative flex w-full flex-col overflow-hidden rounded-pixel border-2 bg-surface text-left transition-all duration-150",
           selected
-            ? "border-[color:var(--vermillion)] shadow-[0_0_0_3px_rgba(181,55,30,0.15),0_18px_36px_-22px_rgba(181,55,30,0.35)]"
-            : "border-[color:var(--rule)] shadow-[0_1px_0_rgba(26,22,20,0.04)] hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]",
+            ? "border-ink bg-accent-soft shadow-pixel-sm"
+            : "border-ink shadow-pixel-sm hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-pixel",
         )}
       >
         {/* Thumbnail — use base theme preview with the brand colours
@@ -781,7 +717,7 @@ function UserTemplateCard({
               className="aspect-[16/9] w-full object-cover"
             />
           ) : (
-            <div className="aspect-[16/9] w-full bg-[color:var(--paper)]" />
+            <div className="aspect-[16/9] w-full bg-paper-2" />
           )}
           {/* Brand stripe — primary + accent slashes top-right corner */}
           <div className="pointer-events-none absolute right-0 top-0 flex h-8 items-stretch overflow-hidden">
@@ -798,11 +734,11 @@ function UserTemplateCard({
           </div>
         </div>
 
-        <div className="border-t border-[color:var(--rule)] px-3 py-2.5">
-          <p className="truncate font-display text-[15px] leading-tight text-[color:var(--ink)]">
+        <div className="border-t border-line px-3 py-2.5">
+          <p className="truncate font-mono text-[14px] font-bold leading-tight text-ink">
             {template.name}
           </p>
-          <p className="mt-0.5 truncate font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          <p className="mt-0.5 truncate font-pixel text-[0.5rem] tracking-wide text-muted">
             {base?.label ?? template.theme} · brand
           </p>
         </div>
@@ -815,7 +751,7 @@ function UserTemplateCard({
           onDelete();
         }}
         aria-label={`Delete template ${template.name}`}
-        className="absolute left-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-full border border-[color:var(--ink)]/15 bg-white/90 text-[color:var(--ink-faint)] opacity-0 shadow-sm transition-all hover:border-[color:var(--vermillion)] hover:text-[color:var(--vermillion)] group-hover:opacity-100"
+        className="absolute left-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center rounded-pixel border-2 border-ink bg-surface text-muted opacity-0 shadow-pixel-sm transition-all hover:text-[#a23a2a] group-hover:opacity-100"
       >
         <Trash2 size={13} strokeWidth={1.8} />
       </button>
@@ -833,8 +769,8 @@ function PagesPicker({
   setSlideCount: (n: number) => void;
 }) {
   return (
-    <div className="flex items-baseline gap-3 border-l-2 border-[color:var(--rule)] pl-4">
-      <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+    <div className="flex items-center gap-3 border-l-2 border-line pl-4">
+      <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
         Pages
       </span>
       <input
@@ -843,26 +779,12 @@ function PagesPicker({
         max={40}
         value={slideCount}
         onChange={(e) => setSlideCount(Math.max(3, Math.min(40, Number(e.target.value) || 8)))}
-        className="w-20 border-b border-[color:var(--ink)]/30 bg-transparent pb-1 font-display text-[22px] text-[color:var(--ink)] focus:border-[color:var(--vermillion)] focus:outline-none"
+        className="w-20 rounded-pixel border-2 border-ink bg-surface px-2 py-1 font-mono text-[18px] font-bold tabular-nums text-ink focus:shadow-pixel-sm focus:outline-none"
       />
-      <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+      <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
         3 – 40
       </span>
     </div>
-  );
-}
-
-function Grain() {
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 z-0 opacity-[0.05] mix-blend-multiply"
-      style={{
-        backgroundImage:
-          "url(\"data:image/svg+xml;utf8,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.07 0 0 0 0 0.06 0 0 0 0 0.06 0 0 0 0.8 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-        backgroundSize: "240px 240px",
-      }}
-    />
   );
 }
 

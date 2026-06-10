@@ -86,22 +86,22 @@ export function GameSource({ jobId, revisionIdx, title }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-x border-t border-[color:var(--rule)] bg-white/60 px-3 py-2 backdrop-blur-[1px]">
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+      <div className="flex items-center justify-between border-x-2 border-t-2 border-ink bg-surface-2 px-3 py-2">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">
           Source · {(code.length || 0).toLocaleString()} bytes
           {revisionIdx !== undefined ? ` · v${revisionIdx}` : ""}
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1.5">
           <button
             type="button"
             onClick={onCopy}
             disabled={!code}
             title="Copy to clipboard"
             className={clsx(
-              "inline-flex items-center gap-1.5 rounded px-2 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] transition-colors",
+              "inline-flex items-center gap-1.5 rounded-pixel border-2 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors",
               !code
-                ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-                : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+                ? "cursor-not-allowed border-line-2 text-muted"
+                : "border-line-2 text-ink-2 hover:border-ink hover:bg-ink/5 hover:text-ink",
             )}
           >
             {copied ? <Check size={11} strokeWidth={2} /> : <Copy size={11} strokeWidth={1.8} />}
@@ -113,10 +113,10 @@ export function GameSource({ jobId, revisionIdx, title }: Props) {
             disabled={!code}
             title="Download .html"
             className={clsx(
-              "inline-flex items-center gap-1.5 rounded px-2 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] transition-colors",
+              "inline-flex items-center gap-1.5 rounded-pixel border-2 px-2 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors",
               !code
-                ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-                : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+                ? "cursor-not-allowed border-line-2 text-muted"
+                : "border-line-2 text-ink-2 hover:border-ink hover:bg-ink/5 hover:text-ink",
             )}
           >
             <Download size={11} strokeWidth={1.8} />
@@ -125,15 +125,15 @@ export function GameSource({ jobId, revisionIdx, title }: Props) {
         </div>
       </div>
 
-      <div className="relative flex-1 overflow-auto border border-[color:var(--rule)] bg-[#fbf8f0]">
+      <div className="relative flex-1 overflow-auto border-x-2 border-b-2 border-ink bg-[#fbf8f0] shadow-pixel">
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 size={20} className="animate-spin text-[color:var(--ink-faint)]" />
+            <Loader2 size={20} className="animate-spin text-accent" />
           </div>
         ) : error ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <AlertCircle size={20} className="text-red-700" />
-            <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-red-800">
+            <AlertCircle size={20} className="text-[#d4503a]" />
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-[#a23a2a]">
               {error}
             </p>
           </div>

@@ -84,11 +84,11 @@ export function RevisionStrip({
   return (
     <div
       className={clsx(
-        "flex items-center gap-2 overflow-x-auto border-x border-[color:var(--rule)] bg-white/60 px-3 backdrop-blur-[1px]",
+        "flex items-center gap-2 overflow-x-auto border-x-2 border-ink bg-surface-2 px-3",
         compact ? "py-1.5" : "py-2",
       )}
     >
-      <span className="shrink-0 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+      <span className="shrink-0 font-pixel text-[0.55rem] tracking-wide text-muted">
         Versions
       </span>
       {revs.map((r) => {
@@ -101,17 +101,17 @@ export function RevisionStrip({
             title={`${r.title || "Untitled"} — ${r.description || "no description"} (${r.bytes.toLocaleString()} bytes, ${formatTime(r.at)})`}
             onClick={() => onSelect(isHead ? undefined : r.idx)}
             className={clsx(
-              "group inline-flex shrink-0 items-center gap-1.5 border px-2.5 py-1 transition-colors",
+              "group inline-flex shrink-0 items-center gap-1.5 rounded-pixel border-2 px-2.5 py-1 transition-colors",
               isActive
-                ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-                : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/40 hover:text-[color:var(--ink)]",
+                ? "border-ink bg-accent-soft text-ink shadow-pixel-sm"
+                : "border-line-2 text-ink-2 hover:border-ink hover:text-ink",
             )}
           >
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wide">
               v{r.idx}
             </span>
             {isHead ? (
-              <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] opacity-70">
+              <span className="font-pixel text-[0.5rem] uppercase tracking-wide opacity-70">
                 head
               </span>
             ) : null}
@@ -124,10 +124,10 @@ export function RevisionStrip({
           onClick={() => handleRestore(selectedIdx)}
           disabled={restoring !== null}
           className={clsx(
-            "ml-auto inline-flex shrink-0 items-center gap-1.5 border border-[color:var(--vermillion)]/60 px-2.5 py-1 text-[color:var(--vermillion)] transition-colors",
+            "ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-pixel border-2 border-ink bg-accent px-2.5 py-1 text-white shadow-pixel-sm transition-transform",
             restoring !== null
               ? "cursor-not-allowed opacity-50"
-              : "hover:bg-[color:var(--vermillion)] hover:text-[color:var(--paper)]",
+              : "hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
           )}
           title={`Fork future edits from v${selectedIdx}`}
         >
@@ -136,7 +136,7 @@ export function RevisionStrip({
           ) : (
             <RotateCcw size={11} strokeWidth={2} />
           )}
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wide">
             Restore v{selectedIdx}
           </span>
         </button>

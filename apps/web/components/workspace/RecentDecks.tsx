@@ -1,86 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ImageOff, X } from "lucide-react";
 
 import { forgetDeck, listRecentDecks, type RecentDeck } from "@/lib/recentDecks";
-import { DUR, EASE, PREFERS_FULL_MOTION, STAGGER } from "@/lib/motion";
 
-gsap.registerPlugin(useGSAP, ScrollTrigger);
-
-// RecentDecks — client-only list of the user's most recent decks,
-// read from localStorage. Renders nothing on the server (Next.js
-// hydration) and nothing when there are no decks to show, so the
-// homepage stays clean for first-time visitors.
-//
-// Design: one row per deck — small 16:9 thumb of slide 1 (gracefully
-// fails to a neutral block if the PNG isn't ready yet), title +
-// theme + relative time, click anywhere on the card to re-open the
-// /slides/[id] workspace. A small × button forgets the deck from
-// the local list (server-side state is untouched).
+// RecentDecks — client-only list of the user's most recent decks from
+// localStorage, pixel re-skin. Renders nothing on the server / when empty.
+// The 404 self-prune + ScrollTrigger reveal are unchanged.
 
 export function RecentDecks() {
   const [decks, setDecks] = useState<RecentDeck[] | null>(null);
-  const sectionRef = useRef<HTMLElement | null>(null);
 
-  // Sprint Y1 — ScrollTrigger reveal. Cards stagger-in when they
-  // first scroll into view (start: "top 90%" — fires when the card's
-  // top reaches the bottom 10% of the viewport). once:true means
-  // we don't re-animate on scroll back, which would feel showy.
-  useGSAP(
-    () => {
-      if (!decks || decks.length === 0) return;
-      const mm = gsap.matchMedia();
-
-      mm.add(PREFERS_FULL_MOTION, () => {
-        gsap.from(".dw-recent-card", {
-          y: 18,
-          opacity: 0,
-          stagger: STAGGER.card,
-          duration: DUR.reveal,
-          ease: EASE.entrance,
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: "top 85%",
-            once: true,
-          },
-        });
-      });
-
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.from(".dw-recent-card", {
-          opacity: 0,
-          duration: 0.2,
-          stagger: 0.03,
-          scrollTrigger: {
-            trigger: sectionRef.current,
-            start: "top 95%",
-            once: true,
-          },
-        });
-      });
-    },
-    { scope: sectionRef, dependencies: [decks?.length ?? 0] },
-  );
-
+  // Entrance is CSS-driven (.dw-recent-card in globals.css) so cards can't
+  // strand at opacity:0 under React Strict Mode's dev double-mount.
   useEffect(() => {
     const initial = listRecentDecks();
     setDecks(initial);
-    // Also refresh when the page is shown after a back-nav (Safari
-    // / Chrome bfcache) so a deck the user just generated appears.
     const onShow = () => setDecks(listRecentDecks());
     window.addEventListener("pageshow", onShow);
 
-    // Background self-clean — probe each remembered deck with a
-    // GET /slides/{id}. Anything 404 means the backend forgot it
-    // (typically: orchestrator restart with in-memory store), so we
-    // prune the localStorage entry. Done in parallel; failures
-    // silently drop. We don't await — render the cached list
-    // immediately; pruned entries vanish on the next state update.
     initial.forEach(async (d) => {
       try {
         const res = await fetch(`/api/v1/slides/${d.jobId}`, { method: "GET" });
@@ -89,26 +29,24 @@ export function RecentDecks() {
           setDecks((prev) => (prev ?? []).filter((x) => x.jobId !== d.jobId));
         }
       } catch {
-        // Network error — leave the entry alone; the user can × it
-        // manually if needed.
+        /* network error — leave it; user can × manually */
       }
     });
 
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
-  // SSR + zero-deck case → render nothing. The homepage's other
-  // sections cover those flows.
   if (decks === null || decks.length === 0) return null;
 
   return (
-    <section ref={sectionRef} className="px-10 py-10">
-      <div className="mb-5 flex items-baseline justify-between border-b border-zinc-200 pb-3">
-        <h2 className="font-display text-[22px] tracking-tight text-zinc-900">
-          最近的 deck <span className="ml-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-zinc-400">· Recent</span>
+    <section className="px-10 py-10">
+      <div className="mb-5 flex items-baseline justify-between border-b-2 border-ink pb-3">
+        <h2 className="font-mono text-[20px] font-extrabold tracking-tight text-ink">
+          最近的 deck
+          <span className="ml-2 font-pixel text-[0.55rem] tracking-wide text-muted">· RECENT</span>
         </h2>
-        <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-          {decks.length} on this device
+        <p className="font-pixel text-[0.55rem] tracking-wide text-muted">
+          {decks.length} ON THIS DEVICE
         </p>
       </div>
 
@@ -134,21 +72,13 @@ function DeckRow({ deck, onForget }: { deck: RecentDeck; onForget: () => void })
     <li className="dw-recent-card group relative">
       <Link
         href={href}
-        className="flex items-stretch gap-3 border border-zinc-200 bg-white p-2.5 transition-all duration-200 hover:-translate-y-[1px] hover:border-zinc-400 hover:shadow-[0_18px_36px_-22px_rgba(0,0,0,0.15)]"
+        className="flex items-stretch gap-3 rounded-pixel border-2 border-ink bg-surface p-2.5 shadow-pixel-sm transition-transform duration-150 hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-pixel"
       >
-        <div className="relative aspect-[16/9] w-[140px] shrink-0 overflow-hidden border border-zinc-100 bg-zinc-50">
+        <div className="relative aspect-[16/9] w-[140px] shrink-0 overflow-hidden rounded-[3px] border-2 border-ink bg-surface-2">
           {thumbBroken ? (
-            // Either the deck is still rendering (slide 1 PNG not
-            // written yet) OR the backend forgot it (in-memory store
-            // restart). The auto-prune effect upstairs handles the
-            // forgotten case; this placeholder covers both with a
-            // neutral hairline icon + no spinner (a spinner here was
-            // misleading — looked like loading when really it's gone).
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-zinc-300">
-              <ImageOff size={14} strokeWidth={1.4} />
-              <span className="font-mono-jb text-[8px] uppercase tracking-[0.22em]">
-                no preview
-              </span>
+            <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-line-2">
+              <ImageOff size={14} strokeWidth={1.6} />
+              <span className="font-pixel text-[0.45rem] tracking-wide">no preview</span>
             </div>
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
@@ -162,10 +92,10 @@ function DeckRow({ deck, onForget }: { deck: RecentDeck; onForget: () => void })
           )}
         </div>
         <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
-          <p className="truncate font-display text-[15px] leading-tight text-zinc-900">
+          <p className="truncate font-mono text-[15px] font-semibold leading-tight text-ink">
             {display}
           </p>
-          <div className="flex items-baseline gap-2 font-mono-jb text-[9px] uppercase tracking-[0.22em] text-zinc-400">
+          <div className="flex items-baseline gap-2 font-pixel text-[0.5rem] tracking-wide text-muted">
             <span>{deck.theme}</span>
             <span>·</span>
             <span>{relativeTime(deck.createdAt)}</span>
@@ -180,17 +110,14 @@ function DeckRow({ deck, onForget }: { deck: RecentDeck; onForget: () => void })
           onForget();
         }}
         aria-label="Forget this deck"
-        className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-sm bg-white/0 text-zinc-300 opacity-0 transition-all hover:bg-zinc-100 hover:text-zinc-700 group-hover:opacity-100"
+        className="absolute right-2 top-2 inline-flex h-5 w-5 items-center justify-center rounded-[3px] border-2 border-transparent text-line-2 opacity-0 transition-all hover:border-ink hover:bg-surface hover:text-ink group-hover:opacity-100"
       >
-        <X size={11} strokeWidth={1.8} />
+        <X size={11} strokeWidth={2.2} />
       </button>
     </li>
   );
 }
 
-// Lightweight relative-time formatter — avoids pulling in date-fns
-// just for this one surface. Sub-minute resolution isn't useful
-// here; users care about "just now" / "5 min ago" / "yesterday".
 function relativeTime(ts: number): string {
   const diff = Date.now() - ts;
   const s = Math.floor(diff / 1000);

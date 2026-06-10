@@ -16,9 +16,9 @@ import type { WizardStepView } from "./transport";
 // bubble renders right below in the dialogue.
 //
 // Visual register matches the chat thread:
-//   - vermillion 2px left bleed strip = "agent speaking"
+//   - accent 2px left bleed strip = "agent speaking"
 //   - kicker mono caps + step tracker
-//   - display-serif question body
+//   - mono question body
 //   - chip rail (select) OR composer-style input (free-text)
 //
 // Deliberately smaller / more conversational than the WizardCard
@@ -81,16 +81,16 @@ export function QuestionBubble({
     const display = answerText ?? "";
     const isSkip = display === ANSWER_PLACEHOLDER_SKIP;
     return (
-      <div className="relative flex flex-col gap-2 border-l-2 border-l-ink-faint pl-4 py-2 opacity-80">
-        <div className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-ink-faint">
+      <div className="relative flex flex-col gap-2 border-l-2 border-l-line-2 pl-4 py-2 opacity-80">
+        <div className="font-mono text-[10px] font-semibold tracking-wide text-muted">
           Q{view.step} / {view.total} · 已回答
         </div>
-        <div className="font-display text-base leading-snug text-ink-soft">
+        <div className="font-mono text-[14px] leading-snug text-ink-2">
           {view.question}
         </div>
-        <div className="flex items-center gap-2 font-display text-sm italic text-ink">
-          <Check className="h-3.5 w-3.5 text-[#B5371E]" strokeWidth={2.5} />
-          <span className={clsx(isSkip && "italic text-ink-faint")}>{display || "—"}</span>
+        <div className="flex items-center gap-2 font-mono text-[13px] text-ink">
+          <Check className="h-3.5 w-3.5 text-grass" strokeWidth={2.5} />
+          <span className={clsx(isSkip && "text-muted")}>{display || "—"}</span>
         </div>
       </div>
     );
@@ -98,25 +98,25 @@ export function QuestionBubble({
 
   // ─── Active question ───────────────────────────────────────────
   return (
-    <div className="relative flex flex-col gap-3 border-l-2 border-l-[#B5371E] pl-4 py-2">
+    <div className="relative flex flex-col gap-3 border-l-2 border-l-accent pl-4 py-2">
       {/* Kicker line — step tracker + AI tag */}
-      <div className="flex items-center gap-2 font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[#B5371E]">
+      <div className="flex items-center gap-2 font-mono text-[10px] font-semibold tracking-wide text-accent">
         <Sparkles className="h-3 w-3" strokeWidth={2} />
         <span>Agent 问</span>
-        <span className="text-ink-faint">·</span>
-        <span className="text-ink-faint">
+        <span className="text-muted">·</span>
+        <span className="text-muted">
           STEP {view.step} / {view.total}
         </span>
         {view.optional ? (
           <>
-            <span className="text-ink-faint">·</span>
-            <span className="text-ink-faint">可跳过</span>
+            <span className="text-muted">·</span>
+            <span className="text-muted">可跳过</span>
           </>
         ) : null}
       </div>
 
       {/* Question body */}
-      <div className="font-display text-lg leading-snug text-ink">
+      <div className="font-mono text-[15px] font-bold leading-snug tracking-tight text-ink">
         {view.question}
       </div>
 
@@ -130,12 +130,12 @@ export function QuestionBubble({
               disabled={busy}
               onClick={() => handleSelect(opt.value)}
               className={clsx(
-                "group inline-flex items-center gap-1.5 rounded-full border border-ink/15 bg-paper px-3.5 py-1.5",
-                "font-display text-sm text-ink",
-                "transition-all duration-200 ease-out",
-                "hover:border-[#B5371E] hover:bg-[#FFF6F2] hover:text-[#B5371E]",
-                "active:scale-[0.98]",
-                busy && "cursor-not-allowed opacity-40 hover:border-ink/15 hover:bg-paper hover:text-ink",
+                "group inline-flex items-center gap-1.5 rounded-pixel border-2 border-line-2 bg-surface px-3.5 py-1.5",
+                "font-mono text-[13px] text-ink",
+                "transition-all duration-150",
+                "hover:border-ink hover:bg-accent-soft",
+                "active:translate-y-[1px]",
+                busy && "cursor-not-allowed opacity-40 hover:border-line-2 hover:bg-surface",
               )}
             >
               {opt.label}
@@ -147,9 +147,9 @@ export function QuestionBubble({
               disabled={busy}
               onClick={handleSkip}
               className={clsx(
-                "inline-flex items-center gap-1.5 rounded-full border border-dashed border-ink/20 bg-transparent px-3.5 py-1.5",
-                "font-mono-jb text-[11px] uppercase tracking-[0.2em] text-ink-faint",
-                "transition-colors duration-200 hover:border-ink/40 hover:text-ink-soft",
+                "inline-flex items-center gap-1.5 rounded-pixel border-2 border-dashed border-line-2 bg-transparent px-3.5 py-1.5",
+                "font-mono text-[11px] font-semibold text-muted",
+                "transition-colors duration-150 hover:border-ink hover:text-ink-2",
                 busy && "cursor-not-allowed opacity-40",
               )}
             >
@@ -167,10 +167,9 @@ export function QuestionBubble({
             disabled={busy}
             placeholder={view.placeholder || "回答 agent 的问题…"}
             className={clsx(
-              "flex-1 rounded-full border border-ink/15 bg-paper px-4 py-2",
-              "font-display text-base text-ink placeholder:text-ink-faint",
-              "focus:border-[#B5371E] focus:outline-none focus:ring-1 focus:ring-[#B5371E]/30",
-              "transition-colors duration-200",
+              "flex-1 rounded-pixel border-2 border-line-2 bg-surface px-4 py-2",
+              "font-mono text-[14px] text-ink placeholder:text-muted",
+              "transition-all duration-150 focus:border-ink focus:shadow-pixel-sm focus:outline-none",
               busy && "cursor-not-allowed opacity-50",
             )}
           />
@@ -178,10 +177,11 @@ export function QuestionBubble({
             type="submit"
             disabled={busy || !freeText.trim()}
             className={clsx(
-              "inline-flex items-center gap-1.5 rounded-full bg-[#B5371E] px-4 py-2",
-              "font-display text-sm text-paper",
-              "transition-all duration-200 hover:bg-[#9a2e16] active:scale-[0.98]",
-              "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-[#B5371E]",
+              "inline-flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-accent px-4 py-2",
+              "font-mono text-[13px] font-semibold text-white shadow-pixel-sm",
+              "transition-all duration-150 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover",
+              "active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
+              "disabled:cursor-not-allowed disabled:opacity-40 disabled:translate-x-0 disabled:translate-y-0",
             )}
           >
             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -193,9 +193,9 @@ export function QuestionBubble({
               disabled={busy}
               onClick={handleSkip}
               className={clsx(
-                "inline-flex items-center rounded-full border border-dashed border-ink/20 bg-transparent px-3 py-2",
-                "font-mono-jb text-[10px] uppercase tracking-[0.2em] text-ink-faint",
-                "transition-colors duration-200 hover:border-ink/40 hover:text-ink-soft",
+                "inline-flex items-center rounded-pixel border-2 border-dashed border-line-2 bg-transparent px-3 py-2",
+                "font-mono text-[11px] font-semibold text-muted",
+                "transition-colors duration-150 hover:border-ink hover:text-ink-2",
                 busy && "cursor-not-allowed opacity-40",
               )}
             >
@@ -207,8 +207,8 @@ export function QuestionBubble({
 
       {/* Busy line — shows the user that the agent is on the next step */}
       {busy ? (
-        <div className="flex items-center gap-1.5 font-display text-xs italic text-ink-faint">
-          <Loader2 className="h-3 w-3 animate-spin" />
+        <div className="flex items-center gap-1.5 font-mono text-[12px] text-muted">
+          <Loader2 className="h-3 w-3 animate-spin text-accent" />
           <span>处理中…agent 正在准备下一步</span>
         </div>
       ) : null}
@@ -219,8 +219,8 @@ export function QuestionBubble({
 // UserAnswerBubble renders the user-side bubble for a `user-answer`
 // ConversationMessage. Sits below the matching QuestionBubble in the
 // thread so the wizard reads as a real dialogue. Visually contrasts
-// the agent bubble (left vermillion bleed) by sitting right-aligned
-// with a soft ink border — same convention edit-turn user messages
+// the agent bubble (left accent bleed) by sitting right-aligned with
+// a quiet hairline border — same convention edit-turn user messages
 // use elsewhere in the thread.
 export function UserAnswerBubble({ text }: { text: string }) {
   const isSkip = text === ANSWER_PLACEHOLDER_SKIP;
@@ -229,19 +229,19 @@ export function UserAnswerBubble({ text }: { text: string }) {
     <div className="flex justify-end">
       <div
         className={clsx(
-          "relative max-w-[80%] rounded-2xl border bg-paper px-4 py-2",
+          "relative max-w-[80%] rounded-pixel border-2 px-4 py-2",
           isSkip || isBack
-            ? "border-dashed border-ink/20"
-            : "border-ink/12 bg-[#FBF7F4]",
+            ? "border-dashed border-line-2 bg-transparent"
+            : "border-line-2 bg-surface-2",
         )}
       >
-        <div className="font-mono-jb text-[9px] uppercase tracking-[0.3em] text-ink-faint mb-0.5">
+        <div className="mb-0.5 font-mono text-[10px] font-semibold tracking-wide text-muted">
           你
         </div>
         <div
           className={clsx(
-            "font-display text-base leading-snug",
-            isSkip || isBack ? "italic text-ink-faint" : "text-ink",
+            "font-mono text-[14px] leading-snug",
+            isSkip || isBack ? "text-muted" : "text-ink",
           )}
         >
           {text}

@@ -28,10 +28,10 @@ export function PreviewGrid({
     <>
       <section className="mt-10">
         <div className="mb-4 flex items-baseline justify-between">
-          <h2 className="text-sm font-medium text-slate-600">
+          <h2 className="font-mono text-sm font-bold tracking-tight text-ink">
             预览 · {urls.length} 张
           </h2>
-          <span className="text-xs text-slate-400">点击放大查看</span>
+          <span className="font-mono text-xs text-muted">点击放大查看</span>
         </div>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
           {urls.map((url, i) => (
@@ -39,7 +39,7 @@ export function PreviewGrid({
               key={url}
               type="button"
               onClick={() => setOpenIndex(i)}
-              className="group relative aspect-[16/9] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md hover:border-slate-300"
+              className="group relative aspect-[16/9] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-all hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-pixel"
               aria-label={`查看第 ${i + 1} 张幻灯片`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -49,7 +49,7 @@ export function PreviewGrid({
                 loading="lazy"
                 className="absolute inset-0 h-full w-full object-cover"
               />
-              <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-[11px] font-medium text-white backdrop-blur-sm">
+              <span className="absolute bottom-2 left-2 rounded-[4px] border border-ink/40 bg-ink/85 px-2 py-0.5 font-pixel text-[0.6rem] text-paper backdrop-blur-sm">
                 {i + 1}
               </span>
             </button>
@@ -94,13 +94,13 @@ function Lightbox({
         if (e.key === "ArrowRight") next();
       }}
       tabIndex={-1}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-8"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/90 p-8"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={urls[index]}
         alt={`Slide ${index + 1}`}
-        className="max-h-full max-w-full rounded-xl shadow-2xl"
+        className="max-h-full max-w-full rounded-pixel border-2 border-ink bg-surface"
         onClick={(e) => e.stopPropagation()}
       />
       <button
@@ -111,8 +111,8 @@ function Lightbox({
         }}
         disabled={index === 0}
         className={clsx(
-          "absolute left-6 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white backdrop-blur",
-          index === 0 ? "opacity-30" : "hover:bg-white/20",
+          "absolute left-6 top-1/2 -translate-y-1/2 rounded-pixel border-2 border-white/30 bg-white/10 p-3 font-mono text-white backdrop-blur",
+          index === 0 ? "opacity-30" : "hover:border-white/60 hover:bg-white/20",
         )}
         aria-label="Previous slide"
       >
@@ -126,8 +126,8 @@ function Lightbox({
         }}
         disabled={index === urls.length - 1}
         className={clsx(
-          "absolute right-6 top-1/2 -translate-y-1/2 rounded-full bg-white/10 p-3 text-white backdrop-blur",
-          index === urls.length - 1 ? "opacity-30" : "hover:bg-white/20",
+          "absolute right-6 top-1/2 -translate-y-1/2 rounded-pixel border-2 border-white/30 bg-white/10 p-3 font-mono text-white backdrop-blur",
+          index === urls.length - 1 ? "opacity-30" : "hover:border-white/60 hover:bg-white/20",
         )}
         aria-label="Next slide"
       >
@@ -136,12 +136,12 @@ function Lightbox({
       <button
         type="button"
         onClick={onClose}
-        className="absolute right-6 top-6 rounded-full bg-white/10 p-2 text-white backdrop-blur hover:bg-white/20"
+        className="absolute right-6 top-6 rounded-pixel border-2 border-white/30 bg-white/10 p-2 font-mono text-white backdrop-blur hover:border-white/60 hover:bg-white/20"
         aria-label="Close preview"
       >
         ✕
       </button>
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full bg-white/10 px-4 py-1 text-sm text-white backdrop-blur">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-pixel border-2 border-white/30 bg-white/10 px-4 py-1 font-mono text-sm text-white backdrop-blur">
         {index + 1} / {urls.length}
       </div>
     </div>

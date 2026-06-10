@@ -41,18 +41,12 @@ export function SceneNode({ node, onRegen, regenPending }: SceneNodeProps) {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={clsx(
-        "group relative flex flex-col overflow-hidden rounded-lg border bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors",
-        node.state === "failed"
-          ? "border-red-200"
-          : node.state === "running"
-            ? "border-amber-200"
-            : node.state === "done"
-              ? "border-emerald-100"
-              : "border-zinc-100",
+        "group relative flex flex-col overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-pixel",
+        node.state === "running" && "bg-accent-soft",
       )}
     >
       {/* Preview / thumbnail */}
-      <div className="relative aspect-video bg-zinc-50">
+      <div className="relative aspect-video border-b-2 border-ink bg-surface-2">
         <NodeArtifact node={node} />
 
         {/* State pill — always shown so the user has glance-able status */}
@@ -66,7 +60,7 @@ export function SceneNode({ node, onRegen, regenPending }: SceneNodeProps) {
             disabled={regenPending}
             className={clsx(
               "absolute inset-0 z-10 flex items-center justify-center gap-2",
-              "bg-black/45 text-xs font-medium text-white backdrop-blur-[1px]",
+              "bg-ink/55 font-mono text-xs font-semibold text-white backdrop-blur-[1px]",
               "transition-opacity",
               regenPending ? "cursor-wait" : "cursor-pointer",
             )}
@@ -83,17 +77,17 @@ export function SceneNode({ node, onRegen, regenPending }: SceneNodeProps) {
       </div>
 
       {/* Card footer — kind + subject + cost */}
-      <div className="flex items-baseline justify-between gap-2 border-t border-zinc-100 px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2 px-3 py-2">
         <div className="min-w-0">
-          <div className="truncate text-[12px] font-medium text-zinc-800">
+          <div className="truncate font-mono text-[12px] font-semibold text-ink">
             {node.key}
           </div>
-          <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-zinc-400">
+          <div className="truncate font-mono text-[10px] uppercase tracking-[0.16em] text-muted">
             {labelForKind(node.kind)}
           </div>
         </div>
         {node.cost_usd > 0 && (
-          <div className="shrink-0 font-mono text-[10px] text-zinc-400">
+          <div className="shrink-0 font-mono text-[10px] text-muted">
             ${node.cost_usd.toFixed(2)}
           </div>
         )}
@@ -101,7 +95,7 @@ export function SceneNode({ node, onRegen, regenPending }: SceneNodeProps) {
 
       {/* Error row — only visible on failure */}
       {node.error && (
-        <div className="flex items-start gap-1.5 border-t border-red-100 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+        <div className="flex items-start gap-1.5 border-t-2 border-ink bg-[#fdece9] px-3 py-2 font-mono text-[11px] text-[#a23a2a]">
           <AlertTriangle size={12} className="mt-0.5 shrink-0" strokeWidth={2} />
           <span className="break-words">{node.error}</span>
         </div>
@@ -115,7 +109,7 @@ export function SceneNode({ node, onRegen, regenPending }: SceneNodeProps) {
 function NodeArtifact({ node }: { node: VideoTimelineNode }) {
   if (!node.output_url) {
     return (
-      <div className="absolute inset-0 flex items-center justify-center text-[11px] text-zinc-400">
+      <div className="absolute inset-0 flex items-center justify-center font-mono text-[11px] text-muted">
         {placeholderForState(node.state)}
       </div>
     );
@@ -151,8 +145,8 @@ function StatePill({ state }: { state: VideoTimelineNode["state"] }) {
   return (
     <div
       className={clsx(
-        "absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-full px-2 py-0.5",
-        "font-mono text-[10px] uppercase tracking-[0.12em]",
+        "absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-pixel border-[1.5px] border-ink px-2 py-0.5",
+        "font-mono text-[10px] font-semibold uppercase tracking-[0.12em]",
         styles.bg,
         styles.fg,
       )}
@@ -168,29 +162,29 @@ const STATE_STYLES: Record<
   { bg: string; fg: string; icon: React.ReactNode }
 > = {
   pending: {
-    bg: "bg-zinc-100/95",
-    fg: "text-zinc-500",
-    icon: <span className="h-1.5 w-1.5 rounded-full bg-zinc-400" aria-hidden />,
+    bg: "bg-[#fff7e8]",
+    fg: "text-[#9a6b15]",
+    icon: <span className="h-1.5 w-1.5 rounded-full bg-gold" aria-hidden />,
   },
   running: {
-    bg: "bg-amber-100/95",
-    fg: "text-amber-800",
+    bg: "bg-accent",
+    fg: "text-white",
     icon: <Loader2 size={10} className="animate-spin" />,
   },
   done: {
-    bg: "bg-emerald-100/95",
-    fg: "text-emerald-800",
+    bg: "bg-[#eaf7ef]",
+    fg: "text-[#1f7a4d]",
     icon: <Check size={10} strokeWidth={2.5} />,
   },
   failed: {
-    bg: "bg-red-100/95",
-    fg: "text-red-800",
+    bg: "bg-[#fdece9]",
+    fg: "text-[#a23a2a]",
     icon: <AlertTriangle size={10} strokeWidth={2.5} />,
   },
   skipped: {
-    bg: "bg-zinc-100/95",
-    fg: "text-zinc-400",
-    icon: <span className="h-1.5 w-1.5 rounded-full bg-zinc-300" aria-hidden />,
+    bg: "bg-surface-2",
+    fg: "text-muted",
+    icon: <span className="h-1.5 w-1.5 rounded-full bg-muted" aria-hidden />,
   },
 };
 

@@ -9,20 +9,20 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
 import { ArrowLeft, ArrowUpRight, ChevronDown, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
 import { createGame } from "@/lib/api";
-import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
-
-gsap.registerPlugin(useGSAP);
+import { PixelButton, Sprite, WindowCard } from "@/components/ui/pixel";
 
 // /code/new is the chat-first entrance to a new HTML5 game. Mirrors
 // /slides/new so the two surfaces feel like siblings: one big textarea,
 // optional fine-tune strip (genre / difficulty), Begin button. On submit
 // we POST createGame and push to /code/{id} where the iframe + chat live.
+//
+// Pixel re-skin: the brief lives inside a WindowCard terminal prompt;
+// entrances are CSS-driven (animate-rise) so nothing strands at opacity:0
+// under React Strict Mode.
 
 const GENRES: Array<{ value: string; label: string; note: string }> = [
   { value: "arcade", label: "Arcade", note: "街机 · 单局短" },
@@ -61,7 +61,6 @@ function NewGameChat() {
   const [err, setErr] = useState<string | null>(null);
   const [showOptions, setShowOptions] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const mainRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     const t = search?.get("prompt");
@@ -72,34 +71,6 @@ function NewGameChat() {
   useEffect(() => {
     textareaRef.current?.focus();
   }, []);
-
-  // Sprint Y2 — entrance mirrors /slides/new (sibling surface).
-  // Header settles, caption + title rise, form + suggestions follow.
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(PREFERS_FULL_MOTION, () => {
-        const tl = gsap.timeline({
-          defaults: { ease: EASE.entrance, duration: DUR.entrance },
-        });
-        tl.from(".dw-game-header", { y: -8, opacity: 0, duration: DUR.secondary })
-          .from(".dw-game-caption", { y: 8, opacity: 0, duration: DUR.micro }, "-=0.3")
-          .from(".dw-game-title", { y: 24, opacity: 0 }, "-=0.2")
-          .from(
-            ".dw-game-form",
-            { y: 18, opacity: 0, duration: DUR.secondary },
-            "-=0.4",
-          );
-      });
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.from(
-          ".dw-game-header, .dw-game-caption, .dw-game-title, .dw-game-form",
-          { opacity: 0, duration: 0.2, stagger: 0.04 },
-        );
-      });
-    },
-    { scope: mainRef },
-  );
 
   async function submit(e?: FormEvent | KeyboardEvent) {
     e?.preventDefault();
@@ -122,43 +93,52 @@ function NewGameChat() {
   }
 
   return (
-    <main
-      ref={mainRef}
-      className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased"
-    >
-      <Grain />
-
-      <header className="dw-game-header relative z-10 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
-        <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
+    <main className="dot-grid relative min-h-[100dvh] bg-paper text-ink antialiased">
+      <header className="relative z-10 border-b-2 border-ink bg-paper/85 backdrop-blur-[2px]">
+        <div className="mx-auto flex max-w-[1480px] items-center justify-between px-6 py-3.5 md:px-10">
           <a
             href="/"
-            className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+            className="group inline-flex items-center gap-2 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink"
           >
-            <ArrowLeft
-              size={11}
-              strokeWidth={1.8}
-              className="translate-y-[1px] transition-transform group-hover:-translate-x-0.5"
-            />
-            <span>Dream-Waver / Index</span>
+            <span className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform group-hover:-translate-x-0.5">
+              <ArrowLeft size={11} strokeWidth={2} />
+            </span>
+            <span>DREAM-WAVER / INDEX</span>
           </a>
-          <span className="hidden font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)] md:inline">
-            New Game
+          <span className="hidden font-pixel text-[0.55rem] tracking-wide text-muted md:inline">
+            ~/code/new
           </span>
         </div>
       </header>
 
       <div className="relative z-10 mx-auto flex max-w-3xl flex-col px-6 pt-20 md:px-12">
-        <div className="mb-10">
-          <p className="dw-game-caption mb-3 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+        <div className="relative mb-10 animate-rise">
+          <p className="mb-3 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">
             Brief · 描述你脑中的小游戏
           </p>
-          <h1 className="dw-game-title font-display text-[44px] leading-[1.05] tracking-tight text-[color:var(--ink)] md:text-[56px]">
-            想做<span className="text-[color:var(--vermillion)]">什么样</span>的小游戏？
+          <h1 className="font-mono text-[34px] font-extrabold leading-[1.12] tracking-tight text-ink md:text-[44px]">
+            想做
+            <span className="relative whitespace-nowrap text-accent">
+              什么样
+              <span className="absolute -bottom-0.5 left-0 right-0 -z-10 h-3 bg-accent-soft" />
+            </span>
+            的小游戏？
           </h1>
+          <div className="pointer-events-none absolute -top-3 right-0 hidden rotate-6 md:block">
+            <Sprite name="robot" size={44} />
+          </div>
         </div>
 
-        <form onSubmit={submit} className="dw-game-form flex flex-col gap-6">
-          <div className="border-b border-[color:var(--ink)]/40 pb-3 transition-colors focus-within:border-[color:var(--vermillion)]">
+        <form
+          onSubmit={submit}
+          className="flex animate-rise flex-col gap-6"
+          style={{ animationDelay: "0.08s" }}
+        >
+          <WindowCard
+            title="~/new-game — 一句话变成可玩的游戏"
+            className="shadow-pixel-lg"
+            bodyClassName="p-0"
+          >
             <textarea
               ref={textareaRef}
               value={prompt}
@@ -169,64 +149,53 @@ function NewGameChat() {
               rows={3}
               disabled={submitting}
               placeholder='例: "贪吃蛇，但每吃一个食物速度增加 10%，地图边缘可穿越"'
-              className="w-full resize-none bg-transparent font-display text-[22px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:text-[20px] placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+              className="w-full resize-none bg-transparent px-5 pb-3 pt-4 text-[16px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
             />
-          </div>
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-            <button
-              type="button"
-              onClick={() => setShowOptions((v) => !v)}
-              className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
-            >
-              <ChevronDown
-                size={11}
-                strokeWidth={1.6}
-                className={clsx(
-                  "translate-y-[1px] transition-transform",
-                  showOptions && "rotate-180",
-                )}
-              />
-              <span>Fine-tune</span>
-              <span className="text-[color:var(--ink-faint)]">·</span>
-              <span>{genre ? labelFor(genre, GENRES) : "Auto genre"}</span>
-              <span className="text-[color:var(--ink-faint)]">·</span>
-              <span>{aesthetic ? labelFor(aesthetic, AESTHETICS) : "Auto style"}</span>
-              <span className="text-[color:var(--ink-faint)]">·</span>
-              <span className="capitalize">{difficulty}</span>
-            </button>
-
-            <div className="ml-auto flex items-center gap-3">
-              {err ? (
-                <span className="font-display text-[14px] italic text-red-800">
-                  {err}
-                </span>
-              ) : null}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t-2 border-line px-4 py-3">
               <button
-                type="submit"
-                disabled={!prompt.trim() || submitting}
-                className={clsx(
-                  "group inline-flex h-11 items-center gap-2 px-5 transition-all duration-200",
-                  !prompt.trim() || submitting
-                    ? "cursor-not-allowed border border-[color:var(--rule)] text-[color:var(--ink-faint)]"
-                    : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
-                )}
+                type="button"
+                onClick={() => setShowOptions((v) => !v)}
+                className="group inline-flex items-center gap-2 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink"
               >
-                {submitting ? (
-                  <Loader2 size={13} strokeWidth={1.8} className="animate-spin" />
-                ) : (
-                  <ArrowUpRight
-                    size={14}
-                    strokeWidth={1.8}
-                    className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]"
-                  />
-                )}
-                <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em]">
-                  {submitting ? "Building" : "Begin"}
-                </span>
+                <ChevronDown
+                  size={12}
+                  strokeWidth={2}
+                  className={clsx(
+                    "transition-transform",
+                    showOptions && "rotate-180",
+                  )}
+                />
+                <span>Fine-tune</span>
+                <span className="text-muted">·</span>
+                <span>{genre ? labelFor(genre, GENRES) : "Auto genre"}</span>
+                <span className="text-muted">·</span>
+                <span>{aesthetic ? labelFor(aesthetic, AESTHETICS) : "Auto style"}</span>
+                <span className="text-muted">·</span>
+                <span className="capitalize">{difficulty}</span>
               </button>
+
+              <div className="ml-auto flex items-center gap-3">
+                {err ? (
+                  <span className="font-mono text-[12px] font-semibold text-[#a23a2a]">
+                    {err}
+                  </span>
+                ) : null}
+                <PixelButton
+                  type="submit"
+                  variant={prompt.trim() && !submitting ? "accent" : "default"}
+                  disabled={!prompt.trim() || submitting}
+                >
+                  {submitting ? (
+                    <Loader2 size={14} strokeWidth={2.2} className="animate-spin" />
+                  ) : (
+                    <ArrowUpRight size={14} strokeWidth={2.2} />
+                  )}
+                  <span>{submitting ? "Building" : "Begin"}</span>
+                </PixelButton>
+              </div>
             </div>
-          </div>
+          </WindowCard>
 
           {showOptions ? (
             <FineTuneStrip
@@ -239,7 +208,7 @@ function NewGameChat() {
             />
           ) : null}
 
-          <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          <p className="font-mono text-[11px] text-muted">
             ⌘ / Ctrl + Enter 提交 · 一句话变成可玩的 HTML5 小游戏
           </p>
 
@@ -270,7 +239,7 @@ function FineTuneStrip({
   setDifficulty: (s: (typeof DIFFICULTIES)[number]) => void;
 }) {
   return (
-    <div className="flex flex-col gap-6 border-t border-[color:var(--rule)] pt-5">
+    <div className="flex animate-rise flex-col gap-6 rounded-pixel border-2 border-ink bg-surface-2 p-5 shadow-pixel-sm">
       <PickerGroup
         label="Genre"
         sub="决定机制（街机短局 / 解谜 / 平台跳跃 / 射击 / Rogue）"
@@ -286,7 +255,7 @@ function FineTuneStrip({
         options={AESTHETICS}
       />
       <div>
-        <p className="mb-2 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+        <p className="mb-2 font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
           Difficulty
         </p>
         <div className="flex flex-wrap gap-2">
@@ -296,13 +265,13 @@ function FineTuneStrip({
               type="button"
               onClick={() => setDifficulty(d)}
               className={clsx(
-                "border px-3 py-2 text-left transition-colors",
+                "rounded-pixel border-2 px-3 py-2 text-left transition-all",
                 difficulty === d
-                  ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-                  : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
+                  ? "border-ink bg-accent-soft shadow-pixel-sm"
+                  : "border-line-2 bg-surface hover:border-ink",
               )}
             >
-              <span className="block font-mono-jb text-[10px] uppercase capitalize tracking-[0.22em]">
+              <span className="block font-mono text-[11px] font-bold capitalize tracking-wide text-ink">
                 {d}
               </span>
             </button>
@@ -328,25 +297,25 @@ function PickerGroup({
 }) {
   return (
     <div>
-      <p className="mb-1 font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--ink-faint)]">
+      <p className="mb-1 font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
         {label}
       </p>
-      <p className="mb-2 font-display text-[13px] italic text-[color:var(--ink-soft)]">{sub}</p>
+      <p className="mb-2.5 font-mono text-[12px] text-ink-2">{sub}</p>
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => setValue("")}
           className={clsx(
-            "border px-3 py-2 text-left transition-colors",
+            "rounded-pixel border-2 px-3 py-2 text-left transition-all",
             !value
-              ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-              : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
+              ? "border-ink bg-accent-soft shadow-pixel-sm"
+              : "border-line-2 bg-surface hover:border-ink",
           )}
         >
-          <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+          <span className="block font-mono text-[11px] font-bold tracking-wide text-ink">
             Auto
           </span>
-          <span className="font-display text-[13px] italic opacity-80">让模型决定</span>
+          <span className="font-mono text-[12px] text-ink-2">让模型决定</span>
         </button>
         {options.map((o) => (
           <button
@@ -354,16 +323,16 @@ function PickerGroup({
             type="button"
             onClick={() => setValue(o.value)}
             className={clsx(
-              "border px-3 py-2 text-left transition-colors",
+              "rounded-pixel border-2 px-3 py-2 text-left transition-all",
               value === o.value
-                ? "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]"
-                : "border-[color:var(--rule)] text-[color:var(--ink-soft)] hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]",
+                ? "border-ink bg-accent-soft shadow-pixel-sm"
+                : "border-line-2 bg-surface hover:border-ink",
             )}
           >
-            <span className="block font-mono-jb text-[10px] uppercase tracking-[0.22em]">
+            <span className="block font-mono text-[11px] font-bold tracking-wide text-ink">
               {o.label}
             </span>
-            <span className="font-display text-[13px] italic opacity-80">{o.note}</span>
+            <span className="font-mono text-[12px] text-ink-2">{o.note}</span>
           </button>
         ))}
       </div>
@@ -387,25 +356,11 @@ function SuggestionsStrip({ onPick }: { onPick: (s: string) => void }) {
           key={s}
           type="button"
           onClick={() => onPick(s)}
-          className="border border-[color:var(--rule)] px-3 py-1.5 font-display text-[13px] italic text-[color:var(--ink-soft)] transition-colors hover:border-[color:var(--ink)]/30 hover:text-[color:var(--ink)]"
+          className="rounded-pixel border-2 border-line-2 bg-surface px-3 py-1.5 text-left font-mono text-[12.5px] text-ink-2 transition-all hover:-translate-x-[1px] hover:-translate-y-[1px] hover:border-ink hover:text-ink hover:shadow-pixel-sm"
         >
           {s}
         </button>
       ))}
     </div>
-  );
-}
-
-function Grain() {
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none fixed inset-0 z-0 opacity-[0.05] mix-blend-multiply"
-      style={{
-        backgroundImage:
-          "url(\"data:image/svg+xml;utf8,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.07 0 0 0 0 0.06 0 0 0 0 0.06 0 0 0 0.8 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-        backgroundSize: "240px 240px",
-      }}
-    />
   );
 }

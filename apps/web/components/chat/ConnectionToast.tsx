@@ -53,8 +53,8 @@ export function ConnectionToast() {
           to   { opacity: 1; transform: translate(-50%, 0); }
         }
       `}</style>
-      <div className="pointer-events-auto inline-flex items-center gap-2.5 border border-[color:var(--ink)]/15 bg-[#FBF9F2] px-4 py-2.5 font-mono-jb text-[11px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] shadow-[0_18px_32px_-20px_rgba(50,40,32,0.32)]">
-        <Loader2 size={12} strokeWidth={1.8} className="animate-spin text-[color:var(--vermillion)]" />
+      <div className="pointer-events-auto inline-flex items-center gap-2.5 rounded-pixel border-2 border-ink bg-surface px-4 py-2.5 font-mono text-[12px] font-semibold tracking-wide text-ink-2 shadow-pixel">
+        <Loader2 size={12} strokeWidth={1.8} className="animate-spin text-accent" />
         <span>实时通道重连中…</span>
       </div>
     </div>

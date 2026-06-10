@@ -11,8 +11,8 @@ import type { Thought, ToolCallEntry, Turn } from "./session";
 // EditTurnTrace is the uniform renderer for every Turn after Turn 0.
 // One <Phase> block per turn, labelled "Revision · 修订", with:
 //
-//   1. The user's typed instruction shown as italic serif marginalia
-//      (a vermillion-rule blockquote, like an editor's hand-written note)
+//   1. The user's typed instruction shown as bold mono marginalia
+//      (a violet-rule blockquote, like an editor's hand-written note)
 //   2. A flat ToolStrip of every tool call this turn made
 //   3. A collapsed ThoughtCollapse of every LLM thought across steps
 //   4. (Sprint U2.1) — if the turn errored, a prominent banner card
@@ -58,7 +58,7 @@ export function EditTurnTrace({
         // Sprint Z.6 — turn user-message fades in (animate-phase-in
         // gives opacity 0→1 + translateY 10px). Only fires once on
         // turn open, then stays put.
-        <blockquote className="animate-phase-in border-l-[3px] border-[color:var(--vermillion)]/55 pl-5 font-display text-[22px] italic leading-snug text-[color:var(--ink)]">
+        <blockquote className="animate-phase-in border-l-4 border-accent/60 pl-5 font-mono text-[18px] font-bold leading-snug text-ink">
           {turn.userMessage}
         </blockquote>
       ) : null}

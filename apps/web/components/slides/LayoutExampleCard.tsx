@@ -21,7 +21,7 @@ export function LayoutExampleCard({
   index: number;
 }) {
   return (
-    <article className="dw-new-layout-card group flex flex-col overflow-hidden border border-[color:var(--rule)] bg-white shadow-[0_1px_0_rgba(26,22,20,0.04)] transition-all duration-200 hover:-translate-y-[2px] hover:border-[color:var(--ink)]/30 hover:shadow-[0_18px_36px_-22px_rgba(26,22,20,0.18)]">
+    <article className="dw-new-layout-card group flex flex-col overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-all duration-150 hover:-translate-x-[1px] hover:-translate-y-[1px] hover:shadow-pixel">
       <div className="relative">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -29,24 +29,24 @@ export function LayoutExampleCard({
           alt={`${example.label} layout schematic`}
           loading="lazy"
           draggable={false}
-          className="aspect-[16/9] w-full bg-[color:var(--paper)]"
+          className="aspect-[16/9] w-full bg-paper"
         />
         {/* Folio numeral — top-left, gives the grid a magazine cadence
             rather than a card wall. */}
-        <span className="pointer-events-none absolute left-3 top-3 font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--ink-faint)] mix-blend-multiply">
+        <span className="pointer-events-none absolute left-3 top-3 font-pixel text-[0.55rem] tracking-wide text-muted mix-blend-multiply">
           Fig. {String(index + 1).padStart(2, "0")}
         </span>
       </div>
-      <div className="flex flex-col gap-2 border-t border-[color:var(--rule)] px-5 py-4">
+      <div className="flex flex-col gap-2 border-t border-line px-5 py-4">
         <div className="flex items-baseline justify-between gap-3">
-          <p className="font-display text-[20px] leading-tight text-[color:var(--ink)]">
+          <p className="font-mono text-[18px] font-bold leading-tight tracking-tight text-ink">
             {example.label}
           </p>
-          <p className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--vermillion)]">
+          <p className="font-mono text-[10px] font-semibold tracking-wide text-accent">
             {example.when}
           </p>
         </div>
-        <p className="font-display text-[14px] italic leading-relaxed text-[color:var(--ink-soft)]">
+        <p className="font-mono text-[14px] leading-relaxed text-muted">
           {example.tagline}
         </p>
       </div>

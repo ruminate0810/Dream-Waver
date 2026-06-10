@@ -110,7 +110,7 @@ export function GameFrame({ job }: { job: GameJob }) {
           title={job.title || "game"}
         />
       ) : (
-        <div className="relative flex-1 overflow-hidden border border-[color:var(--rule)] bg-[#0f1115]">
+        <div className="relative flex-1 overflow-hidden border-2 border-ink bg-[#0f1115] shadow-pixel">
           {src ? (
             <iframe
               ref={iframeRef}
@@ -137,7 +137,7 @@ export function GameFrame({ job }: { job: GameJob }) {
           {/* Read-only banner — only shows when previewing a historical
               revision. Click "Restore" in the strip to fork edits from it. */}
           {viewingRevision !== undefined ? (
-            <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-full bg-[color:var(--vermillion)]/90 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
+            <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-white shadow-pixel-sm">
               <Eye size={11} strokeWidth={2} />
               <span>Viewing v{viewingRevision} · read-only</span>
             </div>
@@ -146,8 +146,8 @@ export function GameFrame({ job }: { job: GameJob }) {
           {/* Running overlay — semi-transparent so the user still sees the
               previous game and gets a sense of continuity. */}
           {job.status === "running" && hasLoaded ? (
-            <div className="absolute right-3 top-3 flex items-center gap-2 rounded-full bg-black/70 px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-white">
-              <Loader2 size={11} strokeWidth={2} className="animate-spin" />
+            <div className="absolute right-3 top-3 flex items-center gap-2 rounded-pixel border-2 border-ink bg-ink px-3 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-white shadow-pixel-sm">
+              <Loader2 size={11} strokeWidth={2} className="animate-spin text-accent" />
               <span>Composing</span>
             </div>
           ) : null}
@@ -173,28 +173,33 @@ function FrameHeader({
 }) {
   const ready = job.status === "finished" && !!job.play_url;
   return (
-    <div className="flex items-center justify-between border-x border-t border-[color:var(--rule)] bg-white/60 px-3 py-2 backdrop-blur-[1px]">
-      <div className="flex items-baseline gap-3 truncate">
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+    <div className="flex items-center justify-between border-x-2 border-t-2 border-ink bg-surface-2 px-3 py-2">
+      <div className="flex items-center gap-3 truncate">
+        <span className="flex flex-none gap-1.5">
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-[#ff8a8a]" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-gold" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-grass" />
+        </span>
+        <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
           Live
         </span>
-        <span className="truncate font-display text-[15px] text-[color:var(--ink)]">
+        <span className="truncate font-mono text-[13px] font-bold tracking-tight text-ink">
           {job.title || "Untitled game"}
         </span>
       </div>
       <div className="flex items-center gap-2">
         {ready ? (
-          <div className="flex overflow-hidden border border-[color:var(--rule)]">
+          <div className="flex overflow-hidden rounded-pixel border-2 border-ink">
             {(["preview", "source"] as View[]).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
                 className={clsx(
-                  "px-2.5 py-1 font-mono-jb text-[10px] uppercase tracking-[0.22em] transition-colors",
+                  "px-2.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-wide transition-colors",
                   view === v
-                    ? "bg-[color:var(--ink)] text-[color:var(--paper)]"
-                    : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+                    ? "bg-ink text-paper"
+                    : "text-ink-2 hover:bg-ink/5 hover:text-ink",
                 )}
               >
                 {v}
@@ -226,10 +231,10 @@ function IconButton({
       type="button"
       {...rest}
       className={clsx(
-        "rounded p-1.5 transition-colors",
+        "rounded-pixel border-2 p-1.5 transition-colors",
         rest.disabled
-          ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-          : "text-[color:var(--ink-soft)] hover:bg-[color:var(--ink)]/5 hover:text-[color:var(--ink)]",
+          ? "cursor-not-allowed border-line-2 text-muted"
+          : "border-line-2 text-ink-2 hover:border-ink hover:bg-ink/5 hover:text-ink",
       )}
     >
       {children}
@@ -241,16 +246,16 @@ function FrameFooter({ job }: { job: GameJob }) {
   // Footer surfaces byte size + a one-shot fullscreen affordance. Stays
   // hairline thin so the iframe owns the visual real estate.
   if (job.status !== "finished") {
-    return <div className="border border-t-0 border-[color:var(--rule)] px-3 py-2" />;
+    return <div className="border-x-2 border-b-2 border-ink px-3 py-2" />;
   }
   return (
-    <div className="flex items-center justify-between border border-t-0 border-[color:var(--rule)] bg-white/60 px-3 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+    <div className="flex items-center justify-between border-x-2 border-b-2 border-ink bg-surface-2 px-3 py-2 font-mono text-[10px] font-semibold uppercase tracking-wide text-muted">
       <span>{(job.bytes ?? 0).toLocaleString()} bytes</span>
       <a
         href={job.play_url}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1 hover:text-[color:var(--ink)]"
+        className="inline-flex items-center gap-1 hover:text-ink"
       >
         <Maximize2 size={10} strokeWidth={1.8} />
         Fullscreen
@@ -264,17 +269,17 @@ function PlaceholderCanvas({ status, error }: { status: GameJob["status"]; error
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-[#0f1115] text-white/60">
       {status === "error" ? (
         <>
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-red-400">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-[#ff8a8a]">
             Generation failed
           </span>
-          <pre className="max-w-[80%] whitespace-pre-wrap text-center font-mono-jb text-[11px] text-white/50">
+          <pre className="max-w-[80%] whitespace-pre-wrap text-center font-mono text-[11px] text-white/50">
             {error || "Unknown error"}
           </pre>
         </>
       ) : (
         <>
-          <Loader2 size={28} strokeWidth={1.6} className="animate-spin text-white/40" />
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em]">
+          <Loader2 size={28} strokeWidth={1.6} className="animate-spin text-accent" />
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wide">
             Writing your game…
           </span>
         </>

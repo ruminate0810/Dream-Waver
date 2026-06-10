@@ -17,8 +17,8 @@ export type Thought = {
 // ThoughtCollapse renders the agent's internal reasoning (LLM text content
 // emitted before / between tool calls). Default-folded — most users only
 // want the tool log; the curious can click to read the marginalia. Keeps
-// the editorial language: italic serif, hanging quote glyph, mono caps
-// for the token-cost footer.
+// the pixel language: mono body text, hanging quote glyph, pixel-face
+// note labels, mono token-cost footer.
 
 export function ThoughtCollapse({ thoughts }: { thoughts: Thought[] }) {
   const [open, setOpen] = useState(false);
@@ -43,7 +43,7 @@ export function ThoughtCollapse({ thoughts }: { thoughts: Thought[] }) {
   const bodyRef = useHeightCollapse(open) as React.RefObject<HTMLDivElement | null>;
 
   return (
-    <div className="mt-6 border-t border-[color:var(--rule)] pt-4">
+    <div className="mt-6 border-t border-line pt-4">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -53,16 +53,16 @@ export function ThoughtCollapse({ thoughts }: { thoughts: Thought[] }) {
         <Quote
           size={12}
           strokeWidth={1.6}
-          className="text-[color:var(--ink-faint)]"
+          className="text-muted"
         />
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-soft)] group-hover:text-[color:var(--ink)]">
+        <span className="font-mono text-[10px] font-semibold tracking-wide text-ink-2 group-hover:text-ink">
           {open ? "Hide reasoning" : `Show reasoning · ${populated.length} note${populated.length === 1 ? "" : "s"}`}
         </span>
         <ChevronDown
           size={12}
           strokeWidth={1.6}
           className={clsx(
-            "ml-auto text-[color:var(--ink-faint)] transition-transform duration-200",
+            "ml-auto text-muted transition-transform duration-200",
             open && "rotate-180",
           )}
         />
@@ -73,13 +73,13 @@ export function ThoughtCollapse({ thoughts }: { thoughts: Thought[] }) {
         className="overflow-hidden"
         style={{ height: 0, opacity: 0 }}
       >
-        <ol className="mt-4 space-y-5 pl-4">
+        <ol className="mt-4 space-y-5 border-l-2 border-line pl-4">
           {populated.map((t, i) => (
             <li key={i}>
-              <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+              <p className="font-pixel text-[0.55rem] tracking-wide text-muted">
                 Note {String(t.step).padStart(2, "0")}
               </p>
-              <p className="mt-1 font-display text-[15px] italic leading-relaxed text-[color:var(--ink)]">
+              <p className="mt-1 font-mono text-[14px] leading-relaxed text-ink-2">
                 {t.text}
               </p>
             </li>
@@ -87,7 +87,7 @@ export function ThoughtCollapse({ thoughts }: { thoughts: Thought[] }) {
         </ol>
 
         {(tokens.in || tokens.out) > 0 && (
-          <p className="mt-5 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          <p className="mt-5 font-mono text-[10px] tracking-wide text-muted">
             {tokens.in.toLocaleString()} in · {tokens.out.toLocaleString()} out
             {tokens.cache > 0 && (
               <> · {tokens.cache.toLocaleString()} cached</>

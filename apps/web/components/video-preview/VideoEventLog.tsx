@@ -138,18 +138,22 @@ export function VideoEventLog({ timeline }: VideoEventLogProps) {
   }, [entries.length]);
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="border-b border-zinc-100 px-4 py-3">
-        <h3 className="font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
-          Activity
-        </h3>
+    <div className="flex h-full flex-col overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel">
+      {/* Window chrome — frames the log as a floating terminal ("run.log"). */}
+      <header className="flex flex-none items-center gap-2 border-b-2 border-ink bg-surface-2 px-3 py-2">
+        <span className="flex flex-none gap-1.5">
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-[#ff8a8a]" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-gold" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-grass" />
+        </span>
+        <span className="font-pixel text-[0.55rem] tracking-wide text-muted">run.log</span>
       </header>
       <div
         ref={scrollerRef}
-        className="flex-1 space-y-1 overflow-y-auto px-4 py-3 text-sm"
+        className="flex-1 space-y-1 overflow-y-auto px-4 py-3 font-mono text-sm"
       >
         {entries.length === 0 ? (
-          <p className="text-zinc-400">
+          <p className="font-mono text-muted">
             Run events will stream here as nodes start, finish, or fail.
           </p>
         ) : (
@@ -166,13 +170,13 @@ function Row({ entry }: { entry: LogEntry }) {
       <Icon kind={entry.kind} />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-[13px] text-zinc-800">{entry.message}</span>
-          <span className="ml-auto shrink-0 font-mono text-[10px] text-zinc-400">
+          <span className="font-mono text-[13px] text-ink">{entry.message}</span>
+          <span className="ml-auto shrink-0 font-mono text-[10px] text-muted">
             {entry.ts}
           </span>
         </div>
         {entry.detail && (
-          <div className="mt-0.5 truncate text-[11px] text-zinc-500">
+          <div className="mt-0.5 truncate font-mono text-[11px] text-ink-2">
             {entry.detail}
           </div>
         )}
@@ -184,16 +188,16 @@ function Row({ entry }: { entry: LogEntry }) {
 function Icon({ kind }: { kind: LogEntry["kind"] }) {
   switch (kind) {
     case "node_running":
-      return <Loader2 size={12} className="mt-1 shrink-0 animate-spin text-amber-500" />;
+      return <Loader2 size={12} className="mt-1 shrink-0 animate-spin text-accent" />;
     case "node_regen":
-      return <RotateCcw size={12} className="mt-1 shrink-0 text-sky-500" />;
+      return <RotateCcw size={12} className="mt-1 shrink-0 text-accent" />;
     case "node_done":
-      return <Check size={12} className="mt-1 shrink-0 text-emerald-600" strokeWidth={2.4} />;
+      return <Check size={12} className="mt-1 shrink-0 text-grass" strokeWidth={2.4} />;
     case "node_failed":
     case "error":
-      return <AlertTriangle size={12} className="mt-1 shrink-0 text-red-600" strokeWidth={2.2} />;
+      return <AlertTriangle size={12} className="mt-1 shrink-0 text-[#d4503a]" strokeWidth={2.2} />;
     case "lifecycle":
     default:
-      return <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-zinc-400" />;
+      return <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted" />;
   }
 }

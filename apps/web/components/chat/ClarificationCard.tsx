@@ -1,10 +1,10 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { ArrowUpRight, Loader2 } from "lucide-react";
 import clsx from "clsx";
 
-import { useCardMotion } from "@/lib/motion";
+import { WindowCard } from "@/components/ui/pixel";
 
 // ClarificationCard — Sprint L1.H2 gate UI.
 //
@@ -14,10 +14,9 @@ import { useCardMotion } from "@/lib/motion";
 // answers and the orchestrator resumes Phase 1 (outline) with the
 // enriched topic.
 //
-// Design: same paper-card register as EditPopover — vermillion press-
-// strip on top, mono-caps kicker, italic serif marginalia for the
-// questions, plain inputs underlined with a hairline that goes
-// vermillion on focus.
+// Design: pixel window-chrome card — pixel kicker in the title bar,
+// mono question labels, boxed pixel inputs whose border snaps to ink
+// (+ hard shadow) on focus.
 
 export function ClarificationCard({
   questions,
@@ -43,87 +42,76 @@ export function ClarificationCard({
     onSubmit(answers.map((a) => a.trim()));
   };
 
-  // Sprint Z.2 — mount entrance.
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  useCardMotion(rootRef);
-
   return (
-    <div ref={rootRef} className="mx-auto my-4 w-full max-w-2xl">
-      {/* Top vermillion bleed strip — press registration mark */}
-      <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
+    <div className="mx-auto my-4 w-full max-w-2xl animate-rise">
+      <form onSubmit={handleSubmit}>
+        <WindowCard
+          title={
+            <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
+              <span className="text-accent">§</span> Clarification{" "}
+              <span className="text-line-2">/</span>{" "}
+              {questions.length} question{questions.length > 1 ? "s" : ""}
+            </span>
+          }
+          bodyClassName="p-6"
+        >
+          {/* Preamble */}
+          <p className="mb-5 font-mono text-[13px] leading-snug text-ink-2">
+            先确认两件事，agent 就能挑出更贴近你想法的大纲。
+          </p>
 
-      <form
-        onSubmit={handleSubmit}
-        className="relative border border-[color:var(--ink)]/15 bg-[#FBF9F2] p-6"
-        style={{
-          boxShadow:
-            "0 2px 0 rgba(26,22,20,0.04), 0 18px 32px -20px rgba(50,40,32,0.32)",
-        }}
-      >
-        {/* Header — kicker */}
-        <div className="mb-4 flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
-          <span className="text-[color:var(--vermillion)]">§</span>
-          <span>Clarification</span>
-          <span className="text-[color:var(--ink-faint)]">/</span>
-          <span>{questions.length} question{questions.length > 1 ? "s" : ""}</span>
-        </div>
-
-        {/* Marginalia preamble */}
-        <p className="mb-5 font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
-          先确认两件事，agent 就能挑出更贴近你想法的大纲。
-        </p>
-
-        {/* Question rows */}
-        <div className="flex flex-col gap-5">
-          {questions.map((q, i) => (
-            <div key={i}>
-              <label className="block font-display text-[15px] leading-snug text-[color:var(--ink)]">
-                <span className="mr-2 font-mono-jb text-[10px] uppercase tracking-[0.2em] text-[color:var(--vermillion)]">
-                  Q{i + 1}
-                </span>
-                {q}
-              </label>
-              <div className="mt-2 border-b border-[color:var(--ink)]/40 pb-1 transition-colors focus-within:border-[color:var(--vermillion)]">
-                <input
-                  type="text"
-                  value={answers[i] ?? ""}
-                  onChange={(e) => {
-                    const next = answers.slice();
-                    next[i] = e.target.value;
-                    setAnswers(next);
-                  }}
-                  disabled={busy}
-                  placeholder="一两句就够"
-                  className="w-full bg-transparent font-display text-[17px] leading-snug text-[color:var(--ink)] placeholder:font-display placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
-                />
+          {/* Question rows */}
+          <div className="flex flex-col gap-5">
+            {questions.map((q, i) => (
+              <div key={i}>
+                <label className="block font-mono text-[14px] font-semibold leading-snug text-ink">
+                  <span className="mr-2 font-pixel text-[0.55rem] uppercase tracking-wide text-accent">
+                    Q{i + 1}
+                  </span>
+                  {q}
+                </label>
+                <div className="mt-2 rounded-pixel border-2 border-line-2 bg-surface px-3 py-2 transition-all focus-within:border-ink focus-within:shadow-pixel-sm">
+                  <input
+                    type="text"
+                    value={answers[i] ?? ""}
+                    onChange={(e) => {
+                      const next = answers.slice();
+                      next[i] = e.target.value;
+                      setAnswers(next);
+                    }}
+                    disabled={busy}
+                    placeholder="一两句就够"
+                    className="w-full bg-transparent font-mono text-[15px] leading-snug text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* Footer */}
-        <div className="mt-6 flex items-center justify-between">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-            空着可以跳过 · 至少答一个
-          </span>
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className={clsx(
-              "group inline-flex items-center gap-2 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
-              !canSubmit
-                ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-                : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
-            )}
-          >
-            {busy ? (
-              <Loader2 size={12} strokeWidth={1.8} className="animate-spin" />
-            ) : (
-              <ArrowUpRight size={12} strokeWidth={1.8} className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]" />
-            )}
-            <span>继续生成</span>
-          </button>
-        </div>
+          {/* Footer */}
+          <div className="mt-6 flex items-center justify-between">
+            <span className="font-mono text-[11px] text-muted">
+              空着可以跳过 · 至少答一个
+            </span>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className={clsx(
+                "group inline-flex items-center gap-2 rounded-pixel border-2 px-4 py-2 font-mono text-[12px] font-semibold transition-all duration-150",
+                !canSubmit
+                  ? "cursor-not-allowed border-line-2 bg-surface-2 text-muted"
+                  : "border-ink bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
+              )}
+            >
+              {busy ? (
+                <Loader2 size={12} strokeWidth={1.8} className="animate-spin text-accent" />
+              ) : (
+                <ArrowUpRight size={12} strokeWidth={1.8} className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]" />
+              )}
+              <span>继续生成</span>
+            </button>
+          </div>
+        </WindowCard>
       </form>
     </div>
   );

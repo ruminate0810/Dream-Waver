@@ -11,6 +11,8 @@ import {
   type VideoTimelineNode,
 } from "@/lib/api";
 
+import { StatusChip, type PixelStatus } from "@/components/ui/pixel";
+
 import { SceneNode } from "./SceneNode";
 
 // VideoTimeline owns the right-pane of the video workspace.
@@ -164,14 +166,14 @@ export function VideoTimeline({ runId, onTimeline }: VideoTimelineProps) {
 
   if (error && !timeline) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+      <div className="rounded-pixel border-2 border-ink bg-[#fdece9] p-4 font-mono text-sm text-[#a23a2a] shadow-pixel-sm">
         Couldn't load video run: {error}
       </div>
     );
   }
   if (!timeline) {
     return (
-      <div className="px-4 py-8 text-sm text-zinc-400">Loading timeline…</div>
+      <div className="px-4 py-8 font-mono text-sm text-muted">Loading timeline…</div>
     );
   }
 
@@ -180,7 +182,7 @@ export function VideoTimeline({ runId, onTimeline }: VideoTimelineProps) {
       <TimelineHeader timeline={timeline} finalNode={finalNode} />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="rounded-pixel border-2 border-ink bg-[#fdece9] p-3 font-mono text-sm text-[#a23a2a] shadow-pixel-sm">
           {error}
         </div>
       )}
@@ -190,7 +192,7 @@ export function VideoTimeline({ runId, onTimeline }: VideoTimelineProps) {
         if (!nodes || nodes.length === 0) return null;
         return (
           <section key={kind}>
-            <h3 className="mb-3 font-mono text-[10px] uppercase tracking-[0.22em] text-zinc-500">
+            <h3 className="mb-3 font-pixel text-[0.55rem] uppercase tracking-wide text-ink-2">
               {KIND_LABEL[kind]} · {nodes.length}
             </h3>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -223,8 +225,10 @@ function TimelineHeader({
     <header className="flex flex-col gap-3">
       <div className="flex items-baseline justify-between gap-4">
         <div>
-          <h2 className="text-lg font-medium text-zinc-900">{timeline.title}</h2>
-          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+          {/* Title comes from spec.title and may contain CJK — keep it
+              in JetBrains Mono (Silkscreen/font-pixel is ASCII-only). */}
+          <h2 className="font-mono text-lg font-extrabold tracking-tight text-ink">{timeline.title}</h2>
+          <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-muted">
             Run {timeline.run_id} · {timeline.nodes.length} nodes
           </p>
         </div>
@@ -238,11 +242,11 @@ function TimelineHeader({
         <video
           src={finalNode.output_url}
           controls
-          className="aspect-video w-full rounded-lg border border-zinc-200 bg-black"
+          className="aspect-video w-full rounded-pixel border-2 border-ink bg-black shadow-pixel-sm"
           preload="metadata"
         />
       ) : (
-        <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-zinc-200 bg-zinc-50 text-sm text-zinc-400">
+        <div className="flex aspect-video w-full items-center justify-center rounded-pixel border-2 border-dashed border-line-2 bg-surface-2 font-mono text-sm text-muted">
           <Film size={16} className="mr-2" strokeWidth={1.6} />
           Final cut renders here once every clip is ready.
         </div>
@@ -252,23 +256,20 @@ function TimelineHeader({
 }
 
 function StatusBadge({ status }: { status: VideoTimelineT["status"] }) {
-  const tone =
+  // Map the run lifecycle onto the shared pixel StatusChip palette, but
+  // keep the raw status string as the label.
+  const chipStatus: PixelStatus =
     status === "finished"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      ? "done"
       : status === "error"
-        ? "border-red-200 bg-red-50 text-red-800"
+        ? "error"
         : status === "running"
-          ? "border-amber-200 bg-amber-50 text-amber-800"
-          : "border-zinc-200 bg-zinc-50 text-zinc-600";
+          ? "working"
+          : "queued";
   return (
-    <span
-      className={
-        "inline-flex items-center rounded-full border px-2.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.18em] " +
-        tone
-      }
-    >
+    <StatusChip status={chipStatus} className="uppercase tracking-[0.18em]">
       {status}
-    </span>
+    </StatusChip>
   );
 }
 

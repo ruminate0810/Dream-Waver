@@ -8,6 +8,7 @@ import { getGameJob, type GameJob } from "@/lib/api";
 import { AgentSessionProvider } from "@/components/chat/transport";
 import { GameChat } from "@/components/game-preview/GameChat";
 import { GameFrame } from "@/components/game-preview/GameFrame";
+import { StatusChip, type PixelStatus } from "@/components/ui/pixel";
 
 // /code/[id] is the game workspace — left column = chat with the agent,
 // right column = live iframe preview of the generated game. The two
@@ -18,6 +19,10 @@ import { GameFrame } from "@/components/game-preview/GameFrame";
 // status flip to "finished" and surface the play_url + bytes. Once
 // finished we stop polling; follow-up edits will flip status back to
 // "running" via the POST messages endpoint and resume polling.
+//
+// Pixel re-skin: warm paper + dot-grid, hard pixel borders, monospace.
+// Entrances reuse the CSS-driven .dw-deck-* classes from globals.css so
+// nothing strands at opacity:0 under React Strict Mode.
 
 export default function GamePage() {
   const params = useParams<{ id: string }>();
@@ -61,43 +66,23 @@ export default function GamePage() {
   };
 
   return (
-    <main className="relative min-h-[100dvh] bg-[color:var(--paper)] text-[color:var(--ink)] antialiased">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 z-0 opacity-[0.05] mix-blend-multiply"
-        style={{
-          backgroundImage:
-            "url(\"data:image/svg+xml;utf8,%3Csvg viewBox='0 0 240 240' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.07 0 0 0 0 0.06 0 0 0 0 0.06 0 0 0 0.8 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")",
-          backgroundSize: "240px 240px",
-        }}
-      />
-
-      <header className="relative z-20 border-b border-[color:var(--rule)] bg-[color:var(--paper)]/85 backdrop-blur-[2px]">
-        <div className="mx-auto flex max-w-[1480px] items-baseline justify-between px-6 py-4 md:px-10">
+    <main className="dot-grid relative min-h-[100dvh] bg-paper text-ink antialiased">
+      <header className="dw-deck-header relative z-20 border-b-2 border-ink bg-paper/85 backdrop-blur-[2px]">
+        <div className="mx-auto flex max-w-[1480px] items-center justify-between px-6 py-3.5 md:px-10">
           <a
             href="/"
-            className="group inline-flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+            className="group inline-flex items-center gap-2 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink"
           >
-            <ArrowLeft
-              size={11}
-              strokeWidth={1.8}
-              className="translate-y-[1px] transition-transform group-hover:-translate-x-0.5"
-            />
-            <span>Dream-Waver / Index</span>
+            <span className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform group-hover:-translate-x-0.5">
+              <ArrowLeft size={11} strokeWidth={2} />
+            </span>
+            <span>DREAM-WAVER / INDEX</span>
           </a>
-          <div className="flex items-baseline gap-6">
-            <span className="hidden font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)] md:inline">
-              Vol. 01 · Game Studio
+          <div className="flex items-center gap-4">
+            <span className="hidden font-pixel text-[0.55rem] tracking-wide text-muted md:inline">
+              ~/code/{jobId.slice(0, 6)}
             </span>
-            <span className="hidden font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] md:inline">
-              {job?.status === "running"
-                ? "Composing"
-                : job?.status === "finished"
-                  ? "Playable"
-                  : job?.status === "error"
-                    ? "Halted"
-                    : "Loading"}
-            </span>
+            <GameStatusChip status={job?.status} />
           </div>
         </div>
       </header>
@@ -106,14 +91,29 @@ export default function GamePage() {
         {job ? (
           <Workspace job={job} sessionId={sessionId} onPendingEdit={onPendingEdit} />
         ) : (
-          <div className="px-2 py-20">
-            <p className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
-              Loading session…
-            </p>
+          <div className="dw-deck-loading flex items-center gap-2 px-2 py-20 font-pixel text-[0.55rem] tracking-wide text-muted">
+            <span className="inline-block h-2 w-2 animate-pixpulse rounded-full bg-accent" />
+            Loading session…
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+// GameStatusChip maps job.status → a pixel StatusChip in the header.
+// Labels keep the prior header copy (Composing / Playable / Halted).
+function GameStatusChip({ status }: { status?: GameJob["status"] }) {
+  const map: Record<string, { s: PixelStatus; label: string }> = {
+    running: { s: "working", label: "Composing" },
+    finished: { s: "done", label: "Playable" },
+    error: { s: "error", label: "Halted" },
+  };
+  const m = status ? map[status] : undefined;
+  return (
+    <StatusChip status={m?.s ?? "idle"} className="hidden md:inline-flex">
+      {m?.label ?? "Loading"}
+    </StatusChip>
   );
 }
 
@@ -130,15 +130,15 @@ function Workspace({
     <AgentSessionProvider sessionId={sessionId || job.session_id}>
       <div className="grid grid-cols-1 gap-x-10 lg:grid-cols-[minmax(360px,32fr)_minmax(0,68fr)] xl:gap-x-14">
         {/* Left: chat surface */}
-        <section className="relative lg:border-r lg:border-[color:var(--rule)] lg:pr-2 xl:pr-4">
+        <section className="dw-deck-chat relative lg:border-r-2 lg:border-ink lg:pr-2 xl:pr-4">
           <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)]">
             <GameChat job={job} onPendingEdit={onPendingEdit} />
           </div>
         </section>
 
         {/* Right: live iframe preview */}
-        <section className="relative lg:pl-2">
-          <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)] lg:pl-4 lg:pr-2 lg:pt-4">
+        <section className="dw-deck-preview relative lg:pl-2">
+          <div className="lg:sticky lg:top-[57px] lg:h-[calc(100dvh-57px)] lg:pb-6 lg:pl-4 lg:pr-3 lg:pt-4">
             <GameFrame job={job} />
           </div>
         </section>

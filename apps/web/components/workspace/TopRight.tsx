@@ -1,28 +1,19 @@
 "use client";
 
-// Sign-in / sign-up buttons pinned to the top right. Auth isn't wired
-// yet (Supabase/Clerk lands in the SaaS sprint). For now the buttons
-// stay visible so the workspace reads complete, but they're disabled
-// with an honest tooltip — no fake redirects.
+import { PixelButton } from "@/components/ui/pixel";
+
+// Sign-in / sign-up pinned top-right. Auth isn't wired yet — buttons stay
+// visible (so the workspace reads complete) but disabled with an honest
+// tooltip. Pixel re-skin.
 export function TopRight() {
   return (
-    <div className="fixed right-8 top-6 z-30 flex items-center gap-3">
-      <button
-        type="button"
-        disabled
-        title="登录 · 即将上线"
-        className="cursor-not-allowed rounded-full bg-zinc-100 px-6 py-2 text-sm font-medium text-zinc-400"
-      >
+    <div className="fixed right-8 top-6 z-30 flex items-center gap-2.5">
+      <PixelButton variant="ghost" disabled title="登录 · 即将上线">
         登录
-      </button>
-      <button
-        type="button"
-        disabled
-        title="注册 · 即将上线"
-        className="cursor-not-allowed rounded-full border border-zinc-200 bg-white px-6 py-2 text-sm font-medium text-zinc-400"
-      >
+      </PixelButton>
+      <PixelButton variant="primary" disabled title="注册 · 即将上线">
         注册
-      </button>
+      </PixelButton>
     </div>
   );
 }

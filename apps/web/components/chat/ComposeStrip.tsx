@@ -27,17 +27,17 @@ export function ComposeStrip({ compose }: { compose: ComposeProgress }) {
   const pct = total === 0 ? 0 : Math.round((renderedCount / total) * 100);
 
   return (
-    <div className="my-3 border border-[color:var(--rule)] bg-white/60 p-4">
+    <div className="my-3 rounded-pixel border-2 border-ink bg-surface/60 p-4 shadow-pixel-sm">
       <header className="mb-3 flex items-baseline justify-between gap-3">
         <div className="flex items-baseline gap-3">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.32em] text-[color:var(--vermillion)]">
+          <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-accent">
             § Compose
           </span>
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+          <span className="font-mono text-[10px] font-semibold tracking-wide text-muted">
             写 {total} 张幻灯片
           </span>
         </div>
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-soft)]">
+        <span className="font-pixel text-[0.55rem] tracking-wide text-ink-2">
           {compose.done
             ? compose.durationMs
               ? `${(compose.durationMs / 1000).toFixed(1)}s`
@@ -64,16 +64,16 @@ export function ComposeStrip({ compose }: { compose: ComposeProgress }) {
               className={clsx(
                 "flex items-baseline gap-3 border-l-2 py-1.5 pl-3 text-[13px] transition-colors",
                 treatDone
-                  ? "border-[color:var(--ink)]/40"
-                  : "border-[color:var(--rule)]",
+                  ? "border-ink"
+                  : "border-line",
               )}
             >
               <span
                 className={clsx(
                   "inline-flex h-4 w-4 shrink-0 items-center justify-center",
                   treatDone
-                    ? "text-[color:var(--vermillion)]"
-                    : "text-[color:var(--ink-faint)]",
+                    ? "text-grass"
+                    : "text-accent",
                 )}
                 aria-hidden
               >
@@ -83,21 +83,21 @@ export function ComposeStrip({ compose }: { compose: ComposeProgress }) {
                   <Loader2 size={11} className="animate-spin" strokeWidth={1.6} />
                 )}
               </span>
-              <span className="font-mono-jb text-[9px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+              <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
                 {String(idx).padStart(2, "0")}
               </span>
               <span
                 className={clsx(
-                  "flex-1 truncate font-display leading-snug",
+                  "flex-1 truncate font-mono leading-snug",
                   treatDone
-                    ? "text-[color:var(--ink)]"
-                    : "text-[color:var(--ink-soft)]",
+                    ? "text-ink"
+                    : "text-ink-2",
                 )}
               >
                 {title || `Slide ${idx}`}
               </span>
               {layout ? (
-                <span className="ml-2 font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+                <span className="ml-2 font-pixel text-[0.5rem] uppercase tracking-wide text-muted">
                   {layout}
                 </span>
               ) : null}

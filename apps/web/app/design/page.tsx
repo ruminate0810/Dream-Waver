@@ -9,8 +9,6 @@ import {
 } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -57,9 +55,6 @@ import type {
   CanvasHistoryFlags,
   SelectedImageInfo,
 } from "./TldrawCanvas";
-import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
-
-gsap.registerPlugin(useGSAP);
 
 // /design is the canvas surface — TLDraw as the artboard, one
 // persistent right sidebar and one floating toolbar on top:
@@ -89,7 +84,8 @@ const TldrawClient = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-full w-full items-center justify-center text-sm text-zinc-400">
+      <div className="flex h-full w-full items-center justify-center gap-2 font-mono text-[12px] text-muted">
+        <span className="inline-block h-2 w-2 animate-pixpulse rounded-full bg-accent" />
         Loading canvas…
       </div>
     ),
@@ -143,7 +139,6 @@ export default function DesignPage() {
   // RightSideChat so the canvas SelectionToolbar can flip it too —
   // both surfaces show the user the same state.
   const [useSelectionRef, setUseSelectionRef] = useState(false);
-  const mainRef = useRef<HTMLElement | null>(null);
 
   const handleReady = useCallback((controller: CanvasController) => {
     controllerRef.current = controller;
@@ -338,63 +333,16 @@ export default function DesignPage() {
     return true;
   }, []);
 
-  // Chrome-only entrance. Header settles from above, the design
-  // assistant slides in from the right edge. Deliberately NOT
-  // animating TldrawCanvas — tldraw owns its own pointer model, and
-  // a stale GSAP transform on the canvas wrapper would fight selection
-  // drags.
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(PREFERS_FULL_MOTION, () => {
-        const tl = gsap.timeline({
-          defaults: { ease: EASE.entrance, duration: DUR.entrance },
-        });
-        tl.from(".dw-design-header", {
-          y: -8,
-          opacity: 0,
-          duration: DUR.secondary,
-        }).from(".dw-design-right", { x: 24, opacity: 0 }, "-=0.4");
-      });
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.from(".dw-design-header, .dw-design-right", {
-          opacity: 0,
-          duration: 0.2,
-          stagger: 0.04,
-        });
-      });
-    },
-    { scope: mainRef },
-  );
-
-  // Selection toolbar appears mid-session when a user clicks an AI image.
-  // Scale-from-0.94 + fade so it lands like an answer to the click,
-  // not a sudden overlay. Effect-driven (not part of mount timeline)
-  // because `selected` flips during use, not on first paint.
-  useEffect(() => {
-    if (!selected) return;
-    const card = mainRef.current?.querySelector(".dw-design-toolbar");
-    if (!card) return;
-    const mm = gsap.matchMedia();
-    mm.add(PREFERS_FULL_MOTION, () => {
-      gsap.from(card, {
-        scale: 0.94,
-        opacity: 0,
-        duration: DUR.micro,
-        ease: EASE.feedback,
-      });
-    });
-    return () => {
-      mm.revert();
-    };
-  }, [selected]);
+  // Chrome entrance is CSS-driven (`animate-rise` on the header; the
+  // selection toolbar rises on mount since it renders conditionally).
+  // CSS keyframes always resolve to the resting state, so nothing can
+  // strand invisible the way a reverted gsap.from could under React
+  // Strict Mode. Deliberately NOT animating TldrawCanvas — tldraw owns
+  // its own pointer model.
 
   return (
-    <main
-      ref={mainRef}
-      className="flex h-screen flex-col bg-zinc-50 text-zinc-900"
-    >
-      <header className="dw-design-header z-10 flex items-center justify-between border-b border-zinc-100 bg-white px-4 py-2">
+    <main className="flex h-screen flex-col bg-paper text-ink antialiased">
+      <header className="animate-rise z-10 flex items-center justify-between border-b-2 border-ink bg-surface px-4 py-2">
         {/* Left group — back link + project switcher. The switcher is the
             "which canvas am I on" anchor; the back link drops to a bare
             arrow to make room. */}
@@ -402,11 +350,13 @@ export default function DesignPage() {
           <Link
             href="/"
             title="Back to Dream-Waver"
-            className="inline-flex items-center text-zinc-400 hover:text-zinc-800"
+            className="group inline-flex items-center text-ink-2 transition-colors hover:text-ink"
           >
-            <ArrowLeft size={14} />
+            <span className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform group-hover:-translate-x-0.5">
+              <ArrowLeft size={11} strokeWidth={2} />
+            </span>
           </Link>
-          <div className="h-4 w-px bg-zinc-200" />
+          <div className="h-4 w-px bg-line-2" />
           <ProjectSwitcher
             projects={projects}
             activeId={activeProjectId}
@@ -433,11 +383,11 @@ export default function DesignPage() {
             disabled={!historyFlags.canRedo}
             onClick={() => controllerRef.current?.redo()}
           />
-          <div className="mx-1 h-4 w-px bg-zinc-200" />
+          <div className="mx-1 h-4 w-px bg-line-2" />
           <ExportMenu controllerRef={controllerRef} />
         </div>
 
-        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+        <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.18em] text-muted">
           Design · Canvas
         </span>
       </header>
@@ -894,8 +844,8 @@ function SelectionToolbar({
   }
 
   return (
-    <div className="pointer-events-auto inline-flex flex-col items-start gap-1">
-      <div className="inline-flex items-center gap-0.5 rounded-lg border border-zinc-200 bg-white p-1 shadow-md">
+    <div className="pointer-events-auto inline-flex flex-col items-start gap-1.5">
+      <div className="inline-flex items-center gap-0.5 rounded-pixel border-2 border-ink bg-surface p-1 shadow-pixel">
         <ToolbarButton
           icon={<Repeat size={13} />}
           label="Reimagine"
@@ -926,7 +876,7 @@ function SelectionToolbar({
           }}
           title="Quick style transforms (preset prompts)"
         />
-        <div className="h-5 w-px bg-zinc-200" />
+        <div className="h-5 w-px bg-line" />
         <ToolbarButton
           icon={<Film size={13} />}
           label="Animate"
@@ -938,12 +888,12 @@ function SelectionToolbar({
           }}
           title="Image-to-video via Seedance 1.5 Pro (60-120s)"
         />
-        <div className="h-5 w-px bg-zinc-200" />
+        <div className="h-5 w-px bg-line" />
         {/* "+ ref" toggles the chat's next-prompt ref state. The
             button reflects current state so users can SEE whether
             this image is armed. */}
         <ToolbarButton
-          icon={<Sparkles size={13} className={isRefActive ? "text-fuchsia-500" : ""} />}
+          icon={<Sparkles size={13} className={isRefActive ? "text-accent" : ""} />}
           label={isRefActive ? "Ref ✓" : "+ ref"}
           disabled={pendingOp !== null}
           onClick={onToggleRef}
@@ -968,7 +918,7 @@ function SelectionToolbar({
           title="Copy image URL to clipboard"
         />
         {err && (
-          <span className="ml-2 max-w-[240px] truncate text-[11px] text-red-600">
+          <span className="ml-2 max-w-[240px] truncate text-[11px] text-[#a23a2a]">
             {err}
           </span>
         )}
@@ -1009,13 +959,13 @@ function QuickEditsPopover({
   onClose: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-2 shadow-md">
+    <div className="rounded-pixel border-2 border-ink bg-surface p-2 shadow-pixel">
       <div className="mb-1.5 flex items-baseline justify-between px-1">
-        <p className="text-[11px] text-zinc-500">Quick edits · Pro model</p>
+        <p className="text-[11px] text-muted">Quick edits · Pro model</p>
         <button
           type="button"
           onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-700"
+          className="text-muted hover:text-ink"
           aria-label="Close quick edits"
         >
           <X size={12} />
@@ -1028,7 +978,7 @@ function QuickEditsPopover({
             type="button"
             onClick={() => onPick(preset)}
             title={preset.prompt}
-            className="rounded border border-zinc-200 px-2 py-1 text-left text-[11px] text-zinc-700 transition hover:border-zinc-400 hover:bg-zinc-50"
+            className="rounded-pixel border border-line-2 px-2 py-1 text-left text-[11px] text-ink-2 transition hover:border-ink hover:bg-surface-2 hover:text-ink"
           >
             {preset.label}
           </button>
@@ -1059,21 +1009,21 @@ function AnimatePopover({
   const [duration, setDuration] = useState<number>(5);
   return (
     <form
-      className="w-80 rounded-lg border border-zinc-200 bg-white p-3 shadow-md"
+      className="w-80 rounded-pixel border-2 border-ink bg-surface p-3 shadow-pixel"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(text, resolution, duration);
       }}
     >
       <div className="mb-2 flex items-baseline justify-between">
-        <p className="inline-flex items-baseline gap-1 text-[11px] text-zinc-500">
+        <p className="inline-flex items-baseline gap-1 text-[11px] text-muted">
           <Film size={11} className="self-center" />
           Animate this image
         </p>
         <button
           type="button"
           onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-700"
+          className="text-muted hover:text-ink"
         >
           <X size={12} />
         </button>
@@ -1083,25 +1033,25 @@ function AnimatePopover({
         onChange={(e) => setText(e.target.value)}
         placeholder="Slow camera push-in, clouds drift across the sky, leaves rustle…"
         rows={3}
-        className="w-full rounded-md border border-zinc-200 px-2 py-1.5 text-[12px] focus:border-zinc-400 focus:outline-none"
+        className="w-full rounded-pixel border-2 border-line-2 bg-surface px-2 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted focus:border-ink focus:outline-none"
       />
 
       <div className="mt-2 grid grid-cols-2 gap-3">
         <div>
-          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+          <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
             Resolution
           </p>
-          <div className="inline-flex rounded border border-zinc-200 p-0.5">
+          <div className="inline-flex overflow-hidden rounded-pixel border-2 border-ink">
             {(["480p", "720p", "1080p"] as const).map((r) => (
               <button
                 key={r}
                 type="button"
                 onClick={() => setResolution(r)}
                 className={
-                  "rounded px-1.5 py-1 font-mono text-[10px] uppercase tracking-[0.12em] transition " +
+                  "px-1.5 py-1 font-mono text-[10px] font-semibold uppercase tracking-[0.12em] transition " +
                   (resolution === r
-                    ? "bg-zinc-800 text-white"
-                    : "text-zinc-500 hover:text-zinc-800")
+                    ? "bg-ink text-paper"
+                    : "text-ink-2 hover:bg-surface-2 hover:text-ink")
                 }
               >
                 {r}
@@ -1110,7 +1060,7 @@ function AnimatePopover({
           </div>
         </div>
         <div>
-          <p className="mb-1 font-mono text-[10px] uppercase tracking-[0.14em] text-zinc-400">
+          <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
             Duration · {duration}s
           </p>
           <input
@@ -1120,7 +1070,7 @@ function AnimatePopover({
             step={1}
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
-            className="w-full accent-zinc-900"
+            className="w-full accent-accent"
           />
         </div>
       </div>
@@ -1128,11 +1078,11 @@ function AnimatePopover({
       <button
         type="submit"
         disabled={!text.trim()}
-        className="mt-3 w-full rounded-md bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="mt-3 w-full rounded-pixel border-2 border-ink bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none disabled:translate-x-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Animate (60-120s wait)
       </button>
-      <p className="mt-1.5 text-[10px] leading-snug text-zinc-400">
+      <p className="mt-1.5 text-[10px] leading-snug text-muted">
         Seedance 1.5 Pro turns the source image into an MP4. Output lands
         on the canvas beside the source — click to play.
       </p>
@@ -1150,18 +1100,18 @@ function ReimaginePopover({
   const [text, setText] = useState("");
   return (
     <form
-      className="w-80 rounded-lg border border-zinc-200 bg-white p-3 shadow-md"
+      className="w-80 rounded-pixel border-2 border-ink bg-surface p-3 shadow-pixel"
       onSubmit={(e) => {
         e.preventDefault();
         onSubmit(text);
       }}
     >
       <div className="mb-2 flex items-baseline justify-between">
-        <p className="text-[11px] text-zinc-500">Reimagine this image</p>
+        <p className="text-[11px] text-muted">Reimagine this image</p>
         <button
           type="button"
           onClick={onClose}
-          className="text-zinc-400 hover:text-zinc-700"
+          className="text-muted hover:text-ink"
         >
           <X size={12} />
         </button>
@@ -1171,12 +1121,12 @@ function ReimaginePopover({
         onChange={(e) => setText(e.target.value)}
         placeholder="Make it nighttime, neon lighting, raining…"
         rows={3}
-        className="w-full rounded-md border border-zinc-200 px-2 py-1.5 text-[12px] focus:border-zinc-400 focus:outline-none"
+        className="w-full rounded-pixel border-2 border-line-2 bg-surface px-2 py-1.5 font-mono text-[12px] text-ink placeholder:text-muted focus:border-ink focus:outline-none"
       />
       <button
         type="submit"
         disabled={!text.trim()}
-        className="mt-2 w-full rounded-md bg-zinc-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
+        className="mt-2 w-full rounded-pixel border-2 border-ink bg-accent px-3 py-1.5 text-[12px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none disabled:translate-x-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50"
       >
         Reimagine
       </button>
@@ -1205,9 +1155,9 @@ function ToolbarButton({
       onClick={onClick}
       disabled={pending || disabled}
       title={title}
-      className="inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-[13px] font-medium text-zinc-800 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex items-center gap-1.5 rounded-[4px] px-2.5 py-1.5 font-mono text-[13px] font-medium text-ink transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
     >
-      {pending ? <Loader2 size={13} className="animate-spin" /> : icon}
+      {pending ? <Loader2 size={13} className="animate-spin text-accent" /> : icon}
       <span>{label}</span>
     </button>
   );
@@ -1238,7 +1188,7 @@ function HeaderIconButton({
       disabled={disabled}
       title={label}
       aria-label={label}
-      className="inline-flex h-7 w-7 items-center justify-center rounded text-zinc-700 transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+      className="inline-flex h-7 w-7 items-center justify-center rounded-pixel text-ink-2 transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink-2"
     >
       {icon}
     </button>
@@ -1366,23 +1316,23 @@ function ExportMenu({
         onClick={() => setOpen((v) => !v)}
         title="Export the canvas as PNG or SVG"
         aria-label="Export canvas"
-        className="inline-flex h-7 items-center gap-1 rounded px-1.5 text-[12px] text-zinc-700 transition hover:bg-zinc-100"
+        className="inline-flex h-7 items-center gap-1 rounded-pixel px-1.5 text-[12px] text-ink-2 transition hover:bg-surface-2 hover:text-ink"
       >
         <Download size={13} />
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em]">
+        <span className="font-pixel text-[0.55rem] tracking-wide">
           Export
         </span>
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-44 rounded-md border border-zinc-200 bg-white p-1 shadow-md">
+        <div className="absolute right-0 top-full z-30 mt-1 w-44 rounded-pixel border-2 border-ink bg-surface p-1 shadow-pixel-sm">
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => run("png")}
-            className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[12px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="flex w-full items-center justify-between rounded-[4px] px-2 py-1.5 text-left font-mono text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
           >
             <span>PNG</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-400">
+            <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
               {busy === "png" ? "…" : "raster"}
             </span>
           </button>
@@ -1390,15 +1340,15 @@ function ExportMenu({
             type="button"
             disabled={busy !== null}
             onClick={() => run("svg")}
-            className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[12px] text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+            className="flex w-full items-center justify-between rounded-[4px] px-2 py-1.5 text-left font-mono text-[12px] text-ink-2 hover:bg-surface-2 hover:text-ink disabled:opacity-50"
           >
             <span>SVG</span>
-            <span className="font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-400">
+            <span className="font-pixel text-[0.5rem] tracking-wide text-muted">
               {busy === "svg" ? "…" : "vector"}
             </span>
           </button>
           {err && (
-            <p className="mt-1 px-2 text-[10px] text-red-600">{err}</p>
+            <p className="mt-1 px-2 text-[10px] text-[#a23a2a]">{err}</p>
           )}
         </div>
       )}
@@ -1417,15 +1367,15 @@ function ExportMenu({
 function EmptyCanvasHint() {
   return (
     <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-      <div className="flex flex-col items-center gap-2 text-zinc-400">
-        <div className="inline-flex items-center gap-2 rounded-full border border-zinc-200 bg-white/80 px-4 py-2 shadow-sm backdrop-blur-sm">
-          <Sparkles size={14} className="text-fuchsia-500" />
-          <span className="text-[13px] text-zinc-700">
+      <div className="flex flex-col items-center gap-2 text-muted">
+        <div className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-surface px-4 py-2 shadow-pixel-sm">
+          <Sparkles size={14} className="text-accent" />
+          <span className="text-[13px] text-ink-2">
             Describe what you want on the right
           </span>
-          <ArrowRight size={14} className="text-fuchsia-500" />
+          <ArrowRight size={14} className="text-accent" />
         </div>
-        <p className="text-[11px] text-zinc-400">
+        <p className="text-[11px] text-muted">
           The generated image will land here.
         </p>
       </div>

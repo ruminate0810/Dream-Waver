@@ -1,15 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, type FormEvent } from "react";
-import { gsap } from "gsap";
-import { useGSAP } from "@gsap/react";
+import { useState, type FormEvent } from "react";
 import { ArrowLeft, Loader2, Sparkles } from "lucide-react";
 
 import { ApiError, createVideoRun } from "@/lib/api";
-import { DUR, EASE, PREFERS_FULL_MOTION } from "@/lib/motion";
-
-gsap.registerPlugin(useGSAP);
+import { PixelButton, WindowCard } from "@/components/ui/pixel";
 
 // /video/new is the entrance to the click-to-regen cinematic short
 // pipeline. Compared to /slides/new this is intentionally bare-bones:
@@ -89,39 +85,10 @@ export default function NewVideoRunPage() {
   const [dryRun, setDryRun] = useState(true); // safer default — see comment
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<{ message: string; fieldErrors: string[] } | null>(null);
-  const mainRef = useRef<HTMLElement | null>(null);
 
-  // Sprint Y2 — entrance: header settles, title rises, description fades,
-  // form fields cascade. Reduced motion = opacity fade only.
-  useGSAP(
-    () => {
-      const mm = gsap.matchMedia();
-      mm.add(PREFERS_FULL_MOTION, () => {
-        const tl = gsap.timeline({
-          defaults: { ease: EASE.entrance, duration: DUR.entrance },
-        });
-        tl.from(".dw-vid-header", { y: -8, opacity: 0, duration: DUR.secondary })
-          .from(".dw-vid-title", { y: 18, opacity: 0 }, "-=0.2")
-          .from(
-            ".dw-vid-desc",
-            { y: 12, opacity: 0, duration: DUR.secondary },
-            "-=0.4",
-          )
-          .from(
-            ".dw-vid-form > *",
-            { y: 14, opacity: 0, stagger: 0.06, duration: DUR.secondary },
-            "-=0.35",
-          );
-      });
-      mm.add("(prefers-reduced-motion: reduce)", () => {
-        gsap.from(
-          ".dw-vid-header, .dw-vid-title, .dw-vid-desc, .dw-vid-form > *",
-          { opacity: 0, duration: 0.2, stagger: 0.04 },
-        );
-      });
-    },
-    { scope: mainRef },
-  );
+  // Pixel re-skin: entrances are CSS-driven (`animate-rise` + per-block
+  // animation-delay) so nothing strands at opacity:0 under React Strict
+  // Mode / a backgrounded tab. No GSAP needed on this page.
 
   // Why dry-run defaults ON: a real run can spend tens of dollars on
   // Seedance + Gemini calls. We'd rather the user opt INTO the spend
@@ -169,38 +136,47 @@ export default function NewVideoRunPage() {
   }
 
   return (
-    <main ref={mainRef} className="min-h-screen bg-white">
-      <header className="dw-vid-header border-b border-zinc-100">
-        <div className="mx-auto flex max-w-4xl items-baseline justify-between px-6 py-4">
+    <main className="dot-grid min-h-screen bg-paper text-ink antialiased">
+      <header className="border-b-2 border-ink bg-paper/85 backdrop-blur-[2px]">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-3">
           <a
             href="/"
-            className="inline-flex items-baseline gap-2 text-xs text-zinc-500 hover:text-zinc-800"
+            className="group inline-flex items-center gap-2 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:text-ink"
           >
-            <ArrowLeft size={12} /> Dream-Waver
+            <span className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm transition-transform group-hover:-translate-x-0.5">
+              <ArrowLeft size={11} strokeWidth={2} />
+            </span>
+            Dream-Waver
           </a>
-          <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+          <span className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
             Video · New run
           </span>
         </div>
       </header>
 
       <div className="mx-auto max-w-4xl px-6 py-10">
-        <h1 className="dw-vid-title text-2xl font-medium text-zinc-900">Start a video run</h1>
-        <p className="dw-vid-desc mt-2 max-w-2xl text-sm text-zinc-600">
-          Submit a <code className="rounded bg-zinc-100 px-1 py-0.5 text-[12px]">story_spec.json</code> describing
+        <h1 className="animate-rise font-mono text-2xl font-extrabold tracking-tight text-ink">
+          Start a video run
+        </h1>
+        <p className="animate-rise mt-3 max-w-2xl font-mono text-sm leading-relaxed text-ink-2 [animation-delay:60ms]">
+          Submit a{" "}
+          <code className="rounded-[4px] border border-line bg-surface-2 px-1 py-0.5 font-mono text-[12px] text-ink">
+            story_spec.json
+          </code>{" "}
+          describing
           characters and scenes; the click-to-regen timeline opens once the
           DAG is built. Opendream validates the spec before any provider
           call fires, so a structural error fails fast with a per-field
           message.
         </p>
 
-        <form onSubmit={onSubmit} className="dw-vid-form mt-8 space-y-5">
+        <form onSubmit={onSubmit} className="animate-rise mt-8 space-y-5 [animation-delay:120ms]">
           <div>
             <label
               htmlFor="title"
-              className="mb-1 block font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500"
+              className="mb-1.5 block font-pixel text-[0.55rem] uppercase tracking-wide text-ink-2"
             >
-              Title <span className="text-zinc-400">(optional)</span>
+              Title <span className="text-muted">(optional)</span>
             </label>
             <input
               id="title"
@@ -208,61 +184,65 @@ export default function NewVideoRunPage() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={"defaults to spec.title"}
-              className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-zinc-400 focus:outline-none"
+              className="w-full rounded-pixel border-2 border-ink bg-surface px-3 py-2 font-mono text-sm text-ink transition-shadow placeholder:text-muted focus:shadow-pixel-sm focus:outline-none"
             />
           </div>
 
-          <div>
-            <div className="mb-1 flex items-baseline justify-between">
-              <label
-                htmlFor="spec"
-                className="font-mono text-[10px] uppercase tracking-[0.18em] text-zinc-500"
-              >
+          {/* The spec editor is the centerpiece — frame it as a little
+              editor window so the filename reads as window chrome. */}
+          <WindowCard
+            title={
+              <label htmlFor="spec" className="font-pixel text-[0.55rem] tracking-wide text-ink-2">
                 story_spec.json
               </label>
+            }
+            right={
               <button
                 type="button"
                 onClick={loadSample}
-                className="inline-flex items-baseline gap-1 font-mono text-[10px] uppercase tracking-[0.16em] text-sky-600 hover:text-sky-800"
+                className="inline-flex items-center gap-1.5 font-pixel text-[0.55rem] uppercase tracking-wide text-accent transition-colors hover:text-ink"
               >
                 <Sparkles size={10} className="self-center" />
                 load sample
               </button>
-            </div>
+            }
+            className="transition-shadow focus-within:shadow-pixel-lg"
+            bodyClassName="p-0"
+          >
             <textarea
               id="spec"
               value={specText}
               onChange={(e) => setSpecText(e.target.value)}
               placeholder='{ "title": "...", "characters": {...}, "scenes": [...] }'
               rows={20}
-              className="w-full rounded-md border border-zinc-200 px-3 py-3 font-mono text-[12px] leading-relaxed focus:border-zinc-400 focus:outline-none"
+              className="block w-full bg-surface px-3 py-3 font-mono text-[12px] leading-relaxed text-ink placeholder:text-muted focus:outline-none"
               spellCheck={false}
               required
             />
-          </div>
+          </WindowCard>
 
-          <label className="flex items-start gap-2 rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <label className="flex items-start gap-2.5 rounded-pixel border-2 border-ink bg-[#fff7e8] px-3 py-2.5 font-mono text-sm text-[#9a6b15] shadow-pixel-sm">
             <input
               type="checkbox"
               checked={dryRun}
               onChange={(e) => setDryRun(e.target.checked)}
-              className="mt-1"
+              className="mt-1 accent-gold"
             />
             <span>
-              <span className="font-medium">Dry run</span> — plan the DAG only,
+              <span className="font-semibold">Dry run</span> — plan the DAG only,
               no provider calls. Uncheck to spend on real Seedance + Gemini
               generation.
             </span>
           </label>
 
           {err && (
-            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-              <div className="font-medium">{err.message}</div>
+            <div className="rounded-pixel border-2 border-ink bg-[#fdece9] px-3 py-2.5 font-mono text-sm text-[#a23a2a] shadow-pixel-sm">
+              <div className="font-semibold">{err.message}</div>
               {err.fieldErrors.length > 0 && (
                 // Validator failures land here. Each line is one
                 // Finding — formatted upstream as
                 // `[CODE] scene N: message (fix: hint)`.
-                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] text-red-700/90">
+                <ul className="mt-1.5 list-disc space-y-0.5 pl-5 text-[13px] text-[#a23a2a]/90">
                   {err.fieldErrors.map((line, i) => (
                     <li key={i}>{line}</li>
                   ))}
@@ -271,14 +251,14 @@ export default function NewVideoRunPage() {
             </div>
           )}
 
-          <button
+          <PixelButton
             type="submit"
+            variant="accent"
             disabled={submitting || !specText.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
           >
             {submitting && <Loader2 size={14} className="animate-spin" />}
             {submitting ? "Starting…" : dryRun ? "Plan run" : "Start generation"}
-          </button>
+          </PixelButton>
         </form>
       </div>
     </main>

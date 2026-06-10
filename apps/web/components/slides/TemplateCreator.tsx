@@ -7,6 +7,7 @@ import clsx from "clsx";
 
 import { createUserTemplate, type UserTemplate } from "@/lib/api";
 import { TEMPLATES } from "@/lib/templates";
+import { useEscapeKey } from "@/lib/useEscapeKey";
 
 // Sprint T4 — modal that lets a user save a theme + brand preset as
 // "我的模板". MVP scope:
@@ -52,6 +53,9 @@ export function TemplateCreator({
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // Esc closes the modal (it's only mounted while open).
+  useEscapeKey(true, onClose);
+
   async function submit(e?: FormEvent) {
     e?.preventDefault();
     if (submitting) return;
@@ -89,25 +93,22 @@ export function TemplateCreator({
   if (typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--ink)]/40 p-4 backdrop-blur-[2px]">
-      <div
-        className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden border border-[color:var(--ink)]/15 bg-[#FBF9F2] shadow-[0_24px_60px_-20px_rgba(50,40,32,0.50)]"
-        style={{ boxShadow: "0 2px 0 rgba(26,22,20,0.04), 0 32px 64px -28px rgba(50,40,32,0.55)" }}
-      >
-        {/* Top vermillion bleed strip */}
-        <div className="h-[3px] w-[42px] bg-[color:var(--vermillion)]" />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-[2px]">
+      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-pixel border-2 border-ink bg-surface-2 shadow-pixel-lg">
+        {/* Top accent bleed strip */}
+        <div className="h-[3px] w-[42px] bg-accent" />
 
-        <header className="flex items-baseline justify-between gap-3 border-b border-[color:var(--rule)] px-6 pt-5 pb-4">
-          <div className="flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
-            <span className="text-[color:var(--vermillion)]">§</span>
+        <header className="flex items-center justify-between gap-3 border-b border-line px-6 pt-5 pb-4">
+          <div className="flex items-center gap-2 font-pixel text-[0.55rem] tracking-wide text-ink-2">
+            <span className="text-accent">§</span>
             <span>New Template</span>
-            <span className="text-[color:var(--ink-faint)]">/</span>
-            <span>添加我的模板</span>
+            <span className="text-muted">/</span>
+            <span className="font-mono text-[10px] font-semibold tracking-wide">添加我的模板</span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--ink)]"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-pixel border-2 border-line-2 text-ink-2 transition-colors hover:border-ink hover:text-ink"
             aria-label="Close"
           >
             <X size={14} strokeWidth={1.8} />
@@ -117,8 +118,8 @@ export function TemplateCreator({
         <form onSubmit={submit} className="flex flex-1 flex-col gap-6 overflow-y-auto px-6 py-6">
           {/* Name */}
           <div className="flex flex-col gap-2">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-              Name · 名字
+            <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
+              Name · <span className="font-mono text-[10px] font-semibold tracking-wide">名字</span>
             </span>
             <input
               type="text"
@@ -128,17 +129,17 @@ export function TemplateCreator({
               autoFocus
               disabled={submitting}
               placeholder='例: "公司主调" / "Q4 客户演讲"'
-              className="border-b border-[color:var(--ink)]/40 bg-transparent pb-1 font-display text-[18px] text-[color:var(--ink)] placeholder:text-[color:var(--ink-faint)] focus:border-[color:var(--vermillion)] focus:outline-none disabled:opacity-50"
+              className="rounded-pixel border-2 border-ink bg-surface px-3 py-2 font-mono text-[18px] text-ink placeholder:text-muted focus:shadow-pixel-sm focus:outline-none disabled:opacity-50"
             />
           </div>
 
           {/* Theme picker */}
           <div className="flex flex-col gap-3">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-                Theme · 基底主题
+              <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
+                Theme · <span className="font-mono text-[10px] font-semibold tracking-wide">基底主题</span>
               </span>
-              <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+              <span className="font-mono text-[13px] font-semibold text-ink-2">
                 {TEMPLATES.find((t) => t.name === theme)?.label ?? theme}
               </span>
             </div>
@@ -158,10 +159,10 @@ export function TemplateCreator({
                   >
                     <div
                       className={clsx(
-                        "relative aspect-[16/10] w-full overflow-hidden border bg-white transition-all",
+                        "relative aspect-[16/10] w-full overflow-hidden rounded-pixel border-2 bg-surface transition-all",
                         isPicked
-                          ? "border-[color:var(--vermillion)] shadow-[0_0_0_2px_var(--vermillion)]"
-                          : "border-[color:var(--ink)]/15 group-hover:border-[color:var(--ink)]/40",
+                          ? "border-ink bg-accent-soft shadow-pixel-sm"
+                          : "border-line-2 group-hover:border-ink",
                       )}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -175,10 +176,10 @@ export function TemplateCreator({
                     </div>
                     <span
                       className={clsx(
-                        "font-mono-jb text-[9px] uppercase tracking-[0.18em] transition-colors",
+                        "font-mono text-[9px] font-semibold uppercase tracking-wide transition-colors",
                         isPicked
-                          ? "text-[color:var(--vermillion)]"
-                          : "text-[color:var(--ink-soft)]",
+                          ? "text-accent"
+                          : "text-ink-2",
                       )}
                     >
                       {t.label}
@@ -209,14 +210,14 @@ export function TemplateCreator({
 
           {/* Font */}
           <div className="flex flex-col gap-2">
-            <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-              Font · 字体
+            <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
+              Font · <span className="font-mono text-[10px] font-semibold tracking-wide">字体</span>
             </span>
             <select
               value={fontFamily}
               onChange={(e) => setFontFamily(e.target.value)}
               disabled={submitting}
-              className="border-b border-[color:var(--ink)]/40 bg-transparent pb-1 font-display text-[15px] text-[color:var(--ink)] focus:border-[color:var(--vermillion)] focus:outline-none disabled:opacity-50"
+              className="rounded-pixel border-2 border-ink bg-surface px-3 py-2 font-mono text-[15px] text-ink focus:shadow-pixel-sm focus:outline-none disabled:opacity-50"
             >
               {FONT_OPTIONS.map((f) => (
                 <option key={f.value || "_default"} value={f.value}>
@@ -229,15 +230,15 @@ export function TemplateCreator({
           {err ? (
             <div
               role="alert"
-              className="border-l-2 border-[color:var(--vermillion)] bg-[color:var(--vermillion)]/[0.05] px-3 py-2 font-display text-[13px] italic leading-snug text-[color:var(--ink)]"
+              className="rounded-pixel border-2 border-ink bg-[#fdece9] px-3 py-2 font-mono text-[13px] leading-snug text-[#a23a2a]"
             >
               {err}
             </div>
           ) : null}
         </form>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-[color:var(--rule)] px-6 py-4">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+        <footer className="flex items-center justify-between gap-3 border-t border-line px-6 py-4">
+          <span className="font-mono text-[10px] font-semibold tracking-wide text-muted">
             保存后出现在「我的模板」里
           </span>
           <div className="flex items-center gap-3">
@@ -245,7 +246,7 @@ export function TemplateCreator({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+              className="rounded-pixel border-2 border-line-2 px-3 py-2 font-mono text-[11px] font-semibold tracking-wide text-ink-2 transition-colors hover:border-ink hover:text-ink"
             >
               取消
             </button>
@@ -254,10 +255,10 @@ export function TemplateCreator({
               onClick={() => submit()}
               disabled={submitting || !name.trim()}
               className={clsx(
-                "group inline-flex items-center gap-2 px-4 py-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] transition-all duration-200",
+                "group inline-flex items-center gap-2 rounded-pixel border-2 border-ink px-4 py-2 font-mono text-[11px] font-semibold tracking-wide transition-all duration-150",
                 submitting || !name.trim()
-                  ? "cursor-not-allowed text-[color:var(--ink-faint)]"
-                  : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)] active:translate-y-[1px]",
+                  ? "cursor-not-allowed bg-surface-2 text-muted"
+                  : "bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
               )}
             >
               {submitting ? (
@@ -294,16 +295,16 @@ function ColorField({
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+      <span className="font-mono text-[10px] font-semibold tracking-wide text-muted">
         {label}
       </span>
-      <div className="flex items-center gap-3 border-b border-[color:var(--ink)]/40 pb-1 focus-within:border-[color:var(--vermillion)]">
+      <div className="flex items-center gap-3 rounded-pixel border-2 border-ink bg-surface px-3 py-2 focus-within:shadow-pixel-sm">
         <input
           type="color"
           value={value || "#000000"}
           onChange={(e) => setValue(e.target.value)}
           disabled={disabled}
-          className="h-8 w-10 cursor-pointer border border-[color:var(--ink)]/15 bg-transparent disabled:cursor-not-allowed"
+          className="h-8 w-10 cursor-pointer rounded-pixel border-2 border-ink bg-transparent disabled:cursor-not-allowed"
           aria-label={label + " swatch"}
         />
         <input
@@ -312,7 +313,7 @@ function ColorField({
           onChange={(e) => setValue(e.target.value)}
           disabled={disabled}
           placeholder={placeholder}
-          className="flex-1 bg-transparent font-mono-jb text-[13px] uppercase tracking-[0.04em] text-[color:var(--ink)] placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-50"
+          className="flex-1 bg-transparent font-mono text-[13px] uppercase tracking-[0.04em] text-ink placeholder:text-muted focus:outline-none disabled:opacity-50"
         />
         {value ? (
           <button
@@ -320,7 +321,7 @@ function ColorField({
             onClick={() => setValue("")}
             disabled={disabled}
             aria-label={`Clear ${label}`}
-            className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--vermillion)]"
+            className="font-pixel text-[0.5rem] tracking-wide text-muted transition-colors hover:text-accent"
           >
             clear
           </button>

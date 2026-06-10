@@ -12,9 +12,10 @@ import { ArrowUpRight, Loader2 } from "lucide-react";
 //   - /slides/new alert           (vermillion strip + retry button)
 //
 // All five now render via <ErrorCallout> with severity + optional
-// action. Layout: 3px vermillion bleed strip (registration mark) +
-// hairline border + ink-on-paper body + optional mono-caps CTA on
-// right edge. Width adapts to container.
+// action. Layout: hard-bordered pixel callout — 2px ink border +
+// offset pixel shadow over a red-family tint, mono kicker + body,
+// optional accent press-button CTA on the right edge. Width adapts
+// to container.
 
 export type ErrorAction = {
   label: string; // "重试" / "新建相似 deck"
@@ -49,34 +50,22 @@ export function ErrorCallout({
   return (
     <div className={`relative ${className ?? ""}`}>
       <div
-        className={
-          isErr
-            ? "h-[3px] w-[36px] bg-[color:var(--vermillion)]"
-            : "h-[3px] w-[36px] bg-[color:var(--ink-soft)]"
-        }
-        aria-hidden
-      />
-      <div
         role="alert"
         className={
-          "flex flex-wrap items-start gap-3 border px-4 py-3 " +
-          (isErr
-            ? "border-[color:var(--vermillion)]/45 bg-[color:var(--vermillion)]/[0.06]"
-            : "border-[color:var(--ink-soft)]/30 bg-[color:var(--ink-soft)]/[0.04]")
+          "flex flex-wrap items-start gap-3 rounded-pixel border-2 border-ink px-4 py-3 shadow-pixel-sm " +
+          (isErr ? "bg-[#fdece9]" : "bg-[#fff7e8]")
         }
       >
         <div className="flex flex-1 min-w-0 items-start gap-2">
           <span
             className={
-              "mt-[2px] font-mono-jb text-[10px] uppercase tracking-[0.26em] " +
-              (isErr
-                ? "text-[color:var(--vermillion)]"
-                : "text-[color:var(--ink-soft)]")
+              "mt-[2px] font-mono text-[11px] font-semibold uppercase tracking-wide " +
+              (isErr ? "text-[#a23a2a]" : "text-[#9a6b15]")
             }
           >
             {kickerLabel}
           </span>
-          <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink)]">
+          <p className="font-mono text-[13px] leading-snug text-ink">
             {message}
           </p>
         </div>
@@ -93,17 +82,13 @@ function ActionButton({ action }: { action: ErrorAction }) {
       {action.busy ? (
         <Loader2 size={11} strokeWidth={1.8} className="animate-spin" />
       ) : (
-        <ArrowUpRight
-          size={11}
-          strokeWidth={1.8}
-          className="transition-transform group-hover:-translate-y-[1px] group-hover:translate-x-[1px]"
-        />
+        <ArrowUpRight size={11} strokeWidth={1.8} />
       )}
       <span>{label}</span>
     </>
   );
   const cls =
-    "group inline-flex items-center gap-1.5 border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] no-underline transition-all hover:bg-[color:var(--vermillion)] active:translate-y-[1px] disabled:cursor-not-allowed disabled:opacity-50";
+    "group inline-flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-accent px-3 py-1.5 font-mono text-[11px] font-semibold text-white no-underline shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none disabled:cursor-not-allowed disabled:opacity-50 disabled:translate-x-0 disabled:translate-y-0";
   if (action.href) {
     return (
       <a href={action.href} className={cls}>

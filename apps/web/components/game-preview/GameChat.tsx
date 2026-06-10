@@ -205,11 +205,11 @@ export function GameChat({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-[color:var(--rule)] px-1 pb-3 pt-1">
-        <p className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-          Conversation · {status === "thinking" ? "Composing" : status === "error" ? "Halted" : "Idle"}
+      <div className="border-b-2 border-ink px-1 pb-3 pt-2">
+        <p className="font-pixel text-[0.55rem] tracking-wide text-muted">
+          § Conversation · {status === "thinking" ? "Composing" : status === "error" ? "Halted" : "Idle"}
         </p>
-        <h2 className="mt-1 font-display text-[20px] leading-tight text-[color:var(--ink)]">
+        <h2 className="mt-1.5 font-mono text-[18px] font-bold leading-tight tracking-tight text-ink">
           {job.title || "Untitled game"}
         </h2>
       </div>
@@ -228,9 +228,9 @@ export function GameChat({
       <form
         ref={formRef}
         onSubmit={onSubmit}
-        className="border-t border-[color:var(--rule)] bg-[color:var(--paper)]/85 px-1 pb-2 pt-3"
+        className="border-t-2 border-ink bg-paper/85 px-1 pb-3 pt-3 backdrop-blur-[2px]"
       >
-        <div className="flex items-end gap-2 border border-[color:var(--rule)] bg-white px-3 py-2 focus-within:border-[color:var(--ink)]/40">
+        <div className="flex items-end gap-2 rounded-pixel border-2 border-ink bg-surface px-3 py-2 shadow-pixel transition-shadow focus-within:shadow-pixel-lg">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -240,16 +240,16 @@ export function GameChat({
             disabled={sending || job.status === "running"}
             rows={2}
             placeholder="想改点什么？比如「让小蛇撞到自己时屏幕红色闪烁」"
-            className="flex-1 resize-none bg-transparent font-display text-[15px] leading-snug text-[color:var(--ink)] placeholder:italic placeholder:text-[color:var(--ink-faint)] focus:outline-none disabled:opacity-60"
+            className="flex-1 resize-none bg-transparent font-mono text-[14px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-60"
           />
           <button
             type="submit"
             disabled={!draft.trim() || sending || job.status === "running"}
             className={clsx(
-              "flex h-9 w-9 items-center justify-center rounded transition-colors",
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-pixel border-2 transition-transform",
               !draft.trim() || sending || job.status === "running"
-                ? "cursor-not-allowed bg-zinc-100 text-zinc-300"
-                : "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)]",
+                ? "cursor-not-allowed border-line-2 bg-surface-2 text-line-2"
+                : "border-ink bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none",
             )}
             aria-label="Send"
           >
@@ -260,7 +260,7 @@ export function GameChat({
             )}
           </button>
         </div>
-        <p className="mt-1.5 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+        <p className="mt-2 font-mono text-[11px] text-muted">
           Enter 发送 · Shift+Enter 换行
         </p>
       </form>
@@ -276,7 +276,7 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       <div className="flex gap-3">
         <Avatar variant="user" />
         <div className="flex-1 pt-1">
-          <p className="font-display text-[15px] leading-snug text-[color:var(--ink)]">
+          <p className="font-mono text-[14.5px] leading-relaxed text-ink">
             {bubble.text}
           </p>
         </div>
@@ -288,7 +288,7 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       <div className="flex gap-3">
         <Avatar variant="assistant" />
         <div className="flex-1 pt-1">
-          <p className="font-display text-[15px] italic leading-snug text-red-800">
+          <p className="rounded-pixel border-2 border-ink bg-[#fdece9] px-3 py-2 font-mono text-[13px] leading-relaxed text-[#a23a2a]">
             {bubble.text}
           </p>
         </div>
@@ -304,10 +304,10 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       <div className="flex gap-3">
         <Avatar variant="assistant" />
         <div className="flex-1 pt-1 min-w-0">
-          <pre className="m-0 max-h-24 overflow-hidden whitespace-pre-wrap break-all font-mono-jb text-[10px] leading-relaxed text-[color:var(--ink-faint)]">
+          <pre className="m-0 max-h-24 overflow-hidden whitespace-pre-wrap break-all rounded-pixel border border-line-2 bg-surface-2/80 px-2.5 py-2 font-mono text-[10px] leading-relaxed text-muted">
             {tailLines(bubble.text, 6)}
             <span className="ml-1 inline-flex">
-              <Loader2 size={9} strokeWidth={2} className="animate-spin" />
+              <Loader2 size={9} strokeWidth={2} className="animate-spin text-accent" />
             </span>
           </pre>
           {bubble.tools && bubble.tools.length > 0 ? (
@@ -324,16 +324,14 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
       <div className="flex-1 pt-1">
         <p
           className={clsx(
-            "font-display text-[15px] leading-snug",
-            bubble.status === "thinking"
-              ? "italic text-[color:var(--ink-soft)]"
-              : "text-[color:var(--ink)]",
+            "font-mono text-[14.5px] leading-relaxed",
+            bubble.status === "thinking" ? "text-ink-2" : "text-ink",
           )}
         >
           {bubble.text}
           {bubble.status === "thinking" ? (
             <span className="ml-2 inline-flex items-center">
-              <Loader2 size={11} strokeWidth={2} className="animate-spin" />
+              <Loader2 size={11} strokeWidth={2} className="animate-spin text-accent" />
             </span>
           ) : null}
         </p>
@@ -359,10 +357,11 @@ function Avatar({ variant }: { variant: "user" | "assistant" }) {
   return (
     <div
       className={clsx(
-        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border",
+        // True circle — stays rounded-full per the pixel system's rules.
+        "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2",
         isUser
-          ? "border-[color:var(--rule)] bg-white text-[color:var(--ink-soft)]"
-          : "border-[color:var(--ink)] bg-[color:var(--ink)] text-[color:var(--paper)]",
+          ? "border-ink bg-surface text-ink-2"
+          : "border-ink bg-accent text-white",
       )}
     >
       {isUser ? (

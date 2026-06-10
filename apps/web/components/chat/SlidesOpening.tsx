@@ -138,7 +138,7 @@ function renderForPhase(
     case "composition":
       if (status === "running" || status === "pending") {
         return (
-          <p className="font-display italic">
+          <p className="font-mono text-ink-2">
             Analysing topic, deciding chapters &amp; rhythm…
           </p>
         );
@@ -147,13 +147,13 @@ function renderForPhase(
         <div className="space-y-3">
           {turn?.outlineTitle && (
             <p>
-              <span className="font-display italic text-[color:var(--ink)]">
+              <span className="font-mono font-semibold text-ink">
                 &ldquo;{turn.outlineTitle}&rdquo;
               </span>
             </p>
           )}
           {turn?.outlineSlideCount ? (
-            <p className="font-mono-jb text-[11px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+            <p className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
               {turn.outlineSlideCount} chapters set
             </p>
           ) : null}
@@ -174,13 +174,13 @@ function renderForPhase(
       }
       if (status === "running") {
         return (
-          <p className="font-display italic">
+          <p className="font-mono text-ink-2">
             Drafting each page from the outline…
           </p>
         );
       }
       return (
-        <p className="font-mono-jb text-[11px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+        <p className="font-pixel text-[0.55rem] uppercase tracking-wide text-muted">
           Manuscript ready
         </p>
       );
@@ -218,13 +218,13 @@ function renderForPhase(
 
 function Colophon({ job }: { job: SlideJob }) {
   return (
-    <footer className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-3 border-t border-[color:var(--rule)] pt-6">
+    <footer className="mt-10 flex flex-wrap items-center gap-x-3 gap-y-3 border-t border-line pt-6">
       {job.download_url && (
         <a
           href={job.download_url}
-          className="group inline-flex items-center gap-2.5 bg-[color:var(--ink)] px-5 py-3 text-[color:var(--paper)] transition-colors hover:bg-[color:var(--vermillion)]"
+          className="group inline-flex items-center gap-2.5 rounded-pixel border-2 border-ink bg-accent px-5 py-3 text-white shadow-pixel-sm transition-all hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
         >
-          <span className="font-mono-jb text-[10px] font-medium uppercase tracking-[0.22em]">
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-wide">
             Download .pptx
           </span>
           <ArrowDownToLine
@@ -236,16 +236,16 @@ function Colophon({ job }: { job: SlideJob }) {
       )}
       <a
         href="/slides/new"
-        className="group inline-flex items-center gap-2 border border-[color:var(--rule)] px-5 py-3 text-[color:var(--ink)] transition-colors hover:border-[color:var(--ink)]/30 hover:bg-white/60"
+        className="group inline-flex items-center gap-2 rounded-pixel border-2 border-line-2 px-5 py-3 text-ink-2 transition-colors hover:border-ink hover:text-ink"
       >
         <RotateCcw size={13} strokeWidth={1.6} />
-        <span className="font-mono-jb text-[10px] font-medium uppercase tracking-[0.22em]">
+        <span className="font-mono text-[11px] font-semibold uppercase tracking-wide">
           New Edition
         </span>
       </a>
       <a
         href="/"
-        className="ml-auto inline-flex items-center gap-1.5 font-mono-jb text-[10px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)] transition-colors hover:text-[color:var(--ink)]"
+        className="ml-auto inline-flex items-center gap-1.5 font-pixel text-[0.55rem] uppercase tracking-wide text-muted transition-colors hover:text-ink"
       >
         <span>Index</span>
         <ArrowUpRight size={11} strokeWidth={1.6} />

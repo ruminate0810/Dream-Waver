@@ -189,18 +189,37 @@ export function SlideFrame({
 
   return (
     <div
-      ref={hostRef}
       className={clsx(
-        "relative w-full overflow-hidden border bg-white",
+        "rounded-pixel border-2 border-ink bg-surface",
         "transition-all duration-300",
         active
-          ? // "Just revised" state — vermillion border + soft outer glow
-            // for ~1.5s. The animate-pulse-once keyframe (in globals.css)
-            // gives it a single attention-grabbing tick instead of a
-            // continuous loop which would feel anxious.
-            "border-[color:var(--vermillion)] shadow-[0_0_0_4px_rgba(181,55,30,0.18),0_18px_30px_-22px_rgba(181,55,30,0.35)] animate-[dw-frame-pulse_1400ms_ease-out_1]"
-          : "border-[color:var(--rule)] shadow-[0_1px_0_rgba(26,22,20,0.04),0_18px_30px_-22px_rgba(26,22,20,0.18)]",
+          ? // "Just revised" state — accent-tinted pixel pulse for ~1.5s.
+            // The dw-frame-pulse keyframe (in globals.css) gives it a
+            // single attention-grabbing tick instead of a continuous loop
+            // which would feel anxious. Retinted toward the violet accent.
+            "shadow-[0_0_0_4px_rgba(106,85,255,0.18),4px_4px_0_0_var(--ink)] animate-[dw-frame-pulse_1400ms_ease-out_1]"
+          : "shadow-pixel",
       )}
+    >
+      {/* ────────── Window chrome bar: three traffic-light dots + mono title ────────── */}
+      <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5">
+        <span aria-hidden className="flex flex-none gap-1.5">
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-[#ff8a8a]" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-gold" />
+          <i className="h-[10px] w-[10px] rounded-full border border-ink bg-grass" />
+        </span>
+        <span
+          className={clsx(
+            "font-pixel text-[0.55rem] tracking-wide",
+            active ? "text-accent" : "text-muted",
+          )}
+        >
+          P {String(index).padStart(2, "0")}
+        </span>
+      </div>
+    <div
+      ref={hostRef}
+      className="relative w-full overflow-hidden bg-surface"
       style={{ aspectRatio: "16 / 9" }}
     >
       {/* Soft skeleton while the iframe loads its (CDN-backed) Tailwind +
@@ -209,11 +228,11 @@ export function SlideFrame({
           Sprint AF.4 — copy upgraded from generic "Composing ##" to a
           warmer "正在排版第 ## 页…" that matches the editorial voice. */}
       {!loaded && !loadError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[color:var(--paper)]/40">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
-            § {String(index).padStart(2, "0")}
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-surface-2">
+          <span className="font-pixel text-[0.55rem] tracking-wide text-accent">
+            P {String(index).padStart(2, "0")}
           </span>
-          <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+          <span className="font-mono text-[13px] text-muted">
             正在排版第 {index} 页…
           </span>
         </div>
@@ -221,14 +240,14 @@ export function SlideFrame({
       {/* Auto-retry intermediate state — keep the same skeleton voice
           but signal the retry attempt so the user knows we're working. */}
       {loadError && autoRetries < AUTO_RETRY_MAX && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-[color:var(--paper)]/60">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]/70">
-            § {String(index).padStart(2, "0")} · 等待 agent
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-surface-2">
+          <span className="font-pixel text-[0.55rem] tracking-wide text-accent">
+            P {String(index).padStart(2, "0")} · 等待 agent
           </span>
-          <span className="font-display text-[13px] italic text-[color:var(--ink-soft)]">
+          <span className="font-mono text-[13px] text-muted">
             还在渲染中, 再等一下…
           </span>
-          <span className="font-mono-jb text-[9px] uppercase tracking-[0.22em] text-[color:var(--ink-faint)]">
+          <span className="font-mono text-[10px] font-semibold tracking-wide text-muted">
             attempt {autoRetries + 1}/{AUTO_RETRY_MAX}
           </span>
         </div>
@@ -313,11 +332,11 @@ export function SlideFrame({
           only shown AFTER auto-retries are exhausted; before that we
           show the softer "等待 agent" placeholder. */}
       {loadError && autoRetries >= AUTO_RETRY_MAX ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 border border-dashed border-[color:var(--vermillion)]/40 bg-[#FBF9F2]/95 p-6 text-center">
-          <span className="font-mono-jb text-[10px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#fdece9] p-6 text-center">
+          <span className="font-mono text-[10px] font-semibold uppercase tracking-wide text-[#a23a2a]">
             Slide {String(index).padStart(2, "0")} · 加载失败
           </span>
-          <p className="font-display text-[14px] italic leading-snug text-[color:var(--ink-soft)]">
+          <p className="font-mono text-[14px] leading-snug text-ink-2">
             这页暂时拿不到 — 可能是后台刚重启或缓存过期。
           </p>
           <button
@@ -330,33 +349,34 @@ export function SlideFrame({
               setRetryNonce((n) => n + 1);
               setAutoRetries(0);
             }}
-            className="border border-[color:var(--ink)] bg-[color:var(--ink)] px-3 py-1.5 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--paper)] transition-all hover:bg-[color:var(--vermillion)]"
+            className="rounded-pixel border-2 border-ink bg-accent px-3 py-1.5 font-mono text-[11px] font-semibold text-white shadow-pixel-sm transition-transform duration-100 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
           >
             重试
           </button>
         </div>
       ) : null}
 
-      {/* Page chip — bottom-left. Hairline rule + mono caps; vermillion
-          accent when the slide just updated (active prop). */}
+      {/* Page chip — bottom-left. Pixel border + mono caps; accent
+          tint when the slide just updated (active prop). */}
       {numberLabel ? (
         <span
           className={clsx(
-            "pointer-events-none absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-sm border bg-white/80 px-2 py-1 font-mono-jb text-[10px] uppercase tracking-[0.24em] backdrop-blur-sm",
+            "pointer-events-none absolute bottom-3 left-3 inline-flex items-center gap-2 rounded-[4px] border-2 bg-surface/90 px-2 py-1 font-mono text-[10px] font-semibold tracking-wide backdrop-blur-sm",
             active
-              ? "border-[color:var(--vermillion)]/40 text-[color:var(--vermillion)]"
-              : "border-[color:var(--rule)] text-[color:var(--ink-soft)]",
+              ? "border-ink text-accent"
+              : "border-line-2 text-ink-2",
           )}
         >
           <span
             className={clsx(
               "h-1 w-1 rounded-full",
-              active ? "bg-[color:var(--vermillion)] animate-pulse" : "bg-[color:var(--ink-faint)]",
+              active ? "bg-accent animate-pulse" : "bg-muted",
             )}
           />
           {numberLabel}
         </span>
       ) : null}
+      </div>
     </div>
   );
 }

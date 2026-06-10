@@ -127,8 +127,8 @@ function Masthead({
     : "";
   const ref = sessionId ? sessionId.slice(0, 4).toUpperCase() : "————";
   return (
-    <header className="mb-14 border-b border-[color:var(--rule)] pb-6">
-      <p className="flex flex-wrap items-baseline gap-x-5 gap-y-1 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)]">
+    <header className="mb-14 border-b-2 border-ink pb-6">
+      <p className="flex flex-wrap items-baseline gap-x-5 gap-y-1 font-pixel text-[0.55rem] tracking-wide text-ink-2">
         <span>Dream-Waver</span>
         <Sep />
         <span>Composition Log</span>
@@ -145,7 +145,7 @@ function Masthead({
         {mode && (
           <>
             <Sep />
-            <span className="tabular-nums text-[color:var(--vermillion)]">
+            <span className="tabular-nums text-accent">
               {mode === "agent" ? "Agent" : "Pipeline"} mode
             </span>
           </>
@@ -157,7 +157,7 @@ function Masthead({
 
 function Sep() {
   return (
-    <span aria-hidden className="text-[color:var(--ink-faint)]">
+    <span aria-hidden className="font-mono text-muted">
       ·
     </span>
   );

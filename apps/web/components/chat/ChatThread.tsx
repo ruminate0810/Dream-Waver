@@ -41,6 +41,7 @@ import { OutlineReviewCard } from "./OutlineReviewCard";
 // fallback / legacy reference; nothing in production mounts it.
 import { QuestionBubble, UserAnswerBubble } from "./QuestionBubble";
 import { ErrorCallout } from "../ui/ErrorCallout";
+import { RunningClock, ToolProgressBar, fmtDuration } from "./ToolProgress";
 
 // ChatThread is the production chat surface: vertical stack of role-
 // labelled messages, tool calls collapse to Claude-Code-style inline
@@ -449,17 +450,17 @@ function DownloadRow({ href }: { href: string }) {
       <div className="flex flex-wrap items-center gap-2">
         <a
           href={href}
-          className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 bg-white px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)] transition-colors hover:border-[color:var(--ink)]/40 hover:bg-[color:var(--paper)]/60"
+          className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-3.5 py-2 text-[13px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
         >
-          <ArrowDownToLine size={14} strokeWidth={1.8} />
+          <ArrowDownToLine size={14} strokeWidth={2} />
           <span>下载 .pptx</span>
         </a>
         <a
           href={pdfHref}
-          className="inline-flex items-center gap-2 border border-[color:var(--ink)]/15 px-3.5 py-2 text-[13px] font-medium text-[color:var(--ink)]/80 transition-colors hover:border-[color:var(--ink)]/40 hover:text-[color:var(--ink)]"
+          className="inline-flex items-center gap-2 rounded-pixel border-2 border-line-2 px-3.5 py-2 text-[13px] font-semibold text-ink-2 transition-colors hover:border-ink hover:text-ink"
           title="将整套幻灯片导出为 PDF（首次点击需几秒渲染）"
         >
-          <FileDown size={14} strokeWidth={1.8} />
+          <FileDown size={14} strokeWidth={2} />
           <span>导出 PDF</span>
         </a>
       </div>
@@ -510,13 +511,13 @@ function ToolRow({ call }: { call: ToolCallEntry }) {
   const summary = useMemo(() => extractToolSummary(call), [call]);
 
   return (
-    <div className="rounded-sm border border-[color:var(--rule)] bg-white/50">
+    <div className="overflow-hidden rounded-pixel border-2 border-ink bg-surface/60">
       <button
         type="button"
         onClick={() => hasBody && setOpen((v) => !v)}
         className={clsx(
           "flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors",
-          hasBody && "hover:bg-[color:var(--paper)]/60",
+          hasBody && "hover:bg-surface-2",
           !hasBody && "cursor-default",
         )}
       >
@@ -541,18 +542,26 @@ function ToolRow({ call }: { call: ToolCallEntry }) {
             · {zh}
           </span>
         ) : null}
-        <span className="ml-auto inline-flex items-center gap-1.5">
+        <span className="ml-auto inline-flex items-center gap-2">
           {summary ? (
             <span className="hidden truncate text-[12px] text-[color:var(--ink-faint)] md:inline-block md:max-w-[220px]">
               {summary}
+            </span>
+          ) : null}
+          {call.status === "running" ? <RunningClock /> : null}
+          {call.status === "done" && call.durationMs != null ? (
+            <span className="font-pixel text-[0.5rem] tabular-nums text-muted">
+              {fmtDuration(call.durationMs)}
             </span>
           ) : null}
           <StatusIcon status={call.status} />
         </span>
       </button>
 
+      {call.status === "running" ? <ToolProgressBar label={`${call.name} 运行中`} /> : null}
+
       {open && hasBody ? (
-        <div className="border-t border-[color:var(--rule)] bg-[color:var(--paper)]/40 px-3 py-2.5">
+        <div className="border-t-2 border-ink bg-paper/40 px-3 py-2.5">
           {call.error ? (
             <pre className="whitespace-pre-wrap font-mono text-[12px] leading-relaxed text-red-700">
               {call.error}
@@ -570,19 +579,14 @@ function ToolRow({ call }: { call: ToolCallEntry }) {
 
 function StatusIcon({ status }: { status: ToolCallEntry["status"] }) {
   if (status === "running") {
-    return (
-      <Loader2
-        size={12}
-        strokeWidth={2}
-        className="animate-spin text-[color:var(--vermillion)]"
-      />
-    );
+    return <Loader2 size={12} strokeWidth={2} className="animate-spin text-accent" />;
   }
   if (status === "done") {
-    return <Check size={12} strokeWidth={2.2} className="text-emerald-600" />;
+    return <Check size={12} strokeWidth={2.2} className="text-grass" />;
   }
-  return <X size={12} strokeWidth={2.2} className="text-red-700" />;
+  return <X size={12} strokeWidth={2.2} className="text-[#d4503a]" />;
 }
+
 
 // ─── Label (the "You" / "Dream-Waver" caption above each message) ─────
 
@@ -590,21 +594,19 @@ function Label({ kind }: { kind: "user" | "ai" }) {
   if (kind === "user") {
     return (
       <div className="flex items-center gap-2">
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--ink)] text-[10px] font-medium text-[color:var(--paper)]">
+        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-ink bg-ink text-[10px] font-medium text-paper">
           你
         </span>
-        <span className="text-[12px] font-medium text-[color:var(--ink-soft)]">You</span>
+        <span className="text-[12px] font-semibold text-ink-2">You</span>
       </div>
     );
   }
   return (
     <div className="flex items-center gap-2">
-      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[color:var(--vermillion)] text-[color:var(--paper)]">
+      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-ink bg-accent text-white">
         <Sparkles size={11} strokeWidth={2} />
       </span>
-      <span className="text-[12px] font-medium text-[color:var(--ink-soft)]">
-        Dream-Waver
-      </span>
+      <span className="text-[12px] font-semibold text-ink-2">Dream-Waver</span>
     </div>
   );
 }
@@ -641,10 +643,10 @@ function Composer({
   modeNotice: string;
 }) {
   return (
-    <div className="border-t border-[color:var(--rule)] bg-[color:var(--paper)]/85 px-4 pb-5 pt-4 backdrop-blur-[2px]">
+    <div className="border-t-2 border-ink bg-paper/85 px-4 pb-5 pt-4 backdrop-blur-[2px]">
       <form
         onSubmit={onSend}
-        className="mx-auto max-w-2xl rounded-2xl border border-[color:var(--ink)]/15 bg-white px-4 py-3 shadow-[0_1px_2px_rgba(26,22,20,0.04)] focus-within:border-[color:var(--ink)]/35"
+        className="mx-auto max-w-2xl rounded-pixel border-2 border-ink bg-surface px-4 py-3 shadow-pixel transition-shadow focus-within:shadow-pixel-lg"
       >
         <textarea
           ref={textareaRef}
@@ -687,14 +689,14 @@ function Composer({
             type="submit"
             disabled={!canSend}
             className={clsx(
-              "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors",
+              "inline-flex h-9 w-9 items-center justify-center rounded-pixel border-2 transition-transform",
               canSend
-                ? "bg-[color:var(--ink)] text-[color:var(--paper)] hover:bg-[color:var(--vermillion)]"
-                : "bg-[color:var(--paper)] text-[color:var(--ink-faint)]",
+                ? "border-ink bg-accent text-white shadow-pixel-sm hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
+                : "cursor-not-allowed border-line-2 bg-surface-2 text-line-2",
             )}
             aria-label="Send"
           >
-            <ArrowUp size={14} strokeWidth={2.2} />
+            <ArrowUp size={15} strokeWidth={2.4} />
           </button>
         </div>
       </form>

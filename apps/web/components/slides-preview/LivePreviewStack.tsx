@@ -297,7 +297,7 @@ export function LivePreviewStack({ job }: { job: SlideJob }) {
 
   return (
     <section>
-      <div className="sticky top-0 z-10 -mx-2 bg-[color:var(--paper)]/85 px-2 pb-3 pt-1 backdrop-blur-sm">
+      <div className="sticky top-0 z-10 -mx-2 bg-paper/85 px-2 pb-3 pt-1 backdrop-blur-sm">
         <PaneHeader
           subtitle={subtitleText}
           downloadHref={job.download_url ?? undefined}
@@ -361,25 +361,25 @@ function PaneHeader({
   downloadHref?: string;
 }) {
   return (
-    <div className="mb-3 flex items-baseline justify-between border-b border-[color:var(--rule)] pb-2">
+    <div className="mb-3 flex items-baseline justify-between border-b border-line pb-2">
       <div className="flex items-baseline gap-3">
-        <Eye size={11} strokeWidth={1.6} className="translate-y-[1px] text-[color:var(--ink-soft)]" />
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.28em] text-[color:var(--ink)]">
+        <Eye size={11} strokeWidth={1.6} className="translate-y-[1px] text-ink-2" />
+        <span className="font-pixel text-[0.55rem] tracking-wide text-ink">
           Live Composite
         </span>
-        <span className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+        <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
           {subtitle}
         </span>
       </div>
       {downloadHref ? (
         <a
           href={downloadHref}
-          className="group inline-flex items-center gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-soft)] transition-colors hover:text-[color:var(--ink)]"
+          className="group inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink shadow-pixel-sm transition-transform duration-100 hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
         >
           <Download
             size={11}
-            strokeWidth={1.6}
-            className="translate-y-[1px] transition-transform group-hover:-translate-y-[1px]"
+            strokeWidth={1.8}
+            className="translate-y-[1px]"
           />
           .pptx
         </a>
@@ -390,8 +390,8 @@ function PaneHeader({
 
 function HintRow() {
   return (
-    <p className="flex items-baseline gap-2 font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
-      <Pencil size={10} strokeWidth={1.6} className="translate-y-[1px]" />
+    <p className="flex items-baseline gap-2 font-mono text-[10px] font-semibold tracking-wide text-muted">
+      <Pencil size={10} strokeWidth={1.8} className="translate-y-[1px]" />
       Click any text to revise — Esc closes the editor
     </p>
   );
@@ -402,8 +402,8 @@ function NumberMarker({ oneBased, active }: { oneBased: number; active: boolean 
     <div className="mb-2 flex items-baseline gap-3">
       <span
         className={clsx(
-          "font-mono-jb text-[10px] uppercase tracking-[0.28em] tabular-nums transition-colors",
-          active ? "text-[color:var(--vermillion)]" : "text-[color:var(--ink-faint)]",
+          "font-pixel text-[0.55rem] tracking-wide tabular-nums transition-colors",
+          active ? "text-accent" : "text-muted",
         )}
       >
         {String(oneBased).padStart(2, "0")}
@@ -411,11 +411,11 @@ function NumberMarker({ oneBased, active }: { oneBased: number; active: boolean 
       <span
         className={clsx(
           "h-px flex-1 transition-colors",
-          active ? "bg-[color:var(--vermillion)]/40" : "bg-[color:var(--rule)]",
+          active ? "bg-accent/40" : "bg-line",
         )}
       />
       {active ? (
-        <span className="font-mono-jb text-[9px] uppercase tracking-[0.26em] text-[color:var(--vermillion)]">
+        <span className="font-pixel text-[0.5rem] tracking-wide text-accent">
           Just revised
         </span>
       ) : null}
@@ -438,27 +438,39 @@ function SkeletonStack() {
             style={{ animationDelay: `${i * 110}ms` }}
           >
             <div className="mb-2 flex items-baseline gap-3">
-              <span className="font-mono-jb text-[10px] uppercase tracking-[0.28em] tabular-nums text-[color:var(--ink-faint)]">
+              <span className="font-pixel text-[0.55rem] tracking-wide tabular-nums text-muted">
                 {String(i + 1).padStart(2, "0")}
               </span>
-              <span className="h-px flex-1 bg-[color:var(--rule)]" />
+              <span className="h-px flex-1 bg-line" />
             </div>
-            <div
-              className="relative w-full overflow-hidden border border-[color:var(--rule)] bg-white"
-              style={{ aspectRatio: "16 / 9" }}
-            >
-              <div
-                aria-hidden
-                className="absolute inset-0 bg-gradient-to-r from-transparent via-[color:var(--ink)]/[0.05] to-transparent"
-                style={{
-                  backgroundSize: "200% 100%",
-                  animation: "dw-shimmer 2.4s ease-in-out infinite",
-                }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="font-mono-jb text-[10px] uppercase tracking-[0.28em] text-[color:var(--ink-faint)]">
-                  Awaiting press
+            <div className="rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+              <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-3 py-1.5">
+                <span aria-hidden className="flex flex-none gap-1.5">
+                  <i className="h-[10px] w-[10px] rounded-full border border-ink bg-[#ff8a8a]" />
+                  <i className="h-[10px] w-[10px] rounded-full border border-ink bg-gold" />
+                  <i className="h-[10px] w-[10px] rounded-full border border-ink bg-grass" />
                 </span>
+                <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
+                  P {String(i + 1).padStart(2, "0")}
+                </span>
+              </div>
+              <div
+                className="relative w-full overflow-hidden bg-surface"
+                style={{ aspectRatio: "16 / 9" }}
+              >
+                <div
+                  aria-hidden
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-[color:var(--ink)]/[0.05] to-transparent"
+                  style={{
+                    backgroundSize: "200% 100%",
+                    animation: "dw-shimmer 2.4s ease-in-out infinite",
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="font-pixel text-[0.55rem] tracking-wide text-muted">
+                    Awaiting press
+                  </span>
+                </div>
               </div>
             </div>
           </li>
@@ -480,12 +492,12 @@ function SkeletonStack() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-start gap-3 border border-dashed border-[color:var(--rule)] bg-[color:var(--paper)]/40 p-8">
-      <FileWarning size={16} strokeWidth={1.6} className="text-[color:var(--ink-faint)]" />
-      <p className="font-display text-[18px] italic leading-snug text-[color:var(--ink-soft)]">
+    <div className="flex flex-col items-start gap-3 rounded-pixel border-2 border-ink bg-surface p-8 shadow-pixel">
+      <FileWarning size={16} strokeWidth={1.8} className="text-muted" />
+      <p className="font-mono text-[18px] font-bold tracking-tight leading-snug text-ink-2">
         No composition was returned this turn.
       </p>
-      <p className="font-mono-jb text-[10px] uppercase tracking-[0.24em] text-[color:var(--ink-faint)]">
+      <p className="font-pixel text-[0.55rem] tracking-wide text-muted">
         Try a fresh prompt — restart from index
       </p>
     </div>
