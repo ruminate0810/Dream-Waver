@@ -47,6 +47,7 @@ export const ACT: Record<string, { zh: string; emo?: string }> = {
   dance: { zh: "摸鱼热舞", emo: "music" },
   doze: { zh: "打瞌睡", emo: "zzz" },
   phone: { zh: "电话沟通", emo: "talk" },
+  stretch: { zh: "伸个懒腰" },
 };
 
 // TOOL_ACTION maps a live tool to the worker's signature gesture, so the body

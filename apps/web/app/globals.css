@@ -280,6 +280,19 @@ summary:focus-visible,
 .claw-walking .claw-legR { animation: claw-stepR 0.34s steps(1) infinite; }
 @keyframes claw-stepL { 50% { transform: translateY(-2px); } }
 @keyframes claw-stepR { 0% { transform: translateY(-2px); } 50% { transform: translateY(0); } }
+/* arms counter-swing while walking — sells the stride */
+.claw-walking .claw-armL { animation: claw-swingL 0.34s steps(2) infinite; }
+.claw-walking .claw-armR { animation: claw-swingR 0.34s steps(2) infinite; }
+@keyframes claw-swingL { 0%, 100% { transform: rotate(9deg); } 50% { transform: rotate(-9deg); } }
+@keyframes claw-swingR { 0%, 100% { transform: rotate(-9deg); } 50% { transform: rotate(9deg); } }
+
+/* stretch — both arms up, slow lean (back-from-a-trip / done idling) */
+.claw-act-stretch .claw-armL { animation: claw-armUpL2 1.6s ease-in-out infinite; }
+.claw-act-stretch .claw-armR { animation: claw-armUpR2 1.6s ease-in-out infinite; }
+.claw-act-stretch .claw-rig { animation: claw-lean 1.6s ease-in-out infinite; }
+@keyframes claw-armUpL2 { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(140deg); } }
+@keyframes claw-armUpR2 { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-140deg); } }
+@keyframes claw-lean { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 
 /* action pool — each maps to one tool/role gesture */
 .claw-act-type .claw-armL { animation: claw-pumpA 0.2s steps(2) infinite; }
