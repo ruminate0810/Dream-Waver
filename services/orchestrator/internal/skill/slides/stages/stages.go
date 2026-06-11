@@ -28,10 +28,10 @@ import (
 // askWithRetry wraps a single LLM call so that two recurring DeepSeek
 // failure modes don't bubble up as opaque errors:
 //
-//   1. Empty content (deepseek provider now returns "empty content
-//      (finish_reason=…)" — we treat as transient)
-//   2. JSON parse failure on response (LLM dropped a partial JSON or
-//      returned prose; one retry usually recovers)
+//  1. Empty content (deepseek provider now returns "empty content
+//     (finish_reason=…)" — we treat as transient)
+//  2. JSON parse failure on response (LLM dropped a partial JSON or
+//     returned prose; one retry usually recovers)
 //
 // One retry only. Backoff 800ms. If the second attempt also fails, the
 // error includes both failure reasons so the user can see what's going
@@ -115,9 +115,9 @@ type OutlineParams struct {
 // stays a leaf of the import graph (stages → store would create a
 // cycle with the future RAG-aware tools).
 type ReferenceOutline struct {
-	Slug     string `json:"slug"`
-	Title    string `json:"title"`
-	Outline  []byte `json:"outline"` // raw OutlineResult JSON; ≤ ~3K tokens each
+	Slug    string `json:"slug"`
+	Title   string `json:"title"`
+	Outline []byte `json:"outline"` // raw OutlineResult JSON; ≤ ~3K tokens each
 }
 
 // OutlineSlide is one row in the deck's table of contents.
@@ -228,18 +228,26 @@ func Outline(ctx context.Context, router llm.Router, in OutlineParams) (*Outline
 	}
 	client := router.For("planner")
 	var out OutlineResult
+	// MaxTokens MUST scale with slide count. The outline JSON grows ~one block
+	// (headline + key_points + speaker_notes) per slide, so a FIXED cap
+	// truncates (finish_reason="length" → "unexpected end of JSON input",
+	// unrecoverable since both retry attempts share the cap) once a deck wants
+	// many slides — a 20-slide request blew straight past the old 6000. Floor
+	// 8000, +800/slide, capped 24000. Output tokens are billed only when used,
+	// so an 8-slide deck never approaches the cap.
+	nSlides := in.SlideCount
+	if nSlides < 8 {
+		nSlides = 8 // planner-decides / tiny decks still get headroom
+	}
+	outlineMaxTok := 8000 + nSlides*800
+	if outlineMaxTok > 24000 {
+		outlineMaxTok = 24000
+	}
 	resp, err := askWithRetry(ctx, client, "outline", llm.AskToolRequest{
-		Model:        router.ModelFor("planner"),
-		SystemPrompt: prompts.Outline,
-		Messages:     []schema.Message{schema.NewUser(user)},
-		// 6000 to match Content's cap. Both branches independently raised
-		// this from 3000 (F3 / Sprint K1-followup) because the outline
-		// schema grew — theme + per-slide headlines + key_points + longer
-		// speaker_notes — and 3000 trips finish_reason="length" mid-
-		// string for any topic that wants 15+ slides or an editorial
-		// theme. F1's retry path can't recover because both attempts use
-		// the same cap. Cost delta is ~¥0.02 per call on deepseek-v4-pro.
-		MaxTokens:         6000,
+		Model:             router.ModelFor("planner"),
+		SystemPrompt:      prompts.Outline,
+		Messages:          []schema.Message{schema.NewUser(user)},
+		MaxTokens:         outlineMaxTok,
 		EnablePromptCache: true,
 	}, func(content string) error {
 		// Reset the struct on each retry so a partial unmarshal from a

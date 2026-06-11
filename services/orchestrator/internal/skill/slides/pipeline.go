@@ -95,10 +95,11 @@ type Output struct {
 // EstimatedUSD is derived (see estimateCost) so the API can show a "this
 // run cost $X" badge without re-summing on the frontend.
 type Cost struct {
-	InputTokens     int     `json:"input_tokens"`
-	OutputTokens    int     `json:"output_tokens"`
-	CacheReadTokens int     `json:"cache_read_tokens"`
-	EstimatedUSD    float64 `json:"estimated_usd"`
+	InputTokens         int     `json:"input_tokens"`
+	OutputTokens        int     `json:"output_tokens"`
+	CacheReadTokens     int     `json:"cache_read_tokens"`
+	CacheCreationTokens int     `json:"cache_creation_tokens"`
+	EstimatedUSD        float64 `json:"estimated_usd"`
 }
 
 // Run is the fast/deterministic execution path: outline → content →
@@ -187,19 +188,52 @@ func (p *Pipeline) Run(ctx context.Context, jobID string, in Input) (*Output, er
 // (SV-3 will upgrade assembly to native editable shapes).
 func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output, error) {
 	var cost Cost
+	// SVQ Phase 0: per-stage token ledger feeding the `svg token budget` log.
+	var planCost, authorCost, critCost, repairCost, cohCost Cost
 
-	outline, u1, err := stages.Outline(ctx, p.Router, stages.OutlineParams{
-		Topic:         in.Topic,
-		Audience:      in.Audience,
-		SlideCount:    in.SlideCount,
-		Style:         in.Style,
-		ReferenceText: in.ReferenceText,
-		BlueprintID:   in.BlueprintID,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("svg outline: %w", err)
+	// Parallel planning (skeleton → N parallel section-planners → merge)
+	// produces the outline AND the architect spec together, far faster than the
+	// serial Outline + ArchitectDeck (the planning bottleneck on big decks). On
+	// ANY failure we fall back to the proven serial path, so a flaky parallel
+	// plan never blocks a deck. A blueprint forces the serial path (its fixed
+	// slide skeleton is honoured only by stages.Outline).
+	var (
+		outline  *stages.OutlineResult
+		planSpec *stages.DeckSpec
+		err      error
+	)
+	if in.BlueprintID == "" {
+		var uPlan llm.Usage
+		outline, planSpec, uPlan, err = stages.PlanDeckParallel(ctx, p.Router, stages.OutlineParams{
+			Topic:         in.Topic,
+			Audience:      in.Audience,
+			SlideCount:    in.SlideCount,
+			Style:         in.Style,
+			ReferenceText: in.ReferenceText,
+		}, in.ForceTheme)
+		if err != nil {
+			slog.WarnContext(ctx, "parallel plan failed — falling back to serial outline+architect", "err", err)
+			outline, planSpec = nil, nil
+		} else {
+			cost.add(uPlan)
+			planCost.add(uPlan)
+		}
 	}
-	cost.add(u1)
+	if outline == nil {
+		var u1 llm.Usage
+		outline, u1, err = stages.Outline(ctx, p.Router, stages.OutlineParams{
+			Topic:         in.Topic,
+			Audience:      in.Audience,
+			SlideCount:    in.SlideCount,
+			Style:         in.Style,
+			ReferenceText: in.ReferenceText,
+			BlueprintID:   in.BlueprintID,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("svg outline: %w", err)
+		}
+		cost.add(u1)
+	}
 	if in.ForceTheme != "" {
 		outline.Theme = schema.Theme(in.ForceTheme)
 	}
@@ -261,19 +295,29 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		// ONE consistent plan instead of each improvising layout + inventing
 		// (often self-contradictory) numbers. Best-effort: any failure → nil
 		// plan → free authoring (pre-MoA behaviour), so it never blocks a deck.
-		deckSpec, uArch, archErr := stages.ArchitectDeck(ctx, p.Router, outline, theme)
-		if archErr != nil {
-			slog.WarnContext(ctx, "deck architect failed — authoring without a plan", "err", archErr)
-			deckSpec = nil
-		} else {
-			cost.add(uArch)
+		// The parallel plan already produced the spec; only run the standalone
+		// Architect when we fell back to the serial outline (planSpec == nil).
+		deckSpec := planSpec
+		if deckSpec == nil {
+			var uArch llm.Usage
+			var archErr error
+			deckSpec, uArch, archErr = stages.ArchitectDeck(ctx, p.Router, outline, theme)
+			if archErr != nil {
+				slog.WarnContext(ctx, "deck architect failed — authoring without a plan", "err", archErr)
+				deckSpec = nil
+			} else {
+				cost.add(uArch)
+				planCost.add(uArch)
+			}
+		}
+		if deckSpec != nil {
 			charts := 0
 			for _, s := range deckSpec.Slides {
 				if s.Chart != nil {
 					charts++
 				}
 			}
-			slog.InfoContext(ctx, "deck architect planned the deck", "slides", len(deckSpec.Slides), "charts", charts)
+			slog.InfoContext(ctx, "deck planned", "slides", len(deckSpec.Slides), "charts", charts)
 		}
 
 		content, u2, err = stages.AuthorSVGPerSlide(ctx, p.Router, outline, theme, deckSpec, imgResolve, func(idx0 int, cs *stages.ContentSlide) {
@@ -291,15 +335,21 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 		if err != nil {
 			return nil, fmt.Errorf("svg author: %w", err)
 		}
-		// Refine: one visual-review round to fix any overflow/overlap.
-		content, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 1, nil)
+		// Refine: up to 2 visual-review rounds to fix any overflow/overlap.
+		// Round 2 RE-MEASURES the slides round 1 touched, so an LLM fix that
+		// didn't fully resolve the overrun gets a second pass instead of
+		// shipping with it (maxRounds=1 had no verification step).
+		var uRepair llm.Usage
+		content, uRepair, _ = stages.RepairSVGSlides(ctx, p.Router, theme, content, 2, nil)
+		cost.add(uRepair)
+		repairCost.add(uRepair)
 		// PMQ A4: optional per-slide DESIGN self-critique (assertion titles,
 		// data-context, accent restraint, dead space) — the soft rules the
 		// geometric repair can't see. No-op unless DW_SVG_SELF_CRITIQUE is
 		// set; never regresses a slide. Refined slides are pushed back into
 		// the live-preview stream so the user sees the polish land.
 		var u3 llm.Usage
-		content, u3, _ = stages.CritiqueRefineSVGSlides(ctx, p.Router, theme, content, func(idx0 int, refined string) {
+		content, u3, _ = stages.CritiqueRefineSVGSlides(ctx, p.Router, theme, content, deckSpec, func(idx0 int, refined string) {
 			streamMu.Lock()
 			if idx0 >= 0 && idx0 < len(streamed.Slides) {
 				streamed.Slides[idx0] = schema.Slide{Template: theme, Layout: schema.LayoutSVG, Data: schema.SlideData{SVG: refined}}
@@ -309,6 +359,7 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			p.emit(ctx, event.NewSlideUpdated(idx0+1))
 		})
 		cost.add(u3)
+		critCost.add(u3)
 		// MoA-3: Coherence Editor — one whole-deck pass that fixes the
 		// cross-slide problems no single-slide agent can see (a number that
 		// disagrees between slides, a broken narrative, 3+ identical layouts
@@ -325,8 +376,19 @@ func (p *Pipeline) RunSVG(ctx context.Context, jobID string, in Input) (*Output,
 			p.emit(ctx, event.NewSlideUpdated(idx0+1))
 		})
 		cost.add(u4)
+		cohCost.add(u4)
 	}
 	cost.add(u2)
+	authorCost.add(u2)
+	slog.InfoContext(ctx, "svg token budget",
+		"slides", len(content.Slides),
+		"plan_in", planCost.InputTokens, "plan_out", planCost.OutputTokens,
+		"author_in", authorCost.InputTokens, "author_out", authorCost.OutputTokens,
+		"critique_out", critCost.OutputTokens,
+		"repair_in", repairCost.InputTokens, "repair_out", repairCost.OutputTokens,
+		"coherence_out", cohCost.OutputTokens,
+		"total_in", cost.InputTokens, "total_out", cost.OutputTokens,
+		"cache_read", cost.CacheReadTokens, "cache_create", cost.CacheCreationTokens)
 
 	deck := stages.Assemble(outline, content)
 	deck.Theme = schema.Theme(theme)
@@ -540,6 +602,7 @@ func (c *Cost) add(u llm.Usage) {
 	c.InputTokens += u.InputTokens
 	c.OutputTokens += u.OutputTokens
 	c.CacheReadTokens += u.CacheReadTokens
+	c.CacheCreationTokens += u.CacheCreationTokens
 }
 
 // estimateCost is a rough USD estimate of one generation. The constants

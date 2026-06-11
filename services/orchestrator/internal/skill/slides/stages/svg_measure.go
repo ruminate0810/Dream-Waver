@@ -55,22 +55,71 @@ type textRect struct {
 	H      float64 `json:"h"`
 }
 
+// cardRect mirrors a measured panel/card <rect> (no text payload). Used to
+// flag text that renders OUTSIDE its own card even when it's nowhere near the
+// global safe margin.
+type cardRect struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	Right  float64 `json:"right"`
+	Bottom float64 `json:"bottom"`
+	W      float64 `json:"w"`
+	H      float64 `json:"h"`
+}
+
+// measurePayload is the JS measurement result: every text box + every card rect.
+type measurePayload struct {
+	Texts []textRect `json:"texts"`
+	Cards []cardRect `json:"cards"`
+}
+
 // measureJS walks every rendered <text> and returns its viewport bbox.
 // We measure <text> (not <tspan>) as the atomic unit — a multi-line
 // <text> with <tspan> children reports the union bbox, which is what we
 // want for overflow. getBoundingClientRect is in CSS px at our 1920-wide
 // viewport, i.e. canvas coordinates.
 const measureJS = `(() => {
-  const out = [];
-  document.querySelectorAll('text').forEach(t => {
-    const r = t.getBoundingClientRect();
+  // effective opacity = element opacity * fill-opacity, multiplied up the
+  // ancestor chain — lets us recognise a faint watermark (e.g. a 320px
+  // <text fill-opacity="0.04"> behind the title) as decorative and skip it,
+  // instead of counting its huge bbox as a real overlap/overflow.
+  function effOpacity(el){
+    var o = 1;
+    for (var n = el; n && n.nodeType === 1; n = n.parentNode){
+      var cs = getComputedStyle(n);
+      var op = parseFloat(cs.opacity); if(!isNaN(op)) o *= op;
+      if (n === el){ var fo = parseFloat(cs.fillOpacity); if(!isNaN(fo)) o *= fo; }
+      if (n.tagName && n.tagName.toLowerCase() === 'svg') break;
+    }
+    return o;
+  }
+  var texts = [];
+  document.querySelectorAll('text').forEach(function(t){
+    var r = t.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return;
-    out.push({
-      text: (t.textContent || '').trim().slice(0, 40),
-      x: r.left, y: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height
-    });
+    if (effOpacity(t) < 0.18) return; // faint watermark / decorative — not a real collision
+    texts.push({ text:(t.textContent||'').trim().slice(0,40), x:r.left, y:r.top, right:r.right, bottom:r.bottom, w:r.width, h:r.height });
   });
-  return JSON.stringify(out);
+  // Card / panel shapes, so we can flag text that spills OUTSIDE its own card
+  // even when it stays far inside the global safe margin. rects are taken as-is
+  // (proven); path/polygon cards get strict filters (filled + panel aspect) so
+  // chart axes, dividers, and decorative strokes aren't mistaken for panels.
+  var cards = [];
+  function pushIfCard(el, strict){
+    var r = el.getBoundingClientRect();
+    if (r.width >= 1860 && r.height >= 1040) return; // full-canvas background
+    if (r.width < 140 || r.height < 56) return;      // dividers / pills / ticks / icons
+    if (strict){
+      var cs = getComputedStyle(el);
+      if (cs.fill === 'none' || cs.fillOpacity === '0') return; // stroke-only line / chart axis
+      var ar = r.width / r.height;
+      if (ar < 0.4 || ar > 9) return;                // thin rails, not panels
+    }
+    cards.push({ x:r.left, y:r.top, right:r.right, bottom:r.bottom, w:r.width, h:r.height });
+  }
+  document.querySelectorAll('rect').forEach(function(c){ pushIfCard(c, false); });
+  document.querySelectorAll('path, polygon').forEach(function(c){ pushIfCard(c, true); });
+  return JSON.stringify({ texts, cards });
 })()`
 
 // MeasureSVGs rasterizes each svg in a headless browser and returns the
@@ -127,19 +176,19 @@ func MeasureSVGs(ctx context.Context, svgs []string, theme string) ([][]Violatio
 			out[i] = nil
 			continue
 		}
-		var rects []textRect
-		if err := json.Unmarshal([]byte(raw), &rects); err != nil {
+		var payload measurePayload
+		if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 			out[i] = nil
 			continue
 		}
-		out[i] = detectViolations(rects)
+		out[i] = detectViolations(payload.Texts, payload.Cards)
 	}
 	return out, nil
 }
 
 // detectViolations turns measured rects into flagged problems: out-of-
-// safe-bounds overruns + pairwise text overlaps.
-func detectViolations(rects []textRect) []Violation {
+// safe-bounds overruns + pairwise text overlaps + text that escapes its card.
+func detectViolations(rects []textRect, cards []cardRect) []Violation {
 	var vs []Violation
 	for _, r := range rects {
 		label := truncate(r.Text, 24)
@@ -163,11 +212,61 @@ func detectViolations(rects []textRect) []Violation {
 	// Pairwise overlap (O(n²); n is small — a slide has <40 text nodes).
 	for a := 0; a < len(rects); a++ {
 		for b := a + 1; b < len(rects); b++ {
-			if area := intersectArea(rects[a], rects[b]); area >= overlapMinArea {
-				vs = append(vs, Violation{Kind: "overlap",
-					Detail: fmt.Sprintf("text %q overlaps text %q (collision ~%.0f px²) — reposition one so they don't sit on top of each other",
-						truncate(rects[a].Text, 20), truncate(rects[b].Text, 20), area)})
+			area := intersectArea(rects[a], rects[b])
+			if area < overlapMinArea {
+				continue
 			}
+			// Require the overlap to be a meaningful FRACTION of the smaller
+			// text box. Two stacked lines of one heading graze by a few percent
+			// (tight leading + CJK/Latin ascenders) — not a collision; two
+			// labels rendered on top of each other overlap by most of their
+			// area. This kills the adjacent-title-line false positive without
+			// missing real "text sitting on text".
+			minArea := min64(rects[a].W*rects[a].H, rects[b].W*rects[b].H)
+			if minArea > 0 && area < 0.25*minArea {
+				continue
+			}
+			vs = append(vs, Violation{Kind: "overlap",
+				Detail: fmt.Sprintf("text %q overlaps text %q (collision ~%.0f px²) — reposition one so they don't sit on top of each other",
+					truncate(rects[a].Text, 20), truncate(rects[b].Text, 20), area)})
+		}
+	}
+	// Per-card overflow: text that renders PAST the right/bottom border of the
+	// card it lives in. SVG has no auto-wrap, so CJK body text routinely runs
+	// outside its panel while staying far inside the global safe margin (the
+	// "字到框框外面" bug) — invisible to the bounds checks above, obvious to a
+	// viewer. We flag only text that crosses the border (cardEps past it), so a
+	// centred hero number that fills its card is never a false positive.
+	const (
+		cardEps      = 1.0  // crossing a border by >1px is always overflow
+		bodyRightPad = 14.0 // small body/caption/label text must keep this much padding inside the card
+		bigTextH     = 46.0 // a text taller than this is a hero number / card title, judged leniently
+	)
+	cardOverflows := 0
+	for _, t := range rects {
+		c, ok := smallestContainingCard(t, cards)
+		if !ok {
+			continue
+		}
+		// Body text must keep real right padding inside the card; a big centred
+		// number that fills its card is only flagged if it actually crosses out.
+		rightLimit := c.Right + cardEps
+		if t.H < bigTextH {
+			rightLimit = c.Right - bodyRightPad
+		}
+		if t.Right > rightLimit {
+			vs = append(vs, Violation{Kind: "overflow-card",
+				Detail: fmt.Sprintf("text %q reaches x=%.0f with no padding before the right edge (x=%.0f) of the card it sits inside — shorten the line, wrap it onto a second line, or widen the card so the text stays inside with margin",
+					truncate(t.Text, 24), t.Right, c.Right)})
+			cardOverflows++
+		} else if t.Bottom > c.Bottom+cardEps {
+			vs = append(vs, Violation{Kind: "overflow-card",
+				Detail: fmt.Sprintf("text %q reaches y=%.0f, below the bottom edge (y=%.0f) of the card it sits inside — remove a line, shrink the text, or make the card taller",
+					truncate(t.Text, 24), t.Bottom, c.Bottom)})
+			cardOverflows++
+		}
+		if cardOverflows >= 6 { // cap noise fed to the repair prompt
+			break
 		}
 	}
 	// Dedup identical details + keep deterministic order.
@@ -204,6 +303,30 @@ func max64(a, b float64) float64 {
 		return a
 	}
 	return b
+}
+
+// smallestContainingCard returns the tightest card the text actually lives in:
+// the text must start within the card horizontally AND sit fully inside it
+// vertically. The vertical test is the key disambiguator — a slide title or
+// kicker floating ABOVE the cards has t.Y < card.Y and is never matched, so a
+// wide headline is not mistaken for card overflow. Among the cards that qualify
+// we pick the smallest by area (the innermost panel).
+func smallestContainingCard(t textRect, cards []cardRect) (cardRect, bool) {
+	var best cardRect
+	found := false
+	bestArea := 0.0
+	for _, c := range cards {
+		if t.X < c.X-2 || t.X > c.Right { // text starts inside the card horizontally
+			continue
+		}
+		if t.Y < c.Y-2 || t.Bottom > c.Bottom+8 { // and sits fully inside it vertically
+			continue
+		}
+		if area := c.W * c.H; !found || area < bestArea {
+			best, bestArea, found = c, area, true
+		}
+	}
+	return best, found
 }
 
 // formatViolations renders a slide's violations as a bullet list for the

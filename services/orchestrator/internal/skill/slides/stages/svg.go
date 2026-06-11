@@ -117,9 +117,10 @@ Rules:
 //
 // onRound (optional) is called once per round with a short status string
 // for event-stream surfacing; nil disables it.
-func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, maxRounds int, onRound func(string)) (*ContentResult, error) {
+func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, maxRounds int, onRound func(string)) (*ContentResult, llm.Usage, error) {
+	var total llm.Usage
 	if content == nil || len(content.Slides) == 0 {
-		return content, nil
+		return content, total, nil
 	}
 	if maxRounds <= 0 {
 		maxRounds = 2
@@ -138,7 +139,7 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 		viol, err := MeasureSVGs(ctx, svgs, theme)
 		if err != nil {
 			// measurement infra failed — don't block the deck.
-			return content, nil
+			return content, total, nil
 		}
 		var stillBad []int
 		repaired := 0
@@ -147,7 +148,8 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 			if len(vs) == 0 {
 				continue
 			}
-			fixed, rerr := repairOneSVG(ctx, router, theme, content.Slides[idx].Data.SVG, vs)
+			fixed, u, rerr := repairOneSVG(ctx, router, theme, content.Slides[idx].Data.SVG, vs)
+			addUsage(&total, u)
 			if rerr != nil || strings.TrimSpace(fixed) == "" {
 				continue // keep original; will not re-check
 			}
@@ -164,41 +166,57 @@ func RepairSVGSlides(ctx context.Context, router llm.Router, theme string, conte
 		// Re-measure only the slides we just changed next round.
 		pending = stillBad
 	}
-	return content, nil
+	return content, total, nil
 }
 
 // repairOneSVG asks the LLM to fix a single slide's SVG given its
 // violations. Returns the corrected SVG markup.
-func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs []Violation) (string, error) {
+func repairOneSVG(ctx context.Context, router llm.Router, theme, svg string, vs []Violation) (string, llm.Usage, error) {
 	tok := themetokens.Get(theme)
 	user := fmt.Sprintf(
 		"Theme palette: bg=%s fg=%s muted=%s accent=%s\n\nCurrent SVG:\n%s\n\nMeasured layout problems to fix:\n%s",
 		tok.BG, tok.FG, tok.FGMuted, tok.Accent, svg, formatViolations(vs),
 	)
-	client := router.For("planner")
+	// SVQ Phase 3: repair is a mechanical "move 40px / wrap this line" edit, not
+	// deep reasoning — run it on the cheaper + faster svg_author tier (the harder
+	// 12K design refine already runs there fine) and cache the tiny, stable repair
+	// system prompt across rounds.
+	//
+	// MaxTokens MUST match the author's budget: repair re-emits the WHOLE slide
+	// SVG (not a diff), and a rich slide runs 4–6K tokens. The old 4000 ceiling
+	// truncated large slides mid-document → finish_reason="length" → empty content
+	// → a wasted retry → the overflow shipped unrepaired. This bit serif-heavy
+	// data themes (editorial) hardest, exactly where polish matters. 12000 is a
+	// ceiling, not a target, so small repairs are unaffected; it only stops the
+	// truncation on big slides.
+	client := router.For("svg_author")
 	var out string
-	_, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
-		Model:        router.ModelFor("planner"),
-		SystemPrompt: svgRepairSystem,
-		Messages:     []schema.Message{schema.NewUser(user)},
-		MaxTokens:    4000,
+	resp, err := askWithRetry(ctx, client, "svg-repair", llm.AskToolRequest{
+		Model:             router.ModelFor("svg_author"),
+		SystemPrompt:      svgRepairSystem,
+		Messages:          []schema.Message{schema.NewUser(user)},
+		MaxTokens:         12000,
+		EnablePromptCache: true,
 	}, func(content string) error {
-		var parsed struct {
-			SVG string `json:"svg"`
+		// parseOneSVG is tolerant: it handles {"svg":…}, {"slides":[…]}, a bare
+		// <svg>, AND a JSON body the model broke with a raw newline inside the
+		// string literal (the substring fallback now unescapes \" so the repaired
+		// slide doesn't render blank). This used to be a strict json.Unmarshal
+		// that hard-failed on raw newlines and burned a retry.
+		out = parseOneSVG(content)
+		if strings.TrimSpace(out) == "" {
+			return fmt.Errorf("parse repair json: no <svg> in response")
 		}
-		if err := json.Unmarshal(stripFences(content), &parsed); err != nil {
-			return fmt.Errorf("parse repair json: %w", err)
-		}
-		if strings.TrimSpace(parsed.SVG) == "" {
-			return fmt.Errorf("repair returned empty svg")
-		}
-		out = parsed.SVG
 		return nil
 	})
-	if err != nil {
-		return "", err
+	var u llm.Usage
+	if resp != nil {
+		u = resp.Usage
 	}
-	return out, nil
+	if err != nil {
+		return "", u, err
+	}
+	return out, u, nil
 }
 
 // renderSVGPrompt substitutes the theme's full spec_lock tokens into the

@@ -45,7 +45,7 @@ These are a STARTING palette, not a cage. For each slide pick the skeleton that 
 
 THE SHARED RULER (the coordinate system most skeletons sit on):
 - HEADER band  y:[110 → 300]  — kicker (optional) + assertion title + a short accent rule. Left-aligned x=120.
-- CONTENT band y:[340 → 900]  — the body. **This 560px-tall band MUST be filled top-to-bottom** — if you have 3 cards, make each ≈ 460–520px tall, NOT 200px floating up top. Vertically center the content group in the band. (Kills the "floats in the upper half, empty bottom" failure.)
+- CONTENT band y:[340 → 900]  — the body. Fill it, but **a card's HEIGHT MUST MATCH ITS CONTENT — never inflate a sparse card into a tall empty box.** A card with real substance (3–5 lines, a metric stack, a chart) genuinely fills ≈460–520px. A card with only an icon + a title + ONE line is ~200–240px tall, and you VERTICALLY CENTER the whole row in the band (equal whitespace above and below the row) — NOT a 450px card with its content jammed in the top third and a dead empty bottom (the #1 tell — exactly the failure to avoid). So: if your cards would be sparse, either give each card more substance (the architect's facts, a supporting line, a small stat) OR keep them short and centre the row. Big honest whitespace around a tight row beats four hollow boxes.
 - FOOTER band  y:[940 → 1080] — RESERVED. The engine draws a uniform footer here automatically; leave it EMPTY (keep all your content above y≈930).
 - 12-column horizontal grid: margins 120, content x:[120,1800]=1680px, gutter 32. N-up card widths: 2-up 824 (x=120,976) · 3-up 538 (x=120,690,1260) · 4-up 396 (x=120,548,976,1404). NEVER more than 4 cards in a row — 5+ → 2 rows (3+2) or cut to the 4 strongest.
 
@@ -94,7 +94,7 @@ When a slide's substance IS a data series — a trend over time, a comparison of
 # TYPOGRAPHY RAMP — use these FIXED sizes (a harmonious scale, CONSISTENT across pages)
 Pick from this ramp; don't invent in-between sizes. The point is harmony: the SAME role is the SAME size on every page (a content title is 72px whether it's slide 2 or slide 7), and within a slide the steps are clearly distinct.
 - cover / section impact title: 140px, weight 700, display family
-- content slide title (assertion): 72px, weight 700, display family   ← identical on EVERY content page
+- content slide title (assertion): 72px, weight 700, display family   ← identical on EVERY content page. If the assertion runs longer than ~20 CJK chars (~34 Latin) it WILL overflow x=1800 at 72px — WRAP it onto two `<tspan x="120" dy="1.15em">` lines or drop it to 56px. A title must NEVER cross x=1800 or run off the canvas edge.
 - sub-assertion / subtitle: 34px, body family, muted
 - big metric value: 128px, weight 700, accent or ink
 - card numeral (01 / 02): 40px, mono, muted
@@ -114,6 +114,8 @@ Deviate only when one hero number or a tight card genuinely needs it — and eve
 
 # TEXT (SVG has no auto-wrap — you MUST hand-break)
 - Break long lines into multiple `<text>` or `<tspan x="…" dy="1.3em">` lines. Budget ~`1600/(F*0.6)` Latin chars or ~`1600/F` CJK chars at font-size F within x:[120,1800]. Break EARLIER when unsure.
+- **Text INSIDE a card/column must fit THAT container's inner width, not the full 1680px.** A line's budget is ~`(cardWidth−2·pad)/F` CJK chars (pad≈40). A 4-up card (width 396) holds only ~9 CJK chars at 30px before its right padding — so card body lines must be short, hand-broken to ≤2 lines, or the font dropped. A line that gets clipped at the card's right edge is a failure.
+- **Never split a word across lines.** Hand-break ONLY at a space or between two CJK characters — never mid-Latin-word, mid-number, or mid-code-token (`poll` must never wrap as `pol`+`l`; `35,000` must stay whole). If one long token won't fit the line, shrink the font or widen the container instead.
 - Never let any text cross x=1800 or y=1000; top safe area y≥110. Set font-family, font-size, fill, font-weight on every text node.
 
 # FORBIDDEN (these break PowerPoint export or look amateur)

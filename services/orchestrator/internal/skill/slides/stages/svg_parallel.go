@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,7 +21,7 @@ import (
 // 3 is the sweet spot: enough parallelism to cut wall-time hard, but few
 // enough concurrent planner calls that DeepSeek doesn't rate-limit (5 was
 // triggering transient failures + retries that ate the speed win).
-const svgPerSlideConcurrency = 3
+const svgPerSlideConcurrency = 5
 
 // svgPerSlideAttemptTimeout bounds ONE author attempt. With the author
 // routed to v4-flash (PMQ A1) a rich slide returns in ~15-40s, so 90s is
@@ -248,10 +249,77 @@ func parseOneSVG(content string) string {
 	if json.Unmarshal(raw, &arr) == nil && len(arr.Slides) > 0 {
 		return strings.TrimSpace(arr.Slides[0].SVG)
 	}
+	// Fallback: slice the <svg>…</svg> substring directly. This path fires when
+	// the model wrapped the SVG in JSON but emitted a RAW newline/tab inside the
+	// string literal, so both json.Unmarshal attempts above failed. The sliced
+	// substring is then still JSON-escaped — most damagingly the attribute
+	// quotes are \" — which the browser's SVG parser CANNOT read: it drops every
+	// x/y/transform attribute, collapsing the whole slide to the origin and
+	// rendering it blank. unescapeJSONStringEscapes reverses those escapes; it is
+	// a safe no-op on a bare (already-unescaped) <svg> with no backslashes.
 	if i := strings.Index(content, "<svg"); i >= 0 {
 		if j := strings.LastIndex(content, "</svg>"); j > i {
-			return strings.TrimSpace(content[i : j+6])
+			return strings.TrimSpace(unescapeJSONStringEscapes(content[i : j+6]))
 		}
 	}
 	return ""
+}
+
+// unescapeJSONStringEscapes reverses JSON string-literal escaping on a fragment
+// that was sliced raw out of a JSON response (see parseOneSVG's fallback). It
+// acts only when a backslash is present, so a normal SVG — whose attributes use
+// plain " and whose path data carries no backslashes — passes through
+// unchanged. Without it, escaped quotes (\") survive into the SVG and the
+// browser drops every x=\"…\" attribute, piling the entire slide at the origin
+// (the "blank page with content clipped off the top" bug).
+func unescapeJSONStringEscapes(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] != '\\' || i+1 >= len(s) {
+			b.WriteByte(s[i])
+			continue
+		}
+		switch s[i+1] {
+		case '"':
+			b.WriteByte('"')
+			i++
+		case '\\':
+			b.WriteByte('\\')
+			i++
+		case '/':
+			b.WriteByte('/')
+			i++
+		case 'n':
+			b.WriteByte('\n')
+			i++
+		case 'r':
+			b.WriteByte('\r')
+			i++
+		case 't':
+			b.WriteByte('\t')
+			i++
+		case 'b':
+			b.WriteByte('\b')
+			i++
+		case 'f':
+			b.WriteByte('\f')
+			i++
+		case 'u':
+			if i+5 < len(s) {
+				if r, err := strconv.ParseUint(s[i+2:i+6], 16, 32); err == nil {
+					b.WriteRune(rune(r))
+					i += 5
+					continue
+				}
+			}
+			b.WriteByte('\\') // malformed \u — keep the backslash literally
+		default:
+			b.WriteByte('\\') // unknown escape — keep the backslash, reprocess next byte
+		}
+	}
+	return b.String()
 }

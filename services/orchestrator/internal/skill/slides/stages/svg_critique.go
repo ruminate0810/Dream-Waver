@@ -61,6 +61,8 @@ const svgCritiqueSystem = `You are a ruthless presentation-design editor reviewi
 
 Check, in order:
 - TITLE is an ASSERTION (a claim or takeaway), not a bare topic word. "成本" or "Overview" is a fail; "推理成本降至行业 1/10" passes.
+- NOTHING OVERFLOWS THE FRAME. Flag any <text> whose content would run past the right safe edge (x≈1800) or off the canvas — a long title at 72px (over ~20 CJK chars) that isn't wrapped to two <tspan> lines or dropped to ~56px is a fail; a card's body line cut off at the card's right edge is a fail. Name the offending text and say "wrap to two lines" or "shorten / reduce font-size".
+- NO HOLLOW CARDS. Flag any card/panel that is tall but whose content (icon + title + one line) sits only in its top third, leaving a large dead empty bottom. The fix: either shrink the card to fit its content and vertically centre the row, or add a supporting line/stat so it fills. Four big empty boxes is the #1 amateur tell.
 - Every headline NUMBER carries context (a label AND a "so what" implication). A lone metric floating alone is a fail.
 - ACCENT restraint: the accent colour highlights at most ~3 things. If almost everything is the accent colour, that's a fail.
 - The composition FILLS the canvas — flag a large empty lower half or content crammed into the top.
@@ -76,7 +78,7 @@ Each fix is ONE actionable sentence naming what to change and how (e.g. "Rewrite
 // leaves the original slide in place. Returns the usage it spent.
 // onRefined(index0, refinedSVG) fires once per slide that was actually
 // improved, so the caller can refresh the live preview for that page.
-func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, onRefined func(index0 int, refinedSVG string)) (*ContentResult, llm.Usage, error) {
+func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme string, content *ContentResult, spec *DeckSpec, onRefined func(index0 int, refinedSVG string)) (*ContentResult, llm.Usage, error) {
 	var total llm.Usage
 	if content == nil || len(content.Slides) == 0 || !svgSelfCritiqueEnabled() {
 		return content, total, nil
@@ -108,7 +110,16 @@ func CritiqueRefineSVGSlides(ctx context.Context, router llm.Router, theme strin
 			// the last good version — never regress), or after maxRounds.
 			cur := svg
 			improved := false
-			for round := 1; round <= svgCritiqueMaxRounds; round++ {
+			// SVQ Phase 2 (balanced): heroes (charts / dense / data layouts) get
+			// the full author↔critic loop; simple slides (dividers / sparse) get
+			// at most ONE round — a 12K refine rarely earns its tokens on a sparse
+			// slide, and the global measure-repair still guards their geometry. No
+			// plan (spec nil) → no gating, full loop (safe default).
+			maxRounds := svgCritiqueMaxRounds
+			if sp := spec.SpecFor(i); sp != nil && !sp.Hero {
+				maxRounds = 1
+			}
+			for round := 1; round <= maxRounds; round++ {
 				notes, u1, err := critiqueOneSVG(ctx, client, model, cur)
 				mu.Lock()
 				total.InputTokens += u1.InputTokens
