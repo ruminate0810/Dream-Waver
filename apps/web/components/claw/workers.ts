@@ -64,10 +64,16 @@ export const TOOL_ACTION: Record<string, string> = {
   generate_deck: "point",
 };
 
+// Pipeline phase a worker belongs to. The office derives EVERYTHING
+// positional/sequential from this + array order (desk layout, the phase
+// strip, handoff-flight sources), so adding an agent = adding one entry.
+export type WorkerPhase = "plan" | "exec" | "write" | "review" | "produce";
+
 export type WorkerDef = {
   key: string; // == backend role key == event `agent`
   name: string; // English plate
   zh: string; // 中文 plate
+  phase: WorkerPhase;
   tools: string[]; // tools that attribute to this worker (fallback when no agent field)
   shirt: string;
   shirtDark?: string; // right-side shading on the shirt (derived look)
@@ -84,6 +90,7 @@ export type WorkerDef = {
 export const WORKERS: WorkerDef[] = [
   {
     key: "coordinator",
+    phase: "plan",
     name: "Coordinator",
     zh: "调度员",
     tools: ["plan_tasks", "update_task"],
@@ -99,6 +106,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "researcher",
+    phase: "exec",
     name: "Researcher",
     zh: "调研员",
     tools: ["web_search", "web_research", "tavily_search"],
@@ -114,6 +122,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "engineer",
+    phase: "exec",
     name: "Engineer",
     zh: "工程师",
     tools: ["code_execute"],
@@ -129,6 +138,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "designer",
+    phase: "exec",
     name: "Designer",
     zh: "设计师",
     tools: ["generate_image"],
@@ -143,6 +153,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "writer",
+    phase: "write",
     name: "Writer",
     zh: "撰稿员",
     tools: ["write_document"],
@@ -157,6 +168,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "critic",
+    phase: "review",
     name: "Reviewer",
     zh: "评审员",
     tools: [], // purely agent-attributed (shares write_document with the writer)
@@ -172,6 +184,7 @@ export const WORKERS: WorkerDef[] = [
   },
   {
     key: "producer",
+    phase: "produce",
     name: "Producer",
     zh: "制片",
     tools: ["generate_deck"],

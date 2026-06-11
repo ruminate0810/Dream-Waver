@@ -6,7 +6,7 @@ import clsx from "clsx";
 
 import type { ClawRun } from "@/lib/api";
 import { fmtDuration } from "@/components/chat/ToolProgress";
-import { ACT, EMO, WORKERS, type WorkerDef } from "./workers";
+import { ACT, EMO, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
 import { WorkerSprite } from "./WorkerSprite";
 import { PixelWindow } from "./PixelWindow";
 import { ArtifactBody, type WorkTab } from "./ArtifactPanel";
@@ -21,28 +21,44 @@ import { useWorkerStates, type WorkerView } from "./useWorkerStates";
 // report finally gets full reading room. Clicking a worker shows their live
 // stats.
 
-// Station coordinates — percent of the scene; (x, y) is the FEET line the
-// character + desk share. Back row on the wall line, front row mid-floor,
-// lounge bottom-left.
-const STATIONS: Record<string, { x: number; y: number }> = {
-  researcher: { x: 8, y: 42 },
-  engineer: { x: 33, y: 42 },
-  designer: { x: 58, y: 42 },
-  producer: { x: 82, y: 42 },
-  coordinator: { x: 14, y: 68 },
-  writer: { x: 44, y: 68 },
-  critic: { x: 72, y: 68 },
-};
+// Station coordinates are DERIVED from the WORKERS registry (two desk rows,
+// evenly spaced) so adding an agent = adding a workers.ts entry, zero layout
+// edits. (x, y) is the FEET line the character + desk share.
+const STATIONS: Record<string, { x: number; y: number }> = (() => {
+  const out: Record<string, { x: number; y: number }> = {};
+  const backCount = Math.ceil(WORKERS.length / 2);
+  const rows = [WORKERS.slice(0, backCount), WORKERS.slice(backCount)];
+  const rowY = [42, 68];
+  rows.forEach((row, r) => {
+    row.forEach((w, i) => {
+      const x = row.length === 1 ? 42 : 6 + (i * 72) / (row.length - 1);
+      out[w.key] = { x: Math.round(x * 10) / 10, y: rowY[r] };
+    });
+  });
+  return out;
+})();
 const LOUNGE = { x: 5, y: 94 };
 
-// The pipeline stages the phase strip renders, each backed by real workers.
-const PHASES: { zh: string; workers: string[] }[] = [
-  { zh: "规划", workers: ["coordinator"] },
-  { zh: "执行", workers: ["researcher", "engineer", "designer"] },
-  { zh: "撰写", workers: ["writer"] },
-  { zh: "评审", workers: ["critic"] },
-  { zh: "制片", workers: ["producer"] },
+// Wander spots — places a worker may stroll to between (or during) jobs.
+const WAYPOINTS: { x: number; y: number; g: string }[] = [
+  { x: 3, y: 88, g: "coffee" }, // coffee machine
+  { x: 88, y: 90, g: "think" }, // plant corner
+  { x: 47, y: 40, g: "look" }, // whiteboard
 ];
+
+// The pipeline stages, grouped from each worker's declared phase.
+const PHASE_ORDER: WorkerPhase[] = ["plan", "exec", "write", "review", "produce"];
+const PHASE_ZH: Record<WorkerPhase, string> = {
+  plan: "规划",
+  exec: "执行",
+  write: "撰写",
+  review: "评审",
+  produce: "制片",
+};
+const PHASES = PHASE_ORDER.map((p) => ({
+  zh: PHASE_ZH[p],
+  workers: WORKERS.filter((w) => w.phase === p).map((w) => w.key),
+})).filter((p) => p.workers.length > 0);
 
 // A handoff flight: a pixel document flying desk → desk when one agent's
 // output feeds the next (assignment 📋 from the coordinator, drafts to the
@@ -52,23 +68,19 @@ type Flight = { id: number; from: { x: number; y: number }; to: { x: number; y: 
 
 let flightSeq = 1;
 
+// Sources are derived from the phase ordering: when a worker starts, the
+// document flies from the nearest EARLIER phase's workers (preferring ones
+// that are done). Works for any registry shape — no role names hard-coded.
 function flightSources(key: string, status: (k: string) => string): string[] {
-  switch (key) {
-    case "researcher":
-    case "engineer":
-    case "designer":
-      return ["coordinator"]; // 派活
-    case "writer": {
-      const done = ["researcher", "engineer", "designer"].filter((k) => status(k) === "done");
-      return done.length > 0 ? done : ["coordinator"]; // 交材料
-    }
-    case "critic":
-      return ["writer"]; // 交稿
-    case "producer":
-      return ["critic"]; // 交报告
-    default:
-      return [];
+  const me = WORKERS.find((w) => w.key === key);
+  if (!me) return [];
+  for (let i = PHASE_ORDER.indexOf(me.phase) - 1; i >= 0; i--) {
+    const prev = WORKERS.filter((w) => w.phase === PHASE_ORDER[i]).map((w) => w.key);
+    if (prev.length === 0) continue;
+    const done = prev.filter((k) => status(k) === "done");
+    return done.length > 0 ? done : prev.slice(0, 1);
   }
+  return [];
 }
 
 export function ClawOffice({ run }: { run: ClawRun }) {
@@ -129,8 +141,19 @@ export function ClawOffice({ run }: { run: ClawRun }) {
     setWinOpen(true);
   };
 
+  // Per-agent todo lists, straight from the role-tagged plan. Drives the
+  // nameplate badge (done/total) and the popover checklist.
+  const todosByRole = (() => {
+    const m: Record<string, { title: string; status: string }[]> = {};
+    for (const t of run.plan ?? []) {
+      if (t.role) (m[t.role] ??= []).push({ title: t.title, status: t.status });
+    }
+    return m;
+  })();
+
   const focusedDef = focus ? WORKERS.find((w) => w.key === focus) : undefined;
   const focusedView = focus ? views[focus] : undefined;
+  const focusedTodos = focus ? (todosByRole[focus] ?? []) : [];
 
   return (
     <div className="relative h-full min-h-[420px] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel">
@@ -183,6 +206,11 @@ export function ClawOffice({ run }: { run: ClawRun }) {
                     )}
                   />
                   <span className="font-mono text-[10px] font-bold leading-none text-ink">{def.zh}</span>
+                  {(todosByRole[def.key]?.length ?? 0) > 0 && (
+                    <span className="font-mono text-[9px] leading-none text-muted">
+                      {todosByRole[def.key].filter((t) => t.status === "done").length}/{todosByRole[def.key].length}
+                    </span>
+                  )}
                 </div>
                 <div
                   className={clsx(
@@ -270,6 +298,38 @@ export function ClawOffice({ run }: { run: ClawRun }) {
               </dd>
             </div>
           </dl>
+          {focusedTodos.length > 0 && (
+            <div className="mt-2 border-t-2 border-line pt-1.5">
+              <p className="mb-1 font-mono text-[10px] font-bold tracking-wide text-muted">待办清单</p>
+              <ul className="space-y-1">
+                {focusedTodos.map((t, i) => (
+                  <li key={i} className="flex items-start gap-1.5 font-mono text-[10.5px] leading-snug">
+                    <span
+                      className={clsx(
+                        "mt-[1px] flex-none",
+                        t.status === "done"
+                          ? "text-grass"
+                          : t.status === "doing"
+                            ? "animate-pixpulse text-accent"
+                            : t.status === "skipped"
+                              ? "text-line-2"
+                              : "text-muted",
+                      )}
+                    >
+                      {t.status === "done" ? "■✓" : t.status === "doing" ? "▶" : t.status === "skipped" ? "⨯" : "□"}
+                    </span>
+                    <span
+                      className={clsx(
+                        t.status === "done" ? "text-ink-2" : t.status === "skipped" ? "text-line-2 line-through" : "text-ink",
+                      )}
+                    >
+                      {t.title}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -339,7 +399,59 @@ function OfficeWorker({
   const atDesk = status !== "idle" && !offDuty;
   const st = STATIONS[def.key] ?? LOUNGE;
   const lounge = { x: LOUNGE.x + loungeIndex * 4.4, y: LOUNGE.y - (loungeIndex % 2) * 3.5 };
-  const pos = atDesk ? st : lounge;
+
+  // Wandering: a worker is not glued to its spot. Between (and briefly
+  // during) jobs it strolls to a waypoint — coffee machine, plant,
+  // whiteboard, or a colleague's desk for a chat — lingers with a fitting
+  // gesture, then walks back. Working workers only take quick coffee runs.
+  const [trip, setTrip] = useState<{ x: number; y: number; g: string } | null>(null);
+  useEffect(() => {
+    if (offDuty) {
+      setTrip(null);
+      return;
+    }
+    let dead = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const later = (fn: () => void, ms: number) => {
+      const t = setTimeout(() => !dead && fn(), ms);
+      timers.push(t);
+    };
+    const pick = (): { x: number; y: number; g: string } => {
+      // working → always a quick coffee; otherwise waypoint or colleague visit
+      if (status === "working") return WAYPOINTS[0];
+      if (Math.random() < 0.45) {
+        const others = WORKERS.filter((w) => w.key !== def.key);
+        const mate = others[Math.floor(Math.random() * others.length)];
+        const ms = STATIONS[mate.key] ?? LOUNGE;
+        return { x: Math.max(1, ms.x - 5.5), y: ms.y, g: "talk" };
+      }
+      return WAYPOINTS[Math.floor(Math.random() * WAYPOINTS.length)];
+    };
+    const schedule = () => {
+      const delay =
+        status === "working"
+          ? 26000 + Math.random() * 22000
+          : status === "idle"
+            ? 8000 + Math.random() * 9000
+            : 14000 + Math.random() * 14000;
+      later(() => {
+        setTrip(pick());
+        const linger = status === "working" ? 2400 : 3600 + Math.random() * 2600;
+        later(() => {
+          setTrip(null);
+          later(schedule, 500);
+        }, 1150 + linger);
+      }, delay);
+    };
+    schedule();
+    return () => {
+      dead = true;
+      timers.forEach(clearTimeout);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, offDuty]);
+
+  const pos = trip ?? (atDesk ? st : lounge);
 
   const [walking, setWalking] = useState(false);
   const [cycle, setCycle] = useState<string>("look");
@@ -347,11 +459,14 @@ function OfficeWorker({
   const walkTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cycleTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Any position change (desk↔lounge↔waypoint) plays the walk cycle.
   useEffect(() => {
     setWalking(true);
     if (walkTimer.current) clearTimeout(walkTimer.current);
     walkTimer.current = setTimeout(() => setWalking(false), 1150);
+  }, [pos.x, pos.y]);
 
+  useEffect(() => {
     if (cycleTimer.current) clearInterval(cycleTimer.current);
     if (offDuty) {
       // 下班派对 — everyone celebrates at the lounge, staggered so it reads
@@ -383,7 +498,6 @@ function OfficeWorker({
       setCycle("nod");
     }
     return () => {
-      if (walkTimer.current) clearTimeout(walkTimer.current);
       if (cycleTimer.current) clearInterval(cycleTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -398,7 +512,13 @@ function OfficeWorker({
     return () => clearTimeout(t);
   }, [pokedUntil, poked]);
 
-  const baseGesture = walking ? "" : status === "working" && !offDuty ? view?.gesture || cycle : cycle;
+  const baseGesture = walking
+    ? ""
+    : trip
+      ? trip.g
+      : status === "working" && !offDuty
+        ? view?.gesture || cycle
+        : cycle;
   const gesture = poked && !walking ? "wave" : baseGesture;
   const emoKey =
     !walking && gesture && (poked || status === "working" || offDuty || status === "idle")
