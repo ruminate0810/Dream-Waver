@@ -56,7 +56,13 @@ export type EventKind =
   | "game.plan"
   // Sprint AA.3 — user's wizard / clarification reply mirrored into
   // the persisted event stream so chat history replays as a dialogue.
-  | "user.answer";
+  | "user.answer"
+  // Claw vertical — plan checklist + artifact version beats. The
+  // artifact body never rides the WS; claw.artifact.updated is a
+  // version notification and the frontend GETs the markdown.
+  | "claw.plan"
+  | "claw.task.update"
+  | "claw.artifact.updated";
 
 export type Tokens = {
   input: number;
@@ -117,6 +123,19 @@ export type EventData = {
   // real dialogue.
   answer_to_step?: number;
   answer_text?: string;
+
+  // Claw vertical. task_titles populates claw.plan (full ordered
+  // sub-task list). task_index (1-based) + task_status
+  // ("doing"|"done"|"skipped") populate claw.task.update. artifact_version
+  // + artifact_bytes populate claw.artifact.updated — a notification
+  // only; the markdown rides GET /claw/{id}/artifact.
+  task_titles?: string[];
+  task_roles?: string[]; // v2: per-task assigned worker (parallel to task_titles)
+  task_index?: number;
+  task_status?: string;
+  artifact_version?: number;
+  artifact_bytes?: number;
+  artifact_kind?: string; // v2: "report" | "figure" | "deck"
 };
 
 // ─── Sprint O.5 — games plan typed envelope ──────────────────────────

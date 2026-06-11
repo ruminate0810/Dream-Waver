@@ -233,5 +233,170 @@ summary:focus-visible,
   100% { box-shadow: 0 0 0 4px rgba(181,55,30,0.18), 0 18px 30px -22px rgba(181,55,30,0.35); }
 }
 
+/* ─── Claw WorkerDesk ────────────────────────────────────────────────
+   The worker cards animate with transform-only keyframes (no opacity
+   entrances) so nothing strands invisible under React Strict Mode /
+   backgrounded tabs — same lesson as the slides deck entrances. */
+
+/* claw-walk-in — a worker "walks" to its desk on mount: slide from the
+   left with a slight settle. Transform-only. */
+@keyframes claw-walk-in {
+  0%   { transform: translateX(-18px); }
+  70%  { transform: translateX(2px); }
+  100% { transform: translateX(0); }
+}
+.claw-walk-in {
+  animation: claw-walk-in 0.5s ease-out both;
+}
+
+/* claw-bob — an active worker bobs gently while working (mapped onto the
+   sprite, not the card, so the chrome stays put). */
+@keyframes claw-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.claw-bob {
+  animation: claw-bob 0.85s ease-in-out infinite;
+}
+
+/* ── Claw pixel-worker character rig ─────────────────────────────────
+   A humanoid sprite whose body parts (head/arms/body/legs) are independent
+   SVG groups, each animated by a per-action class on the .claw-rig wrapper.
+   Ported from the /tmp/pixel-workers prototype. Transform-only (no opacity)
+   so nothing strands invisible under Strict Mode. The worker WALKS to its
+   desk on activation, then loops a role-appropriate action while the real
+   tool runs; the status/label is driven by the real task elsewhere. */
+
+.claw-guy g { transform-box: fill-box; }
+.claw-head { transform-origin: 50% 95%; }
+.claw-armL, .claw-armR { transform-origin: 50% 12%; }
+.claw-body { transform-origin: 50% 100%; }
+.claw-legL, .claw-legR { transform-origin: 50% 0%; }
+
+/* walk cycle */
+.claw-walking .claw-rig { animation: claw-walkbob 0.34s steps(2) infinite; }
+@keyframes claw-walkbob { 50% { transform: translateY(-2px); } }
+.claw-walking .claw-legL { animation: claw-stepL 0.34s steps(1) infinite; }
+.claw-walking .claw-legR { animation: claw-stepR 0.34s steps(1) infinite; }
+@keyframes claw-stepL { 50% { transform: translateY(-2px); } }
+@keyframes claw-stepR { 0% { transform: translateY(-2px); } 50% { transform: translateY(0); } }
+
+/* action pool — each maps to one tool/role gesture */
+.claw-act-type .claw-armL { animation: claw-pumpA 0.2s steps(2) infinite; }
+.claw-act-type .claw-armR { animation: claw-pumpB 0.2s steps(2) infinite; }
+.claw-act-type .claw-head { animation: claw-peck 1.1s ease-in-out infinite; }
+@keyframes claw-pumpA { 50% { transform: translateY(2px); } }
+@keyframes claw-pumpB { 0% { transform: translateY(2px); } 50% { transform: translateY(0); } }
+@keyframes claw-peck { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+
+.claw-act-think .claw-head { animation: claw-sway 1.7s ease-in-out infinite; }
+@keyframes claw-sway { 0%, 100% { transform: rotate(-5deg); } 50% { transform: rotate(5deg); } }
+
+.claw-act-scratch .claw-armR { animation: claw-scratch 1s ease-in-out infinite; }
+.claw-act-scratch .claw-head { animation: claw-tilt 1s ease-in-out infinite; }
+@keyframes claw-scratch { 0%, 100% { transform: rotate(0); } 45%, 55% { transform: rotate(-110deg) translateX(3px); } }
+@keyframes claw-tilt { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-8deg); } }
+
+.claw-act-eureka .claw-rig { animation: claw-hop 0.5s ease 1; }
+.claw-act-eureka .claw-armL { animation: claw-armUpL 0.5s ease; }
+.claw-act-eureka .claw-armR { animation: claw-armUpR 0.5s ease; }
+@keyframes claw-hop { 30% { transform: translateY(-7px); } 55% { transform: translateY(0); } 75% { transform: translateY(-2px); } 100% { transform: translateY(0); } }
+@keyframes claw-armUpL { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(120deg); } }
+@keyframes claw-armUpR { 0%, 100% { transform: rotate(0); } 40% { transform: rotate(-120deg); } }
+
+.claw-act-look .claw-head { animation: claw-lookR 1.6s ease-in-out infinite; }
+@keyframes claw-lookR { 0%, 100% { transform: translateX(0) rotate(0); } 50% { transform: translateX(2px) rotate(6deg); } }
+
+.claw-act-nod .claw-head { animation: claw-nod 0.6s ease-in-out infinite; }
+@keyframes claw-nod { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(2px) rotate(4deg); } }
+
+.claw-act-point .claw-armR { animation: claw-point 1s ease-in-out infinite; }
+@keyframes claw-point { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-55deg); } }
+
+.claw-act-write .claw-armR { animation: claw-scribble 0.35s ease-in-out infinite; }
+.claw-act-write .claw-head { animation: claw-peck 1.4s ease-in-out infinite; }
+@keyframes claw-scribble { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(2px, 1px); } }
+
+.claw-act-magnify .claw-armR { animation: claw-scan 1.7s ease-in-out infinite; }
+.claw-act-magnify .claw-head { animation: claw-lookR 1.7s ease-in-out infinite; }
+@keyframes claw-scan { 0%, 100% { transform: rotate(-40deg) translateX(0); } 50% { transform: rotate(-40deg) translateX(4px); } }
+
+.claw-act-coffee .claw-armR { animation: claw-sip 1.8s ease-in-out infinite; }
+.claw-act-coffee .claw-head { animation: claw-tilt 1.8s ease-in-out infinite; }
+@keyframes claw-sip { 0%, 100% { transform: rotate(0); } 40%, 60% { transform: rotate(-120deg) translate(3px, -1px); } }
+
+.claw-act-draw .claw-armR { animation: claw-scribble 0.5s ease-in-out infinite; }
+.claw-act-draw .claw-armL { animation: claw-point 1.4s ease-in-out infinite; }
+.claw-act-draw .claw-head { animation: claw-lookR 1.4s ease-in-out infinite; }
+
+.claw-act-read .claw-head { animation: claw-sway 1.9s ease-in-out infinite; }
+.claw-act-read .claw-armL { animation: claw-hold 0.1s linear forwards; }
+@keyframes claw-hold { to { transform: rotate(-30deg); } }
+
+.claw-act-talk .claw-head { animation: claw-talk 0.5s ease-in-out infinite; }
+@keyframes claw-talk { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(3deg) translateX(1px); } }
+
+.claw-act-facepalm .claw-armR { animation: claw-facepalm 1.1s ease-in-out infinite; }
+.claw-act-facepalm .claw-head { animation: claw-hanghead 1.1s ease-in-out infinite; }
+@keyframes claw-facepalm { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: rotate(-135deg) translate(4px, 1px); } }
+@keyframes claw-hanghead { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: translateY(2px) rotate(-6deg); } }
+
+/* wave — greeting (also the "you clicked me" response) */
+.claw-act-wave .claw-armR { animation: claw-wavearm 0.45s ease-in-out infinite; }
+.claw-act-wave .claw-head { animation: claw-tilt 1.2s ease-in-out infinite; }
+@keyframes claw-wavearm { 0%, 100% { transform: rotate(-135deg); } 50% { transform: rotate(-95deg) translateX(1px); } }
+
+/* cheer — both arms pumping + hopping (celebration) */
+.claw-act-cheer .claw-armL { animation: claw-cheerL 0.55s ease-in-out infinite; }
+.claw-act-cheer .claw-armR { animation: claw-cheerR 0.55s ease-in-out infinite; }
+.claw-act-cheer .claw-rig { animation: claw-cheerhop 0.55s ease-in-out infinite; }
+@keyframes claw-cheerL { 0%, 100% { transform: rotate(125deg); } 50% { transform: rotate(150deg); } }
+@keyframes claw-cheerR { 0%, 100% { transform: rotate(-125deg); } 50% { transform: rotate(-150deg); } }
+@keyframes claw-cheerhop { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+/* dance — body groove, arms alternating */
+.claw-act-dance .claw-rig { animation: claw-groove 0.7s ease-in-out infinite; }
+.claw-act-dance .claw-armL { animation: claw-cheerL 0.7s ease-in-out infinite; }
+.claw-act-dance .claw-armR { animation: claw-cheerR 0.7s ease-in-out infinite reverse; }
+.claw-act-dance .claw-head { animation: claw-sway 0.7s ease-in-out infinite; }
+@keyframes claw-groove { 0%, 100% { transform: translateX(-1.5px) rotate(-3deg); } 50% { transform: translateX(1.5px) rotate(3deg); } }
+
+/* doze — slow deep nod, dozing off at the lounge */
+.claw-act-doze .claw-head { animation: claw-dozenod 2.6s ease-in-out infinite; }
+.claw-act-doze .claw-rig { animation: claw-dozelean 2.6s ease-in-out infinite; }
+@keyframes claw-dozenod { 0%, 100% { transform: rotate(-2deg); } 55%, 75% { transform: translateY(2px) rotate(-13deg); } }
+@keyframes claw-dozelean { 0%, 100% { transform: translateY(0); } 60% { transform: translateY(1px); } }
+
+/* phone — handset to the ear, chatting */
+.claw-act-phone .claw-armR { animation: claw-phonehold 0.1s linear forwards; }
+.claw-act-phone .claw-head { animation: claw-talk 0.6s ease-in-out infinite; }
+@keyframes claw-phonehold { to { transform: rotate(-125deg) translate(3px, -1px); } }
+
+/* active desk: the monitor lights up accent + flickers like a live screen */
+.claw-desk-on .claw-screen {
+  fill: #6a55ff;
+  animation: claw-screenblink 1.4s steps(2) infinite;
+}
+@keyframes claw-screenblink { 50% { opacity: 0.72; } }
+
+/* handoff document: gentle bob while it glides between desks */
+.claw-doc-fly { animation: claw-docbob 0.5s ease-in-out infinite; }
+@keyframes claw-docbob { 0%, 100% { transform: translateY(0) rotate(-4deg); } 50% { transform: translateY(-3px) rotate(4deg); } }
+
+/* emote bubble pop */
+.claw-emote { transform: translateX(-50%) scale(0); transform-origin: bottom center; }
+.claw-emote.claw-emote-show { animation: claw-pop 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+@keyframes claw-pop { to { transform: translateX(-50%) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .claw-walk-in, .claw-bob { animation: none; }
+  .claw-desk-on .claw-screen, .claw-doc-fly { animation: none; }
+  .claw-walking .claw-rig, .claw-walking .claw-legL, .claw-walking .claw-legR { animation: none; }
+  [class*="claw-act-"] .claw-head,
+  [class*="claw-act-"] .claw-armL,
+  [class*="claw-act-"] .claw-armR,
+  [class*="claw-act-"] .claw-rig { animation: none; }
+}
+
 /* Soft grain we overlay on the paper background. Encoded as a data-URL in
    page.tsx so we don't add an asset to the build. */

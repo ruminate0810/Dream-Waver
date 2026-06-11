@@ -41,7 +41,7 @@ type Group = { label: string; expandable?: boolean; tiles: Tile[] };
 const GROUPS: Group[] = [
   {
     label: "AI 员工",
-    tiles: [{ label: "Claw", icon: Sparkles, color: "text-vermillion", href: "#", comingSoon: true }],
+    tiles: [{ label: "Claw", icon: Sparkles, color: "text-vermillion", href: "/claw/new" }],
   },
   {
     label: "办公套件",

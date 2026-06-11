@@ -18,6 +18,8 @@ import {
   Scale,
   RefreshCw,
   Microscope,
+  ListChecks,
+  Image as ImageIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -47,6 +49,13 @@ export type ToolCallEntry = {
 const ICON_FOR: Record<string, LucideIcon> = {
   web_research: Search,
   tavily_search: Search,
+  web_search: Search,
+  // Claw vertical
+  plan_tasks: Map,
+  update_task: ListChecks,
+  write_document: PenLine,
+  generate_image: ImageIcon,
+  generate_deck: Layers,
   plan_outline: Map,
   write_content: PenLine,
   render_deck: Layers,
@@ -66,6 +75,13 @@ const ICON_FOR: Record<string, LucideIcon> = {
 const ZH_LABEL: Record<string, string> = {
   web_research: "联网查证",
   tavily_search: "联网查证",
+  web_search: "联网搜索",
+  // Claw vertical
+  plan_tasks: "规划任务",
+  update_task: "勾选进度",
+  write_document: "撰写报告",
+  generate_image: "生成配图",
+  generate_deck: "生成幻灯",
   plan_outline: "规划大纲",
   write_content: "撰写内容",
   render_deck: "排版渲染",

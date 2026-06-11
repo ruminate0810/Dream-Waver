@@ -157,3 +157,6 @@ ai-images/
 # The negate must come AFTER the broad rules above.
 !proto/**/*.go
 !proto/**/*.rs
+
+# dev symlink to the main checkout install (dir-only node_modules/ rule misses symlinks)
+apps/web/node_modules

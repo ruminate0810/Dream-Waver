@@ -34,7 +34,7 @@ type Item = {
 const TOP: Item[] = [
   { label: "新建", href: "/slides/new", icon: Plus },
   { label: "首页", href: "/", icon: Home, match: (p) => p === "/" },
-  { label: "Claw", icon: Sparkles, soon: true },
+  { label: "Claw", href: "/claw/new", icon: Sparkles, match: (p) => p.startsWith("/claw") },
   { label: "工作流", icon: Workflow, soon: true },
   { label: "团队", icon: Users, soon: true },
   { label: "云盘", icon: HardDrive, soon: true },
