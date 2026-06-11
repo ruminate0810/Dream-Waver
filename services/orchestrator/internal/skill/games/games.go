@@ -13,15 +13,20 @@ package games
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/schema"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/store"
 )
 
 // Input is the request shape Pipeline.Run accepts. Mirrors slides.Input but
@@ -73,9 +78,20 @@ type Pipeline struct {
 
 // SessionStore is an in-memory map of jobID → conversation. Identical
 // pattern to slides.SessionStore but specialised to the game artifact.
+//
+// X-games-persist — when DB-backed (via NewSessionStoreWithDB), the
+// in-memory map stays the hot-path cache while store.GameJobs is the
+// recovery point across restarts. GetOrLoad rebuilds a session from the
+// persisted row on an in-memory miss; the route layer writes the row at
+// each generation's terminal branch (see persistTerminalGameJob).
+// Anonymous sessions (workspace == uuid.Nil) never persist — same
+// posture as slides.
 type SessionStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*Session
+	// db is the optional hydration backend. nil = pure in-memory
+	// (legacy / dev-without-DB path); GetOrLoad then degrades to Get.
+	db store.GameJobs
 }
 
 // Revision is one immutable snapshot of the game artifact produced by a
@@ -108,6 +124,13 @@ func NewSessionStore() *SessionStore {
 	return &SessionStore{sessions: make(map[string]*Session)}
 }
 
+// NewSessionStoreWithDB returns a store that ALSO hydrates from DB on an
+// in-memory miss (restart recovery). nil db is allowed (degrades cleanly
+// to in-memory) so main.go can call this unconditionally.
+func NewSessionStoreWithDB(db store.GameJobs) *SessionStore {
+	return &SessionStore{sessions: make(map[string]*Session), db: db}
+}
+
 func (s *SessionStore) Get(id string) (*Session, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -119,6 +142,74 @@ func (s *SessionStore) Put(id string, sess *Session) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[id] = sess
+}
+
+// GetOrLoad returns the in-memory session, or — on miss — rebuilds it
+// from the persisted GameJob row so a previously-generated game survives
+// an orchestrator restart (/play serves the recovered HTML, a follow-up
+// edit re-prompts with the recovered history). Returns (nil, false) when
+// the store isn't configured, the request has no workspace, or the row
+// doesn't exist. The rebuilt session is cached so later Get calls hit.
+//
+// Workspace must match (no cross-tenant rehydration — the store query is
+// already workspace-scoped). The rebuilt session carries no persister:
+// the route layer re-persists at the next terminal branch, which for a
+// single-shot game is the only checkpoint that matters.
+func (s *SessionStore) GetOrLoad(ctx context.Context, workspaceID uuid.UUID, jobID string) (*Session, bool) {
+	if sess, ok := s.Get(jobID); ok {
+		return sess, true
+	}
+	if s.db == nil || workspaceID == uuid.Nil {
+		return nil, false
+	}
+	jobUUID, err := uuid.Parse(jobID)
+	if err != nil {
+		return nil, false
+	}
+	row, err := s.db.Get(ctx, workspaceID, jobUUID)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			slog.WarnContext(ctx, "game session hydrate query failed", "job_id", jobID, "err", err)
+		}
+		return nil, false
+	}
+
+	sess := &Session{Title: row.Title}
+	// History rides in the memory column (mirrors slides Memory).
+	if len(row.Memory) > 0 {
+		_ = json.Unmarshal(row.Memory, &sess.History)
+	}
+	// Revisions column carries the full history WITH bodies plus the
+	// per-session knobs Continue re-applies (Genre / Aesthetic / Title).
+	if len(row.Revisions) > 0 {
+		var snap sessionSnapshot
+		if err := json.Unmarshal(row.Revisions, &snap); err == nil {
+			sess.Genre = snap.Genre
+			sess.Aesthetic = snap.Aesthetic
+			if snap.Title != "" {
+				sess.Title = snap.Title
+			}
+			sess.Revisions = make([]Revision, len(snap.Revisions))
+			for i, pr := range snap.Revisions {
+				sess.Revisions[i] = Revision{
+					Idx:         pr.Idx,
+					HTML:        pr.HTML,
+					Title:       pr.Title,
+					Description: pr.Description,
+					Bytes:       pr.Bytes,
+					At:          pr.At,
+				}
+			}
+		} else {
+			slog.WarnContext(ctx, "game session revisions malformed; /play may be empty",
+				"job_id", jobID, "err", err)
+		}
+	}
+
+	s.mu.Lock()
+	s.sessions[jobID] = sess
+	s.mu.Unlock()
+	return sess, true
 }
 
 // Snapshot returns the latest HTML and title under a read lock. Derived
@@ -156,6 +247,82 @@ func (sess *Session) RevisionList() []Revision {
 		out[i] = r
 	}
 	return out
+}
+
+// ─── DB persistence (restart recovery) ─────────────────────────────────
+//
+// These mirror a session into store.GameJobs so a previously-generated
+// game survives an orchestrator restart. The route layer decides WHEN to
+// persist (the terminal branch of each generation) and owns the
+// status/title/bytes/play_url metadata; this file owns the artifact
+// serialisation so the persist and GetOrLoad-hydrate formats can't drift.
+
+// persistedRevision mirrors Revision for storage. Unlike Revision — whose
+// HTML is json:"-" so the list endpoint stays light — this DOES carry the
+// HTML body, because /play must recover it after a restart.
+type persistedRevision struct {
+	Idx         int       `json:"idx"`
+	HTML        string    `json:"html"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Bytes       int       `json:"bytes"`
+	At          time.Time `json:"at"`
+}
+
+// sessionSnapshot is the revisions-column payload: the full revision
+// history WITH bodies plus the per-session knobs (Genre / Aesthetic /
+// Title) that Continue re-applies. History rides in the memory column
+// separately so it lines up with the slides Memory convention.
+type sessionSnapshot struct {
+	Genre     string              `json:"genre,omitempty"`
+	Aesthetic string              `json:"aesthetic,omitempty"`
+	Title     string              `json:"title,omitempty"`
+	Revisions []persistedRevision `json:"revisions,omitempty"`
+}
+
+// SnapshotForPersist serialises the session into the three GameJob jsonb
+// blobs the route layer writes: memory (conversation history), files (the
+// current artifact as path→contents), and revisions (full history with
+// bodies + session knobs). It also returns the latest revision's byte
+// length for the bytes column. All marshaling is best-effort — a failure
+// yields a nil blob, and the store's coalesce keeps the column's prior
+// value rather than nulling it. Returns all-zero values for an empty
+// session (no revisions yet).
+func (sess *Session) SnapshotForPersist() (memory, files, revisions json.RawMessage, bytes int) {
+	sess.mu.RLock()
+	defer sess.mu.RUnlock()
+
+	if len(sess.History) > 0 {
+		memory, _ = json.Marshal(sess.History)
+	}
+
+	if n := len(sess.Revisions); n > 0 {
+		snap := sessionSnapshot{
+			Genre:     sess.Genre,
+			Aesthetic: sess.Aesthetic,
+			Title:     sess.Title,
+			Revisions: make([]persistedRevision, n),
+		}
+		for i, r := range sess.Revisions {
+			snap.Revisions[i] = persistedRevision{
+				Idx:         r.Idx,
+				HTML:        r.HTML,
+				Title:       r.Title,
+				Description: r.Description,
+				Bytes:       r.Bytes,
+				At:          r.At,
+			}
+		}
+		revisions, _ = json.Marshal(snap)
+
+		latest := sess.Revisions[n-1].HTML
+		bytes = len(latest)
+		if latest != "" {
+			files, _ = json.Marshal(map[string]string{"index.html": latest})
+		}
+	}
+
+	return memory, files, revisions, bytes
 }
 
 // Run is the cold-start path: builds the system prompt + first user message,
