@@ -26,6 +26,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm/providers"
 	pb "github.com/dreamwaver/dreamwaver/services/orchestrator/internal/pb/dreamwaverv1"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/claw"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
@@ -192,11 +193,39 @@ func main() {
 	// Reuses the worker LLM tier and the same Hub for event streaming, so
 	// the frontend's WebSocket transport is one path regardless of whether
 	// it's rendering slides or a Snake clone.
-	gameSessions := games.NewSessionStore()
+	// DB-backed like slides (NewSessionStoreWithDB(nil) degrades cleanly to
+	// in-memory) so a generated game survives an orchestrator restart: the
+	// route layer persists each terminal generation to store.GameJobs and
+	// GameSessions.GetOrLoad rehydrates on an in-memory miss.
+	gameSessions := games.NewSessionStoreWithDB(dataStore.GameJobs)
 	gamePipeline := &games.Pipeline{
 		Router:   router,
 		Emitter:  hub,
 		Sessions: gameSessions,
+	}
+
+	// ─── Claw — general AI worker (plan → research → markdown report) ───
+	// Third vertical on the shared pipeline: a ToolCallAgent loop reusing
+	// the same Hub + the optional Tavily (web_search) / sandbox
+	// (code_execute) tools — both gated exactly like the slides agent, so
+	// a missing key/client just drops the tool. DB-backed like games:
+	// the route layer persists each terminal run to store.ClawRuns and
+	// ClawSessions.GetOrLoad rehydrates on an in-memory miss.
+	clawSessions := claw.NewSessionStoreWithDB(dataStore.ClawRuns)
+	clawRunner := &claw.Runner{
+		Router:        router,
+		Emitter:       hub,
+		Sessions:      clawSessions,
+		TavilyKey:     cfg.TavilyAPIKey,
+		SandboxClient: sandboxClient,
+		// Designer worker's image source. ImagesEnabled is true only when a
+		// real provider is wired (NanoBanana or Unsplash) — otherwise the
+		// composite is just Noop and the designer worker greys out.
+		Images:        imgSearcher,
+		ImagesEnabled: cfg.NanoBananaEnabled || cfg.UnsplashAccessKey != "",
+		// Producer worker's deck generator — reuses the slides deterministic
+		// pipeline. nil greys out the producer worker.
+		Pipeline: pipeline,
 	}
 
 	// ─── Video — Opendream click-to-regen cinematic short pipeline ───
@@ -260,6 +289,8 @@ func main() {
 		Sessions:     sessions,
 		Games:        gamePipeline,
 		GameSessions: gameSessions,
+		Claw:         clawRunner,
+		ClawSessions: clawSessions,
 		// Mount only when nano-banana is actually enabled — otherwise
 		// the route serves nothing and just clutters the surface.
 		AIImagesDir: func() string {

@@ -79,6 +79,7 @@ func New(ctx context.Context, databaseURL, migrationsDir string) (*Store, error)
 		Workspaces:      &pgxWorkspaces{pool: pool},
 		SlideJobs:       &pgxSlideJobs{pool: pool},
 		GameJobs:        &pgxGameJobs{pool: pool},
+		ClawRuns:        &pgxClawRuns{pool: pool},
 		VideoRuns:       &pgxVideoRuns{pool: pool},
 		DesignAssets:    &pgxDesignAssets{pool: pool},
 		DesignSessions:  &pgxDesignSessions{pool: pool},

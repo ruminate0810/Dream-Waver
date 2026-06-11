@@ -80,6 +80,26 @@ const (
 	// emissions land in chat_events; the user side of the dialogue
 	// would disappear on reload.
 	KindUserAnswer Kind = "user.answer"
+
+	// Claw vertical (general AI worker) — three plan/artifact beats the
+	// frontend renders as the TaskPlanCard + WorkerDesk + ArtifactPanel.
+	//
+	// KindClawPlan fires from the plan_tasks tool with the full ordered
+	// list of sub-task titles; the frontend draws the checklist (all
+	// pending). KindClawTaskUpdate flips one 1-based entry to
+	// doing/done/skipped — the checklist's checked state is driven ONLY
+	// by these events (never inferred), so the plan and the UI can't
+	// drift. KindClawArtifactUpdated is a version NOTIFICATION only — the
+	// markdown body deliberately never rides the WS (large payload);
+	// the frontend GETs /claw/{id}/artifact when version advances.
+	KindClawPlan            Kind = "claw.plan"
+	KindClawTaskUpdate      Kind = "claw.task.update"
+	KindClawArtifactUpdated Kind = "claw.artifact.updated"
+	// KindClawClarify fires when the adaptive clarification gate decides the
+	// goal is ambiguous and pauses for the user to answer 1-2 questions
+	// (reuses the ClarificationQuestions payload). The run is then in status
+	// awaiting_input until the answers arrive.
+	KindClawClarify Kind = "claw.clarify"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -158,6 +178,20 @@ type EventData struct {
 	// keeps reducer cases minimal.
 	AnswerToStep int    `json:"answer_to_step,omitempty"`
 	AnswerText   string `json:"answer_text,omitempty"`
+
+	// Claw vertical. TaskTitles populates KindClawPlan (the full ordered
+	// sub-task list). TaskIndex (1-based — omitempty would eat a 0, same
+	// reason SlideIndex is 1-based) + TaskStatus ("doing"|"done"|
+	// "skipped") populate KindClawTaskUpdate. ArtifactVersion +
+	// ArtifactBytes populate KindClawArtifactUpdated — a version
+	// notification only; the markdown body travels over GET, never WS.
+	TaskTitles      []string `json:"task_titles,omitempty"`
+	TaskRoles       []string `json:"task_roles,omitempty"` // v2: per-task assigned worker (parallel to TaskTitles)
+	TaskIndex       int      `json:"task_index,omitempty"`
+	TaskStatus      string   `json:"task_status,omitempty"`
+	ArtifactVersion int      `json:"artifact_version,omitempty"`
+	ArtifactBytes   int      `json:"artifact_bytes,omitempty"`
+	ArtifactKind    string   `json:"artifact_kind,omitempty"` // v2: "report" | "figure" | "deck"
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -207,9 +241,12 @@ func NewStepEnd(agent string, step int, durationMs int64) Event {
 	}}
 }
 
-func NewLLMThought(text string, toolCalls []string, t Tokens) Event {
+// NewLLMThought carries the agent name so multi-agent surfaces (Claw's
+// WorkerDesk) can attribute the thought to the worker that produced it.
+// Single-agent callers pass their lone agent name.
+func NewLLMThought(agent, text string, toolCalls []string, t Tokens) Event {
 	return Event{Kind: KindLLMThought, Data: EventData{
-		Text: text, ToolCalls: toolCalls, Tokens: &t,
+		Agent: agent, Text: text, ToolCalls: toolCalls, Tokens: &t,
 	}}
 }
 
@@ -218,25 +255,25 @@ func NewLLMThought(text string, toolCalls []string, t Tokens) Event {
 // the "typing" effect. The final llm.thought with the parsed/cleaned
 // description still fires at the end of the call so consumers can
 // replace the raw stream with the clean summary if they want to.
-func NewLLMToken(delta string) Event {
-	return Event{Kind: KindLLMToken, Data: EventData{Text: delta}}
+func NewLLMToken(agent, delta string) Event {
+	return Event{Kind: KindLLMToken, Data: EventData{Agent: agent, Text: delta}}
 }
 
 // NewToolStart includes a truncated preview of the input args so the
 // frontend can show what the agent is asking the tool to do. Callers
 // that have no input handy (e.g. the games skill's single-shot
 // pipeline) pass "".
-func NewToolStart(name, id, input string) Event {
+func NewToolStart(agent, name, id, input string) Event {
 	return Event{Kind: KindToolStart, Data: EventData{
-		ToolName: name, ToolID: id, ToolInput: input,
+		Agent: agent, ToolName: name, ToolID: id, ToolInput: input,
 	}}
 }
 
 // NewToolEnd carries the output snippet, the optional error string,
 // and the wall-clock duration so the chat can show 「render_deck · 312ms · 4KB」.
-func NewToolEnd(name, id, output, errMsg string, durationMs int64) Event {
+func NewToolEnd(agent, name, id, output, errMsg string, durationMs int64) Event {
 	return Event{Kind: KindToolEnd, Data: EventData{
-		ToolName: name, ToolID: id, ToolOutput: output,
+		Agent: agent, ToolName: name, ToolID: id, ToolOutput: output,
 		Error: errMsg, DurationMs: durationMs,
 	}}
 }
@@ -376,6 +413,45 @@ func NewGamePlan(view any) Event {
 	}
 	return Event{Kind: KindGamePlan, Data: EventData{
 		GamePlanJSON: string(b),
+	}}
+}
+
+// NewClawPlan announces the Claw agent's sub-task plan. titles is the
+// full ordered list (3–7 entries); the frontend renders every entry as a
+// pending checklist row. Subsequent NewClawTaskUpdate events flip
+// individual rows — the plan itself is emitted once per plan_tasks call.
+func NewClawPlan(titles, roles []string) Event {
+	return Event{Kind: KindClawPlan, Data: EventData{
+		TaskTitles: titles, TaskRoles: roles,
+	}}
+}
+
+// NewClawTaskUpdate flips one plan entry's status. index1based is 1-based
+// to match the rest of the API surface (and to survive omitempty);
+// status is "doing" | "done" | "skipped". The frontend's checklist
+// checked-state is driven SOLELY by these events.
+func NewClawTaskUpdate(index1based int, status string) Event {
+	return Event{Kind: KindClawTaskUpdate, Data: EventData{
+		TaskIndex: index1based, TaskStatus: status,
+	}}
+}
+
+// NewClawClarify announces the adaptive clarification questions the user
+// should answer before the team runs.
+func NewClawClarify(questions []string) Event {
+	return Event{Kind: KindClawClarify, Data: EventData{
+		ClarificationQuestions: questions,
+	}}
+}
+
+// NewClawArtifactUpdated notifies that a new artifact version exists.
+// This is a NOTIFICATION ONLY — the markdown body never rides the WS
+// (it can be large). The frontend GETs /claw/{id}/artifact when version
+// advances. bytes is the artifact length so the UI can show a size hint
+// without fetching.
+func NewClawArtifactUpdated(kind string, version, bytes int) Event {
+	return Event{Kind: KindClawArtifactUpdated, Data: EventData{
+		ArtifactKind: kind, ArtifactVersion: version, ArtifactBytes: bytes,
 	}}
 }
 

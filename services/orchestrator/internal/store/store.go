@@ -160,6 +160,31 @@ type GameJob struct {
 	FinishedAt  *time.Time
 }
 
+// ClawRun mirrors the claw_runs migration row — one general-AI-worker
+// session (research → markdown report). Plan is the []Task snapshot the
+// frontend checklist renders; Artifact is the latest markdown report
+// (full text, served over GET — never the WS); ArtifactVersion bumps on
+// every write_document. Memory is the []schema.Message conversation so a
+// follow-up survives a restart.
+type ClawRun struct {
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	SessionID       uuid.UUID
+	CreatedBy       uuid.UUID
+	Status          string
+	Prompt          string
+	Title           string
+	Plan            json.RawMessage // []claw.Task snapshot
+	Artifact        string          // latest markdown report (full text)
+	ArtifactVersion int
+	Figures         json.RawMessage // []claw.Figure snapshot (work-package images)
+	Deck            json.RawMessage // claw.Deck snapshot (work-package slide deck)
+	Memory          json.RawMessage // []schema.Message snapshot
+	Error           string
+	StartedAt       time.Time
+	FinishedAt      *time.Time
+}
+
 // VideoRun mirrors the video_runs migration row. The Spec is the
 // story_spec.json the user submitted; status is mirrored from the
 // Opendream timeline at periodic refresh points.
@@ -229,6 +254,20 @@ type GameJobs interface {
 	SaveCheckpoint(ctx context.Context, workspaceID, jobID uuid.UUID, memory, files, revisions, pending json.RawMessage) error
 	SavePending(ctx context.Context, workspaceID, jobID uuid.UUID, pending json.RawMessage, status string) error
 	Delete(ctx context.Context, workspaceID, jobID uuid.UUID) error
+}
+
+// ClawRuns is the persistence boundary for Claw worker sessions. Same
+// shape as GameJobs (Put/Get/List/UpdateStatus/Delete) plus a
+// SaveCheckpoint that lands memory + plan + artifact + version together
+// at a turn boundary so a process bounce can't desync the report from
+// its plan. Drives the restart-recovery hydration in routes_claw.go.
+type ClawRuns interface {
+	Put(ctx context.Context, run *ClawRun) error
+	Get(ctx context.Context, workspaceID, runID uuid.UUID) (*ClawRun, error)
+	List(ctx context.Context, workspaceID uuid.UUID, limit int) ([]*ClawRun, error)
+	UpdateStatus(ctx context.Context, workspaceID, runID uuid.UUID, status, errMsg string, finishedAt *time.Time) error
+	SaveCheckpoint(ctx context.Context, workspaceID, runID uuid.UUID, memory, plan json.RawMessage, artifact string, artifactVersion int) error
+	Delete(ctx context.Context, workspaceID, runID uuid.UUID) error
 }
 
 // VideoRuns is mostly insert + lightweight status refresh. The
@@ -432,6 +471,7 @@ type Store struct {
 	Workspaces      Workspaces
 	SlideJobs       SlideJobs
 	GameJobs        GameJobs
+	ClawRuns        ClawRuns
 	VideoRuns       VideoRuns
 	DesignAssets    DesignAssets
 	DesignSessions  DesignSessions // BA — ChatGPT-style design threads

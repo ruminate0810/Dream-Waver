@@ -18,6 +18,7 @@ import (
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/billing"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/event"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/llm"
+	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/claw"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/design"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/games"
 	"github.com/dreamwaver/dreamwaver/services/orchestrator/internal/skill/slides"
@@ -45,6 +46,14 @@ type Dependencies struct {
 	// optional so the orchestrator still starts when this skill is unwired.
 	Games        *games.Pipeline
 	GameSessions *games.SessionStore
+
+	// Claw is the general-AI-worker vertical backing /api/v1/claw: a
+	// ToolCallAgent loop that plans sub-tasks, researches, and writes a
+	// markdown report. ClawSessions stores per-run state (plan + artifact
+	// + history) so the artifact GET + follow-up edits survive a restart.
+	// Both optional — the orchestrator starts fine when unwired.
+	Claw         *claw.Runner
+	ClawSessions *claw.SessionStore
 
 	// AIImagesDir is the on-disk directory where NanoBanana writes its
 	// generated PNGs. The server mounts a static-file route under
@@ -179,6 +188,16 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Get("/games/{id}/revisions/{idx}/source", h.SourceGameRevision)
 		r.Post("/games/{id}/revisions/{idx}/restore", h.RestoreGameRevision)
 		r.Post("/games/{id}/messages", h.PostGameMessage)
+
+		// Claw — general AI worker. POST /claw returns {job_id, session_id};
+		// the plan/task/artifact beats stream over the shared session events
+		// bus. GET /claw/{id} returns status + plan + artifact_version; the
+		// markdown report itself rides GET /claw/{id}/artifact (never the WS).
+		r.Post("/claw", h.CreateClaw)
+		r.Get("/claw/{id}", h.GetClaw)
+		r.Post("/claw/{id}/messages", h.PostClawMessage)
+		r.Get("/claw/{id}/artifact", h.GetClawArtifact)
+		r.Get("/claw/{id}/deck", h.GetClawDeck)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
 		// Sprint AA.2 — replay log (JSON, not WS). FE hydrates on cold

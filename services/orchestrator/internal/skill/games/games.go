@@ -413,7 +413,7 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 		}
 	}
 
-	p.emit(ctx, event.NewToolStart("write_game", jobID, toolInputPreview))
+	p.emit(ctx, event.NewToolStart("game-writer", "write_game", jobID, toolInputPreview))
 	toolStart := time.Now()
 
 	sys := systemPrompt(prior, genre, aesthetic)
@@ -455,6 +455,7 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 
 	if len(issues) > 0 {
 		p.emit(ctx, event.NewLLMThought(
+			"game-writer",
 			"校正输出 — "+strings.Join(issues, "；"),
 			nil, event.Tokens{},
 		))
@@ -504,11 +505,11 @@ func (p *Pipeline) generate(ctx context.Context, jobID string, sess *Session) (*
 	sess.Revisions = append(sess.Revisions, rev)
 	sess.mu.Unlock()
 
-	p.emit(ctx, event.NewLLMThought(desc, nil, event.Tokens{
+	p.emit(ctx, event.NewLLMThought("game-writer", desc, nil, event.Tokens{
 		Input: cost.InputTokens, Output: cost.OutputTokens,
 		CacheRead: cost.CacheReadTokens,
 	}))
-	p.emit(ctx, event.NewToolEnd("write_game", jobID,
+	p.emit(ctx, event.NewToolEnd("game-writer", "write_game", jobID,
 		fmt.Sprintf("%d bytes", len(html)), "",
 		time.Since(toolStart).Milliseconds()))
 	p.emit(ctx, event.NewStepEnd("game-writer", 1, time.Since(stepStart).Milliseconds()))
@@ -543,7 +544,7 @@ func truncateForEvent(s string, n int) string {
 // 8–12k tokens — truncated HTML is unrecoverable for the user.
 func (p *Pipeline) askWorker(ctx context.Context, worker llm.Client, model, sys string, history []schema.Message) (*llm.AskToolResponse, error) {
 	onChunk := func(delta string) {
-		p.emit(ctx, event.NewLLMToken(delta))
+		p.emit(ctx, event.NewLLMToken("game-writer", delta))
 	}
 	return worker.AskToolStream(ctx, llm.AskToolRequest{
 		Model:        model,
@@ -598,6 +599,7 @@ func (p *Pipeline) Restore(ctx context.Context, jobID string, idx int) error {
 	sess.mu.Unlock()
 
 	p.emit(ctx, event.NewLLMThought(
+		"game-writer",
 		fmt.Sprintf("已回到 v%d — 后续修改将以此版本为基础。", idx),
 		nil, event.Tokens{},
 	))

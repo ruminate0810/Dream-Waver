@@ -62,7 +62,7 @@ func (a *ToolCallAgent) Think(ctx context.Context) (bool, error) {
 	// onChunk callback re-uses the same llm.token event games already
 	// emits, so session.ts handles both surfaces identically.
 	onChunk := func(delta string) {
-		a.emit(ctx, event.NewLLMToken(delta))
+		a.emit(ctx, event.NewLLMToken(a.AgentName, delta))
 	}
 	resp, err := a.LLM.AskToolStream(ctx, llm.AskToolRequest{
 		Model:             a.Model,
@@ -84,6 +84,7 @@ func (a *ToolCallAgent) Think(ctx context.Context) (bool, error) {
 	})
 
 	a.emit(ctx, event.NewLLMThought(
+		a.AgentName,
 		resp.Content,
 		toolCallNames(resp.ToolCalls),
 		event.Tokens{
@@ -119,7 +120,7 @@ func (a *ToolCallAgent) Act(ctx context.Context) (string, error) {
 		// the model is actually asking the tool to do, not just the
 		// tool name. 240 chars keeps the bubble compact while still
 		// fitting one JSON object reasonably.
-		a.emit(ctx, event.NewToolStart(call.Name, call.ID, truncate(string(call.Args), 240)))
+		a.emit(ctx, event.NewToolStart(a.AgentName, call.Name, call.ID, truncate(string(call.Args), 240)))
 		slog.InfoContext(ctx, "agent act", "agent", a.AgentName, "tool", call.Name)
 
 		start := time.Now()
@@ -132,7 +133,7 @@ func (a *ToolCallAgent) Act(ctx context.Context) (string, error) {
 		a.Memory.Add(schema.NewTool(call.Name, call.ID, result.String()))
 		observations = append(observations, obs)
 
-		a.emit(ctx, event.NewToolEnd(call.Name, call.ID, truncate(result.Output, 400), result.Error, dur))
+		a.emit(ctx, event.NewToolEnd(a.AgentName, call.Name, call.ID, truncate(result.Output, 400), result.Error, dur))
 
 		if tool.IsSpecial(call.Name) {
 			a.Finish()
