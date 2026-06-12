@@ -39,10 +39,27 @@ const PUBLIC_PREFIXES = [
   "/api", // proxied to Go, has its own auth
 ];
 
+// Dev-only stable identity for /api/v1 proxy traffic. Without it, browser
+// requests reach the orchestrator ANONYMOUS in local dev (no Supabase JWT),
+// so claw/slides runs skip Postgres persistence and vanish on every backend
+// restart — the "report suddenly won't load" mystery. The orchestrator's
+// permissive dev-auth (SUPABASE_JWKS_URL="") upserts this user + workspace.
+// Production is untouched (NODE_ENV check + real JWTs take precedence).
+const DEV_USER_ID = "11111111-1111-1111-1111-111111111111";
+
 export async function middleware(req: NextRequest) {
   // Pass-through fast path for public paths so SSR cost on those
   // routes is unchanged.
   if (PUBLIC_PREFIXES.some((p) => req.nextUrl.pathname.startsWith(p))) {
+    if (
+      process.env.NODE_ENV === "development" &&
+      req.nextUrl.pathname.startsWith("/api/v1") &&
+      !req.headers.get("x-dev-user-id")
+    ) {
+      const headers = new Headers(req.headers);
+      headers.set("x-dev-user-id", DEV_USER_ID);
+      return NextResponse.next({ request: { headers } });
+    }
     return NextResponse.next();
   }
 

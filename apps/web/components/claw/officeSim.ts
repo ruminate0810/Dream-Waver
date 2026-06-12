@@ -140,6 +140,8 @@ export function useOfficeSim(inputs: {
   meetingChair?: string;
   /** short UI-driven gesture overrides (交接击掌 etc.) — read each tick. */
   pulses?: { current: Record<string, { g: string; until: number }> };
+  /** forced visits (锤人 etc.): worker → walk to host's desk for the window. */
+  visits?: { current: Record<string, { host: string; until: number }> };
 }): Record<string, SimView> {
   const inputRef = useRef(inputs);
   inputRef.current = inputs;
@@ -282,7 +284,10 @@ export function useOfficeSim(inputs: {
 
         // 1) desired site
         let want: string;
+        const fv = inputRef.current.visits?.current?.[w.key];
         if (meeting) want = "meet";
+        else if (fv && fv.until > now && fv.host !== w.key)
+          want = `visit:${fv.host}`; // forced visit (锤人 etc.) — works even off-duty
         else if (offDuty) want = "lounge";
         else {
           // calm office: everyone's home is their OWN DESK (idle workers sit

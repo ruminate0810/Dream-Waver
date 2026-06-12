@@ -454,6 +454,13 @@ summary:focus-visible,
 .claw-twinkle { animation: claw-twinkle 2.4s ease-in-out infinite; }
 @keyframes claw-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 
+/* 锤人 — the comedy hammer swings over the offender's head */
+.claw-hammer { transform-origin: 85% 90%; animation: claw-hammer-swing 0.5s ease-in-out infinite; }
+@keyframes claw-hammer-swing {
+  0%, 100% { transform: rotate(-60deg); }
+  45%, 55% { transform: rotate(6deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .claw-walk-in, .claw-bob { animation: none; }
   .claw-desk-on .claw-screen, .claw-doc-fly { animation: none; }
@@ -463,7 +470,7 @@ summary:focus-visible,
   [class*="claw-act-"] .claw-armR,
   [class*="claw-act-"] .claw-rig { animation: none; }
   .claw-popover[data-state] { animation: none; }
-  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle { animation: none; }
+  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle, .claw-hammer { animation: none; }
 }
 
 /* Soft grain we overlay on the paper background. Encoded as a data-URL in

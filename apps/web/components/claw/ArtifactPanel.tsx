@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, Check, FileText, Layers, Film } from "lucide-react";
+import { Copy, Download, Check, FileText, Layers, Film, ChevronLeft, ChevronRight, BookOpen, ScrollText } from "lucide-react";
 import clsx from "clsx";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { StatusChip } from "@/components/ui/pixel";
 import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck, type ClawVideo } from "@/lib/api";
@@ -49,6 +50,7 @@ export function ArtifactBody({
 }) {
   const stream = useAgentEventStream();
   const [markdown, setMarkdown] = useState<string>("");
+  const [readMode, setReadMode] = useState<"scroll" | "swipe">("scroll");
   const [version, setVersion] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [copied, setCopied] = useState(false);
@@ -132,6 +134,9 @@ export function ArtifactBody({
         </TabButton>
         {active === "report" && hasReport && (
           <span className="ml-auto flex items-center gap-1.5">
+            <IconButton label={readMode === "swipe" ? "切回滚动阅读" : "分页滑读"} onClick={() => setReadMode((m) => (m === "swipe" ? "scroll" : "swipe"))}>
+              {readMode === "swipe" ? <ScrollText size={12} strokeWidth={2} /> : <BookOpen size={12} strokeWidth={2} />}
+            </IconButton>
             <IconButton label="复制" onClick={onCopy}>
               {copied ? <Check size={12} strokeWidth={2.4} /> : <Copy size={12} strokeWidth={2} />}
             </IconButton>
@@ -155,11 +160,15 @@ export function ArtifactBody({
         ) : active === "figures" ? (
           <FiguresGallery figures={figures} />
         ) : hasReport ? (
-          <article className="claw-md px-5 py-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-              {markdown}
-            </ReactMarkdown>
-          </article>
+          readMode === "swipe" ? (
+            <ReportSwipe markdown={markdown} />
+          ) : (
+            <article className="claw-md px-5 py-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                {markdown}
+              </ReactMarkdown>
+            </article>
+          )
         ) : (
           <EmptyState loading={loading} />
         )}
@@ -198,26 +207,217 @@ function TabButton({
   );
 }
 
+// DeckView — when the deck carries a preview_id, render a swipeable live
+// slide preview (each page is the slides pipeline's on-demand HTML in a
+// scaled iframe); otherwise fall back to the download card.
+const SLIDE_W = 1280;
+const SLIDE_H = 720;
+
 function DeckView({ deck }: { deck: ClawDeck }) {
-  return (
-    <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 p-8 text-center">
-      <span className="grid h-14 w-14 place-items-center rounded-pixel border-2 border-ink bg-accent-soft text-accent shadow-pixel-sm">
-        <Layers size={24} strokeWidth={1.6} />
-      </span>
-      <div>
-        <p className="font-mono text-[15px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
-        {deck.slide_count ? (
-          <p className="mt-1 font-mono text-[12px] text-muted">{deck.slide_count} 页 · PowerPoint (.pptx)</p>
-        ) : null}
+  const count = deck.slide_count ?? 0;
+  const [page, setPage] = useState(1);
+  const [dir, setDir] = useState(1);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0.5);
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / SLIDE_W));
+    ro.observe(el);
+    setScale(el.clientWidth / SLIDE_W);
+    return () => ro.disconnect();
+  }, [deck.preview_id]);
+
+  const go = (next: number) => {
+    if (next < 1 || next > count) return;
+    setDir(next > page ? 1 : -1);
+    setPage(next);
+  };
+
+  if (!deck.preview_id || count === 0) {
+    return (
+      <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 p-8 text-center">
+        <span className="grid h-14 w-14 place-items-center rounded-pixel border-2 border-ink bg-accent-soft text-accent shadow-pixel-sm">
+          <Layers size={24} strokeWidth={1.6} />
+        </span>
+        <div>
+          <p className="font-mono text-[15px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
+          {deck.slide_count ? (
+            <p className="mt-1 font-mono text-[12px] text-muted">{deck.slide_count} 页 · PowerPoint (.pptx)</p>
+          ) : null}
+        </div>
+        <a
+          href={deck.url}
+          download
+          className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
+        >
+          <Download size={14} strokeWidth={2} />
+          下载 .pptx
+        </a>
       </div>
-      <a
-        href={deck.url}
-        download
-        className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
-      >
-        <Download size={14} strokeWidth={2} />
-        下载 .pptx
-      </a>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-2 p-4">
+      <div className="flex items-center justify-between">
+        <p className="truncate font-mono text-[12px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
+        <a
+          href={deck.url}
+          download
+          className="inline-flex flex-none items-center gap-1.5 rounded-pixel border-2 border-ink bg-surface px-2 py-1 font-mono text-[11px] font-semibold text-ink-2 shadow-pixel-sm transition-colors hover:text-ink"
+        >
+          <Download size={11} strokeWidth={2} />
+          .pptx
+        </a>
+      </div>
+      {/* the slide — drag horizontally to flip */}
+      <div ref={frameRef} className="relative w-full overflow-hidden rounded-pixel border-2 border-ink bg-white shadow-pixel-sm" style={{ height: SLIDE_H * scale }}>
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          <motion.div
+            key={page}
+            custom={dir}
+            initial={{ x: dir * 60, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -dir * 60, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -56) go(page + 1);
+              else if (info.offset.x > 56) go(page - 1);
+            }}
+            className="absolute inset-0 cursor-grab active:cursor-grabbing"
+          >
+            <iframe
+              src={`/api/v1/slides/${deck.preview_id}/page/${page}.html`}
+              title={`slide ${page}`}
+              className="pointer-events-none origin-top-left border-0"
+              style={{ width: SLIDE_W, height: SLIDE_H, transform: `scale(${scale})` }}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      {/* pager: arrows + dots */}
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => go(page - 1)}
+          disabled={page <= 1}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="上一页"
+        >
+          <ChevronLeft size={13} strokeWidth={2.4} />
+        </button>
+        <div className="flex items-center gap-1">
+          {Array.from({ length: count }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => go(i + 1)}
+              aria-label={`第 ${i + 1} 页`}
+              className={clsx(
+                "h-[7px] rounded-full transition-all",
+                i + 1 === page ? "w-4 bg-accent" : "w-[7px] bg-ink/20 hover:bg-ink/40",
+              )}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => go(page + 1)}
+          disabled={page >= count}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="下一页"
+        >
+          <ChevronRight size={13} strokeWidth={2.4} />
+        </button>
+        <span className="ml-1 font-mono text-[10px] text-muted">
+          {page}/{count}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ReportSwipe — 分页滑读: the report split by H2 headings into swipeable
+// magazine-style cards. The cover card is everything before the first H2.
+function ReportSwipe({ markdown }: { markdown: string }) {
+  const sections = useMemo(() => {
+    const parts = markdown.split(/\n(?=##\s)/).map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [markdown];
+  }, [markdown]);
+  const [page, setPage] = useState(0);
+  const [dir, setDir] = useState(1);
+  const go = (n: number) => {
+    if (n < 0 || n >= sections.length) return;
+    setDir(n > page ? 1 : -1);
+    setPage(n);
+  };
+  return (
+    <div className="flex h-full flex-col">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          <motion.article
+            key={page}
+            custom={dir}
+            initial={{ x: dir * 80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -dir * 80, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -56) go(page + 1);
+              else if (info.offset.x > 56) go(page - 1);
+            }}
+            className="claw-md absolute inset-0 cursor-grab overflow-y-auto px-5 py-4 active:cursor-grabbing"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+              {sections[page]}
+            </ReactMarkdown>
+          </motion.article>
+        </AnimatePresence>
+      </div>
+      <div className="flex flex-none items-center justify-center gap-2 border-t-2 border-line py-1.5">
+        <button
+          type="button"
+          onClick={() => go(page - 1)}
+          disabled={page <= 0}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="上一节"
+        >
+          <ChevronLeft size={13} strokeWidth={2.4} />
+        </button>
+        <div className="flex items-center gap-1">
+          {sections.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => go(i)}
+              aria-label={`第 ${i + 1} 节`}
+              className={clsx(
+                "h-[7px] rounded-full transition-all",
+                i === page ? "w-4 bg-accent" : "w-[7px] bg-ink/20 hover:bg-ink/40",
+              )}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => go(page + 1)}
+          disabled={page >= sections.length - 1}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="下一节"
+        >
+          <ChevronRight size={13} strokeWidth={2.4} />
+        </button>
+        <span className="ml-1 font-mono text-[10px] text-muted">
+          {page + 1}/{sections.length}
+        </span>
+      </div>
     </div>
   );
 }

@@ -575,6 +575,9 @@ export type ClawDeck = {
   slide_count?: number;
   /** Same-origin download URL → .pptx */
   url: string;
+  /** Slides-session id — page n previews live at
+   *  /api/v1/slides/{preview_id}/page/{n}.html (1-based). */
+  preview_id?: string;
 };
 
 export type ClawVideo = {

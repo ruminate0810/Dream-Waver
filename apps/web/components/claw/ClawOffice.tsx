@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import * as Popover from "@radix-ui/react-popover";
 import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
@@ -119,8 +119,16 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
         } else if (ev.kind === "claw.debate") {
           // consensus reached — keep the kickoff meeting going a beat longer
+          // and stage the argument: participants trade heated bubbles.
           setMeetingKind("kickoff");
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+          try {
+            const d = JSON.parse(ev.data?.claw_debate_json ?? "{}");
+            const roles: string[] = (d.proposals ?? []).map((p: { role: string }) => p.role).filter(Boolean);
+            if (roles.length >= 2) setDebate({ roles, until: Date.now() + 10_000 });
+          } catch {
+            /* malformed debate payload — skip the staging */
+          }
         } else if (ev.data?.agent === "critic" && (ev.kind === "tool.start" || ev.kind === "tool.end")) {
           // critic is reviewing/rewriting → convene (and keep extending) the 评审会
           setMeetingKind("review");
@@ -136,9 +144,44 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   // gesture pulses — short UI-driven gesture overrides (交接击掌 etc.) the
   // sim reads each tick; cheap one-way channel, no re-renders.
   const pulses = useRef<Record<string, { g: string; until: number }>>({});
+  // forced visits (锤人): bonker walks to the offender's desk for the window
+  const visits = useRef<Record<string, { host: string; until: number }>>({});
   // live cat position, written by OfficeCat — lets the room react to the cat
   const catPos = useRef<{ x: number; y: number; sleeping: boolean } | null>(null);
-  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses });
+  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses, visits });
+
+  // 锤人 — when a worker's tool errors (facepalm reaction), the 评审员 (or
+  // the 调度员, if the critic is the offender) marches over and bonks them
+  // with a comedy hammer. Cooldown per offender so a flaky tool doesn't turn
+  // the office into a boxing ring.
+  const [bonk, setBonk] = useState<{ host: string; bonker: string; until: number } | null>(null);
+  const bonkCd = useRef<Record<string, number>>({});
+  const triggerBonk = useCallback((host: string) => {
+    const now = Date.now();
+    const bonker = host === "critic" ? "coordinator" : "critic";
+    // long enough to walk across the whole office (lounge → far desk ≈ 11s)
+    const until = now + 14_000;
+    visits.current[bonker] = { host, until };
+    pulses.current[bonker] = { g: "point", until };
+    setBonk({ host, bonker, until });
+    setTimeout(() => setBonk((b) => (b && b.until === until ? null : b)), 14_200);
+  }, []);
+  useEffect(() => {
+    if (offDuty || meeting) return;
+    const now = Date.now();
+    for (const w of WORKERS) {
+      const v = views[w.key];
+      if (!v?.reactionUntil || v.reactionUntil < now || v.reactionGesture !== "facepalm") continue;
+      if ((bonkCd.current[w.key] ?? 0) > now) continue;
+      bonkCd.current[w.key] = now + 30_000;
+      triggerBonk(w.key);
+      break;
+    }
+  }, [views, offDuty, meeting, triggerBonk]);
+
+  // 辩论 — v6.4's real kickoff debate (claw.debate) gets staged visually:
+  // the participants trade 💢/💬 around the meeting table while it lasts.
+  const [debate, setDebate] = useState<{ roles: string[]; until: number } | null>(null);
 
   // handoff flights on real start transitions
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -463,7 +506,9 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             view={views[def.key]}
             sim={sim[def.key]}
             offDuty={offDuty}
-            onClick={() => setFocus((f) => (f === def.key ? null : def.key))}
+            onClick={(shift) =>
+              shift ? triggerBonk(def.key) : setFocus((f) => (f === def.key ? null : def.key))
+            }
           />
         ))}
 
@@ -502,6 +547,62 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             </span>
           );
         })()}
+
+        {/* 锤人 — the bonker swings the hammer once they stop walking;
+              the offender only sees stars when actually within range */}
+        {bonk &&
+          bonk.until > Date.now() &&
+          (() => {
+            const bk = sim[bonk.bonker];
+            const hs = sim[bonk.host];
+            if (!bk || !hs) return null;
+            const arrived = bk.site === `visit:${bonk.host}` && !bk.walking;
+            if (!arrived) return null;
+            const near = Math.abs(bk.x - hs.x) + Math.abs(bk.y - hs.y) < 14;
+            if (!near) {
+              // marched to their desk and they're not there — 扑了个空
+              return (
+                <span className="pointer-events-none absolute z-[70] text-[13px]" style={{ left: `${bk.x + 1}%`, top: `${bk.y - 10}%` }}>
+                  💢❓
+                </span>
+              );
+            }
+            return (
+              <>
+                <span
+                  className="claw-hammer pointer-events-none absolute z-[70] text-[18px]"
+                  style={{ left: `${bk.x + (bk.facing === 1 ? 3 : -3)}%`, top: `${bk.y - 8}%` }}
+                >
+                  🔨
+                </span>
+                <span className="pointer-events-none absolute z-[70] text-[12px]" style={{ left: `${bk.x - 2}%`, top: `${bk.y - 10}%` }}>
+                  💢
+                </span>
+                <span className="pointer-events-none absolute z-[70] text-[12px]" style={{ left: `${hs.x + 1}%`, top: `${hs.y - 8}%` }}>
+                  💫
+                </span>
+              </>
+            );
+          })()}
+
+        {/* 辩论 — participants trade heated bubbles around the table */}
+        {debate &&
+          debate.until > Date.now() &&
+          meeting &&
+          debate.roles.map((r, i) => {
+            const s = sim[r];
+            if (!s) return null;
+            const hot = (Math.floor(Date.now() / 1300) + i) % 2 === 0;
+            return (
+              <span
+                key={`db-${r}`}
+                className="pointer-events-none absolute z-[70] text-[13px]"
+                style={{ left: `${s.x + 1}%`, top: `${s.y - 9}%` }}
+              >
+                {hot ? "💢" : "💬"}
+              </span>
+            );
+          })}
 
         {/* 猫来串门 — a worker near the cat gets a little ❤️ */}
         {catPos.current &&
@@ -554,17 +655,21 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             {light === "day" ? "☀ 白天" : light === "dusk" ? "🌇 黄昏" : "🌙 夜晚"}
           </button>
         </div>
-        {(coffee || offDuty || meeting || lastActivity) && (
+        {(coffee || offDuty || meeting || lastActivity || (bonk && bonk.until > Date.now())) && (
           <div className="absolute bottom-2 left-3 z-40 max-w-[48%] truncate rounded-[4px] border border-ink/25 bg-surface/90 px-2 py-[3px] font-mono text-[10px] text-ink-2">
             {coffee
               ? "☕ 咖啡时间!全员回血中 — 谢谢老板"
-              : meeting
-                ? meetingKind === "review"
-                  ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
-                  : "▶ 开工例会 — 调度员对齐分工中"
-                : offDuty
-                  ? "✓ 收工!全员下班 — 作品包在 dock"
-                  : lastActivity}
+              : bonk && bonk.until > Date.now()
+                ? `🔨 ${WORKERS.find((w) => w.key === bonk.bonker)?.zh}抄起小锤去找${WORKERS.find((w) => w.key === bonk.host)?.zh}「谈谈」`
+                : debate && debate.until > Date.now() && meeting
+                  ? "💢 例会激辩中 — 各执一词,调度员正在拍板"
+                  : meeting
+                    ? meetingKind === "review"
+                      ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
+                      : "▶ 开工例会 — 调度员对齐分工中"
+                    : offDuty
+                      ? "✓ 收工!全员下班 — 作品包在 dock"
+                      : lastActivity}
           </div>
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
@@ -836,7 +941,8 @@ function OfficeWorker({
   view?: WorkerView;
   sim?: SimView;
   offDuty: boolean;
-  onClick: () => void;
+  /** shift=true → 老板的小锤 (boss discipline easter egg). */
+  onClick: (shift: boolean) => void;
 }) {
   const status = view?.status ?? "idle";
   const [pokedUntil, setPokedUntil] = useState(0);
@@ -867,9 +973,9 @@ function OfficeWorker({
   return (
     <button
       type="button"
-      onClick={() => {
-        setPokedUntil(Date.now());
-        onClick();
+      onClick={(e) => {
+        if (!e.shiftKey) setPokedUntil(Date.now());
+        onClick(e.shiftKey);
       }}
       className="absolute cursor-pointer border-0 bg-transparent p-0"
       style={{

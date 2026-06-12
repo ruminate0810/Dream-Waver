@@ -190,6 +190,9 @@ type clawDeckView struct {
 	Title      string `json:"title,omitempty"`
 	SlideCount int    `json:"slide_count,omitempty"`
 	URL        string `json:"url"` // same-origin download → .pptx
+	// PreviewID: slides-session id — page n previews live at
+	// /api/v1/slides/{preview_id}/page/{n}.html (1-based).
+	PreviewID string `json:"preview_id,omitempty"`
 }
 
 type clawVideoView struct {
@@ -264,6 +267,7 @@ func (h *handlers) GetClaw(w http.ResponseWriter, r *http.Request) {
 				Title:      d.Title,
 				SlideCount: d.SlideCount,
 				URL:        "/api/v1/claw/" + job.ID + "/deck",
+				PreviewID:  d.PreviewID,
 			}
 		}
 		if _, version := sess.Artifact(); version > 0 {

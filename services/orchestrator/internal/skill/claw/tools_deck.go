@@ -65,7 +65,10 @@ func (t *GenerateDeck) Execute(ctx context.Context, args json.RawMessage) (schem
 	// Suppress the slides pipeline's own slides.* events on the claw session
 	// — the producer worker's tool.start/end already shows progress.
 	pctx := event.WithSessionID(ctx, "")
-	out, err := t.Pipeline.Run(pctx, uuid.NewString(), slides.Input{
+	// previewID doubles as the slides-session id — the work package embeds
+	// the live per-page HTML preview (/api/v1/slides/{id}/page/{n}.html).
+	previewID := uuid.NewString()
+	out, err := t.Pipeline.Run(pctx, previewID, slides.Input{
 		Topic:      topic,
 		Audience:   strings.TrimSpace(p.Audience),
 		SlideCount: p.SlideCount,
@@ -77,7 +80,7 @@ func (t *GenerateDeck) Execute(ctx context.Context, args json.RawMessage) (schem
 		return schema.ToolResult{Output: "deck 生成未产出文件,跳过。"}, nil
 	}
 
-	t.Session.SetDeck(out.PptxPath, out.Title, out.SlideCount)
+	t.Session.SetDeck(out.PptxPath, out.Title, out.SlideCount, previewID)
 	if t.Emitter != nil {
 		t.Emitter.Emit(ctx, event.NewClawArtifactUpdated("deck", 1, out.SlideCount))
 	}
