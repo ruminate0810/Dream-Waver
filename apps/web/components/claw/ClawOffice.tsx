@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import * as Popover from "@radix-ui/react-popover";
-import { FileText, Image as ImageIcon, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
+import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
 import clsx from "clsx";
 
 import { getClawRoles, type ClawRun, type ClawRolesConfig } from "@/lib/api";
@@ -533,6 +533,13 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           onClick={() => openTab("figures")}
         />
         <DockButton
+          icon={<Film size={13} strokeWidth={2} />}
+          label={`视频${(run.videos?.length ?? 0) > 0 ? ` ${run.videos!.length}` : ""}`}
+          disabled={(run.videos?.length ?? 0) === 0}
+          active={winOpen && tab === "video"}
+          onClick={() => openTab("video")}
+        />
+        <DockButton
           icon={<Layers size={13} strokeWidth={2} />}
           label="Deck"
           disabled={!run.deck}
@@ -576,6 +583,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             jobId={run.job_id}
             initialVersion={run.artifact_version ?? 0}
             figures={run.figures ?? []}
+            videos={run.videos ?? []}
             deck={run.deck ?? null}
             tab={tab}
             onTabChange={setTab}

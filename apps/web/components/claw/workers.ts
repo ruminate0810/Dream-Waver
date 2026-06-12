@@ -23,6 +23,7 @@ export const EMO: Record<string, string> = {
   music: "♪",
   zzz: "z²",
   heart: "♥",
+  film: "►",
 };
 
 // Action pool: each key has a zh status label + an optional emote glyph. The
@@ -48,6 +49,7 @@ export const ACT: Record<string, { zh: string; emo?: string }> = {
   doze: { zh: "打瞌睡", emo: "zzz" },
   phone: { zh: "电话沟通", emo: "talk" },
   stretch: { zh: "伸个懒腰" },
+  film: { zh: "拍摄中", emo: "film" },
 };
 
 // TOOL_ACTION maps a live tool to the worker's signature gesture, so the body
@@ -63,6 +65,7 @@ export const TOOL_ACTION: Record<string, string> = {
   generate_image: "draw",
   write_document: "write",
   generate_deck: "point",
+  generate_video: "film",
 };
 
 // Pipeline phase a worker belongs to. The office derives EVERYTHING
@@ -198,6 +201,24 @@ export const WORKERS: WorkerDef[] = [
     acc: `<rect x="7" y="0" width="13" height="2" fill="#1f2430"/><rect x="7" y="2" width="14" height="2" fill="#1f2430"/><rect x="15" y="4" width="7" height="1" fill="#141821"/><rect x="9" y="8" width="4" height="3" fill="#16140f" opacity="0.88"/><rect x="15" y="8" width="4" height="3" fill="#16140f" opacity="0.88"/><rect x="13" y="8" width="2" height="1" fill="#16140f"/>`,
     deskTool: `<rect x="9" y="4" width="14" height="3" fill="${INK}"/><rect x="10" y="4" width="1" height="3" fill="#fff"/><rect x="12" y="4" width="1" height="3" fill="#fff"/><rect x="14" y="4" width="1" height="3" fill="#fff"/><rect x="9" y="7" width="14" height="9" class="claw-screen" fill="#2a2620"/><rect x="11" y="10" width="10" height="1" fill="#cdd6e6"/><rect x="11" y="12" width="7" height="1" fill="#cdd6e6"/>`,
     actions: ["point", "phone", "nod", "look", "type", "eureka", "talk", "coffee", "read", "think"],
+  },
+  {
+    key: "videographer",
+    phase: "produce",
+    name: "Videographer",
+    zh: "视频师",
+    tools: ["generate_video"],
+    shirt: "#7c5cbf",
+    shirtDark: "#5e4494",
+    hair: "#2a2620",
+    hairKind: "short",
+    skin: "#f0cfb0",
+    pants: "#2f2b3a",
+    // headphones — band over the head + two ear cups
+    acc: `<rect x="7" y="1" width="14" height="1" fill="#2a2620"/><rect x="6" y="2" width="1" height="1" fill="#2a2620"/><rect x="21" y="2" width="1" height="1" fill="#2a2620"/><rect x="5" y="7" width="2" height="4" fill="#2a2620"/><rect x="21" y="7" width="2" height="4" fill="#2a2620"/><rect x="5" y="8" width="1" height="2" fill="#b8aaff"/>`,
+    // a video monitor: play triangle + a film-strip footer
+    deskTool: `<rect x="8" y="5" width="16" height="11" fill="${INK}"/><rect x="9" y="6" width="14" height="8" class="claw-screen" fill="#1f1a2e"/><polygon points="14,8 14,12 18,10" fill="#b8aaff"/><rect x="9" y="14" width="14" height="2" fill="#2a2620"/><rect x="10" y="14.5" width="1" height="1" fill="#fff"/><rect x="13" y="14.5" width="1" height="1" fill="#fff"/><rect x="16" y="14.5" width="1" height="1" fill="#fff"/><rect x="19" y="14.5" width="1" height="1" fill="#fff"/>`,
+    actions: ["film", "look", "think", "point", "nod", "eureka", "draw", "coffee", "cheer", "talk"],
   },
 ];
 

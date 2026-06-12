@@ -27,7 +27,7 @@ export type WorkerView = {
 };
 
 // tools whose success is worth a little celebration (not every tool.end)
-const CHEER_TOOLS = new Set(["code_execute", "generate_image", "write_document", "generate_deck"]);
+const CHEER_TOOLS = new Set(["code_execute", "generate_image", "write_document", "generate_deck", "generate_video"]);
 
 type Acc = {
   roleByIndex: Record<number, string>;
@@ -186,6 +186,8 @@ function detailFor(tool: string, input?: string): string {
       return "撰写报告";
     case "generate_deck":
       return "生成幻灯片";
+    case "generate_video":
+      return str(obj?.caption) || str(obj?.prompt) || "制作短视频";
     case "plan_tasks":
       return "规划任务";
     case "update_task":

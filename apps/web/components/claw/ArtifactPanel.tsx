@@ -3,17 +3,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, Check, FileText, Layers } from "lucide-react";
+import { Copy, Download, Check, FileText, Layers, Film } from "lucide-react";
 import clsx from "clsx";
 
 import { StatusChip } from "@/components/ui/pixel";
-import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck } from "@/lib/api";
+import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck, type ClawVideo } from "@/lib/api";
 import {
   useAgentEventStream,
   type AgentEvent,
 } from "@/components/chat/transport";
 
-export type WorkTab = "report" | "figures" | "deck";
+export type WorkTab = "report" | "figures" | "video" | "deck";
 
 // ArtifactBody renders the Claw work package (report / figures / deck tabs)
 // FRAMELESS — it lives inside the office's PixelWindow (the OS-window
@@ -28,6 +28,7 @@ export function ArtifactBody({
   jobId,
   initialVersion = 0,
   figures = [],
+  videos = [],
   deck = null,
   tab,
   onTabChange,
@@ -38,6 +39,8 @@ export function ArtifactBody({
   initialVersion?: number;
   /** Work-package figures (from getClawRun polling). */
   figures?: ClawFigure[];
+  /** Work-package videos / clips (from getClawRun polling). */
+  videos?: ClawVideo[];
   /** Work-package slide deck (from getClawRun polling). */
   deck?: ClawDeck | null;
   /** Controlled active tab (the office dock drives this). */
@@ -105,9 +108,11 @@ export function ArtifactBody({
   const active: WorkTab =
     tab === "figures" && figures.length > 0
       ? "figures"
-      : tab === "deck" && deck
-        ? "deck"
-        : "report";
+      : tab === "video" && videos.length > 0
+        ? "video"
+        : tab === "deck" && deck
+          ? "deck"
+          : "report";
 
   return (
     <div className="flex h-full flex-col bg-paper/60">
@@ -118,6 +123,9 @@ export function ArtifactBody({
         </TabButton>
         <TabButton active={active === "figures"} onClick={() => onTabChange("figures")} disabled={figures.length === 0}>
           配图{figures.length > 0 ? ` · ${figures.length}` : ""}
+        </TabButton>
+        <TabButton active={active === "video"} onClick={() => onTabChange("video")} disabled={videos.length === 0}>
+          视频{videos.length > 0 ? ` · ${videos.length}` : ""}
         </TabButton>
         <TabButton active={active === "deck"} onClick={() => onTabChange("deck")} disabled={!deck}>
           Deck
@@ -142,6 +150,8 @@ export function ArtifactBody({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {active === "deck" && deck ? (
           <DeckView deck={deck} />
+        ) : active === "video" ? (
+          <VideoGallery videos={videos} />
         ) : active === "figures" ? (
           <FiguresGallery figures={figures} />
         ) : hasReport ? (
@@ -226,6 +236,50 @@ function FiguresGallery({ figures }: { figures: ClawFigure[] }) {
           )}
         </figure>
       ))}
+    </div>
+  );
+}
+
+function VideoGallery({ videos }: { videos: ClawVideo[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 p-4">
+      {videos.map((v, i) => (
+        <figure key={i} className="overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+          <video
+            src={v.url}
+            poster={v.poster}
+            controls
+            loop
+            playsInline
+            className="block w-full bg-ink"
+          />
+          <figcaption className="flex items-center justify-between gap-2 border-t-2 border-line px-2.5 py-1.5">
+            <span className="truncate font-mono text-[11px] text-ink-2">{v.caption || `视频 ${i + 1}`}</span>
+            <span className="flex flex-none items-center gap-1.5 font-mono text-[10px] text-muted">
+              {v.resolution && (
+                <span className="rounded-[3px] border border-line-2 bg-surface-2 px-1 py-[1px]">{v.resolution}</span>
+              )}
+              {v.duration ? <span>{v.duration}s</span> : null}
+              <a
+                href={v.url}
+                download={`clip-${i + 1}.mp4`}
+                className="grid h-5 w-5 place-items-center rounded-pixel border border-ink/40 text-ink-2 hover:text-ink"
+                aria-label="下载视频"
+              >
+                <Download size={11} strokeWidth={2} />
+              </a>
+            </span>
+          </figcaption>
+        </figure>
+      ))}
+      {videos.length === 0 && (
+        <div className="flex min-h-[160px] flex-col items-center justify-center gap-3 text-center">
+          <span className="grid h-12 w-12 place-items-center rounded-pixel border-2 border-line-2 bg-surface-2 text-line-2">
+            <Film size={20} strokeWidth={1.6} />
+          </span>
+          <p className="font-mono text-[12px] text-muted">还没有视频 — 在对话里让视频师把配图做成短片</p>
+        </div>
+      )}
     </div>
   );
 }

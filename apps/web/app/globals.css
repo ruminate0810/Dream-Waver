@@ -342,6 +342,11 @@ summary:focus-visible,
 .claw-act-draw .claw-armL { animation: claw-point 1.4s ease-in-out infinite; }
 .claw-act-draw .claw-head { animation: claw-lookR 1.4s ease-in-out infinite; }
 
+/* film — videographer frames a shot (arm up) while the head pans the scene */
+.claw-act-film .claw-armR { animation: claw-point 1.1s ease-in-out infinite; }
+.claw-act-film .claw-armL { animation: claw-hold 0.1s linear forwards; }
+.claw-act-film .claw-head { animation: claw-lookR 1.3s ease-in-out infinite; }
+
 .claw-act-read .claw-head { animation: claw-sway 1.9s ease-in-out infinite; }
 .claw-act-read .claw-armL { animation: claw-hold 0.1s linear forwards; }
 @keyframes claw-hold { to { transform: rotate(-30deg); } }

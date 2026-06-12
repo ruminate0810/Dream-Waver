@@ -18,6 +18,7 @@ const INTRO: Record<string, (detail: string) => string> = {
   generate_image: (d) => `我来画${d ? `「${d}」` : "张配图"}。`,
   write_document: () => "材料齐了,我开始整合成报告。",
   generate_deck: () => "报告我拿去做成幻灯片。",
+  generate_video: () => "我把这张图动起来,做成一段短片。",
 };
 
 // a worker's closing line on a meaningful success
@@ -25,6 +26,7 @@ const DONE: Record<string, string> = {
   code_execute: "算出来了 ✓",
   generate_image: "配图出炉啦 ✦",
   generate_deck: "幻灯片做好了 ✓",
+  generate_video: "短片剪好了 ►",
 };
 
 export type SayLine = { worker: string; text: string };
@@ -123,6 +125,11 @@ export function nextSteps(run: ClawRun): NextStep[] {
   ];
   if ((run.figures?.length ?? 0) === 0) {
     out.push({ label: "加配图", text: "给报告配 1–2 张说明性示意图。" });
+  }
+  // i2v: only once there's a figure to animate, and no clip yet. Resolution /
+  // duration are natural-language — "做成 1080p 10 秒" works too.
+  if ((run.figures?.length ?? 0) > 0 && (run.videos?.length ?? 0) === 0) {
+    out.push({ label: "做成短视频", text: "让视频师把最关键的那张配图做成一段 720p、5 秒的短视频,加点运镜和光影动态。" });
   }
   if (!run.deck) {
     out.push({ label: "做成 PPT", text: "把这份报告做成一份幻灯片 deck。" });
