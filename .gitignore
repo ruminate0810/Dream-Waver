@@ -148,8 +148,20 @@ ai-images/
 
 # ─── Claude Code — per-developer state ───────────────────────────────────────
 # .claude/ holds settings, agent transcripts, worktrees that the Claude Code
-# CLI creates locally. These are developer-specific, not part of the repo.
-.claude/
+# CLI creates locally. Those are developer-specific — but .claude/skills/ IS
+# part of the repo (project-level skills: the OpenMontage cinematic pipeline,
+# image/video production skills, frontend design skills). `.claude/*` ignores
+# the children so the skills/ negate below can re-include it (a negate can't
+# resurrect anything under a fully-ignored directory).
+.claude/*
+!.claude/skills/
+
+# ─── Skill 产物 — generated media live in output/, never in git ──────────────
+# Every media-producing skill (cinematic, posters, storybooks, subtitles,
+# translations…) writes under output/<domain>/<slug>/. The README documenting
+# the layout is the only committed file.
+output/*
+!output/README.md
 
 # ─── Negate rules — re-include what prior rules would skip ───────────────────
 # Generated protobuf bindings live under /proto and ARE committed
