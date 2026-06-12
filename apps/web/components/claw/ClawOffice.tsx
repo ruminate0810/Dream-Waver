@@ -59,6 +59,17 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   const { views, lastActivity } = useWorkerStates(run.plan ?? []);
   const { defs: wardrobeDefs, outfitOf, setOutfit } = useWardrobe();
   const [focus, setFocus] = useState<string | null>(null);
+  const [light, setLight] = useState<"day" | "dusk" | "night">("day");
+  // 请喝咖啡 — clicking the machine floats a ☕ over everyone (45s cooldown)
+  const [coffee, setCoffee] = useState(false);
+  const coffeeCd = useRef(0);
+  const brewCoffee = () => {
+    const now = Date.now();
+    if (now < coffeeCd.current) return;
+    coffeeCd.current = now + 45_000;
+    setCoffee(true);
+    setTimeout(() => setCoffee(false), 6500);
+  };
   const [winOpen, setWinOpen] = useState(false);
   const [bindOpen, setBindOpen] = useState(false);
   const [tab, setTab] = useState<WorkTab>("report");
@@ -299,6 +310,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
               "linear-gradient(166deg,rgba(255,238,176,0.46) 0%,rgba(255,236,170,0.12) 44%,transparent 66%)",
             transform: "skewX(-20deg) rotate(4deg)",
             transformOrigin: "top left",
+            opacity: light === "day" ? 1 : light === "dusk" ? 0.5 : 0,
             filter: "blur(3px)",
           }}
         />
@@ -313,6 +325,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             background:
               "radial-gradient(ellipse at 50% 50%,rgba(255,234,165,0.34) 0%,transparent 70%)",
             transform: "skewX(-22deg)",
+            opacity: light === "day" ? 1 : light === "dusk" ? 0.45 : 0,
             filter: "blur(4px)",
           }}
         />
@@ -320,7 +333,26 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           className="pointer-events-none absolute inset-0"
           style={{ boxShadow: "inset 0 0 120px 28px rgba(40,26,10,0.30)" }}
         />
-        <Decor />
+        {/* time-of-day tint (below the desk z-layer, so sprites stay readable) */}
+        {light !== "day" && (
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={
+              light === "dusk"
+                ? {
+                    background:
+                      "linear-gradient(180deg,rgba(255,150,60,0.10),rgba(255,116,48,0.20))",
+                    mixBlendMode: "soft-light",
+                  }
+                : {
+                    background:
+                      "linear-gradient(180deg,rgba(34,44,98,0.34),rgba(12,16,48,0.52))",
+                    mixBlendMode: "multiply",
+                  }
+            }
+          />
+        )}
+        <Decor light={light} onCoffee={brewCoffee} />
 
         {/* meeting table (between the two slot rows for depth) */}
         <div
@@ -428,6 +460,25 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           <FlyingDoc key={f.id} flight={f} onDone={(id) => setFlights((fs) => fs.filter((x) => x.id !== id))} />
         ))}
 
+        {/* the office cat — wanders, naps by the lamp, pettable */}
+        <OfficeCat />
+
+        {/* coffee break: a ☕ floats over every head */}
+        {coffee &&
+          defs.map((def) => {
+            const s = sim[def.key];
+            if (!s) return null;
+            return (
+              <span
+                key={`cof-${def.key}`}
+                className="claw-coffee-bub pointer-events-none absolute z-[60] text-[15px]"
+                style={{ left: `${s.x}%`, top: `${s.y - 6}%` }}
+              >
+                ☕
+              </span>
+            );
+          })}
+
         {/* HUD: title, ticker, phase strip */}
         <div className="absolute left-3 top-2 z-40 flex items-center gap-2">
           <span className="font-pixel text-[0.55rem] tracking-wide text-accent">✦ CLAW OFFICE</span>
@@ -435,16 +486,25 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             <i className="h-[6px] w-[6px] animate-pixpulse rounded-full bg-grass" />
             LIVE
           </span>
+          <button
+            onClick={() => setLight((l) => (l === "day" ? "dusk" : l === "dusk" ? "night" : "day"))}
+            title="切换昼夜光照"
+            className="inline-flex items-center gap-1 rounded-[4px] border border-ink/30 bg-surface/90 px-1.5 py-[1px] font-mono text-[10px] text-ink-2 transition-colors hover:text-ink"
+          >
+            {light === "day" ? "☀ 白天" : light === "dusk" ? "🌇 黄昏" : "🌙 夜晚"}
+          </button>
         </div>
-        {(offDuty || meeting || lastActivity) && (
+        {(coffee || offDuty || meeting || lastActivity) && (
           <div className="absolute bottom-2 left-3 z-40 max-w-[48%] truncate rounded-[4px] border border-ink/25 bg-surface/90 px-2 py-[3px] font-mono text-[10px] text-ink-2">
-            {meeting
-              ? meetingKind === "review"
-                ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
-                : "▶ 开工例会 — 调度员对齐分工中"
-              : offDuty
-                ? "✓ 收工!全员下班 — 作品包在 dock"
-                : lastActivity}
+            {coffee
+              ? "☕ 咖啡时间!全员回血中 — 谢谢老板"
+              : meeting
+                ? meetingKind === "review"
+                  ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
+                  : "▶ 开工例会 — 调度员对齐分工中"
+                : offDuty
+                  ? "✓ 收工!全员下班 — 作品包在 dock"
+                  : lastActivity}
           </div>
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
@@ -848,7 +908,15 @@ function DockButton({
 }
 
 // Decor — windows, whiteboard, clock, coffee machine (lounge), plant.
-function Decor() {
+function Decor({
+  light = "day",
+  onCoffee,
+}: {
+  light?: "day" | "dusk" | "night";
+  onCoffee?: () => void;
+}) {
+  // lamp/sconce glow grows as the room darkens
+  const glow = light === "night" ? 0.6 : light === "dusk" ? 0.32 : 0.12;
   return (
     <>
       <svg className="absolute left-[8%] top-[4%] claw-sprite" width="84" height="62" viewBox="0 0 37 28" shapeRendering="crispEdges">
@@ -875,17 +943,27 @@ function Decor() {
         <rect x="8" y="4" width="1.4" height="5" fill="#16140f" />
         <rect x="8" y="8" width="4" height="1.4" fill="#b5371e" />
       </svg>
-      {/* coffee machine (lounge) */}
-      <svg className="absolute claw-sprite" style={{ left: "1%", top: "92%", transform: "translateY(-100%)" }} width="52" height="66" viewBox="0 0 23 29" shapeRendering="crispEdges">
-        <rect x="2" y="4" width="14" height="20" fill="#403a30" />
-        <rect x="3" y="5" width="12" height="7" fill="#16140f" />
-        <rect x="4" y="6" width="4" height="2" fill="#74e6a0" />
-        <rect x="6" y="14" width="6" height="4" fill="#16140f" />
-        <rect x="7" y="18" width="4" height="1" fill="#e3a13a" />
-        <rect x="0" y="24" width="20" height="2" fill="#84591c" />
-        <rect x="1" y="26" width="2" height="3" fill="#84591c" />
-        <rect x="17" y="26" width="2" height="3" fill="#84591c" />
-      </svg>
+      {/* coffee machine (lounge) — click to treat the whole team ☕ */}
+      <div
+        className="absolute cursor-pointer transition-transform hover:scale-105"
+        style={{ left: "1%", top: "92%", transform: "translateY(-100%)" }}
+        onClick={onCoffee}
+        title="请大家喝咖啡 ☕"
+      >
+        <span className="claw-steam absolute left-[16px] top-[6px] h-[7px] w-[3px] rounded-full bg-white/70" />
+        <span className="claw-steam absolute left-[23px] top-[9px] h-[6px] w-[3px] rounded-full bg-white/60" style={{ animationDelay: "0.8s" }} />
+        <span className="claw-steam absolute left-[29px] top-[7px] h-[5px] w-[2px] rounded-full bg-white/50" style={{ animationDelay: "1.5s" }} />
+        <svg className="claw-sprite" width="52" height="66" viewBox="0 0 23 29" shapeRendering="crispEdges">
+          <rect x="2" y="4" width="14" height="20" fill="#403a30" />
+          <rect x="3" y="5" width="12" height="7" fill="#16140f" />
+          <rect x="4" y="6" width="4" height="2" fill="#74e6a0" />
+          <rect x="6" y="14" width="6" height="4" fill="#16140f" />
+          <rect x="7" y="18" width="4" height="1" fill="#e3a13a" />
+          <rect x="0" y="24" width="20" height="2" fill="#84591c" />
+          <rect x="1" y="26" width="2" height="3" fill="#84591c" />
+          <rect x="17" y="26" width="2" height="3" fill="#84591c" />
+        </svg>
+      </div>
       {/* plant */}
       <svg className="absolute claw-sprite" style={{ right: "1.5%", top: "74%", transform: "translateY(-100%)" }} width="46" height="64" viewBox="0 0 20 28" shapeRendering="crispEdges">
         <rect x="7" y="2" width="6" height="6" fill="#3ea96a" />
@@ -895,6 +973,237 @@ function Decor() {
         <rect x="5" y="18" width="10" height="8" fill="#b5371e" />
         <rect x="5" y="18" width="10" height="2" fill="#d8654a" />
       </svg>
+      {/* framed pictures on the bare wall */}
+      <svg className="absolute left-[27%] top-[8%] claw-sprite" width="42" height="34" viewBox="0 0 19 15" shapeRendering="crispEdges">
+        <rect x="0" y="0" width="19" height="15" fill="#7a5a2e" />
+        <rect x="1.5" y="1.5" width="16" height="12" fill="#fbfaf2" />
+        <rect x="3" y="3" width="6" height="5" fill="#8fb8e0" />
+        <rect x="11" y="3" width="3" height="3" fill="#e3b23a" />
+        <rect x="3" y="10" width="13" height="2.5" fill="#4fa36a" />
+      </svg>
+      <svg className="absolute left-[72%] top-[7%] claw-sprite" width="40" height="40" viewBox="0 0 18 18" shapeRendering="crispEdges">
+        <rect x="0" y="0" width="18" height="18" fill="#7a5a2e" />
+        <rect x="1.5" y="1.5" width="15" height="15" fill="#fbfaf2" />
+        <rect x="3" y="4" width="12" height="2" fill="#b5503f" />
+        <rect x="3" y="8" width="9" height="2" fill="#c98a3a" />
+        <rect x="3" y="12" width="11" height="2" fill="#6a8fcf" />
+      </svg>
+      {/* wall sconces with a glow that grows after dark */}
+      {["21%", "83%"].map((lx, i) => (
+        <div key={`sconce-${i}`} className="absolute" style={{ left: lx, top: "16%" }}>
+          <div
+            className="pointer-events-none absolute rounded-full"
+            style={{
+              left: "-30px",
+              top: "-26px",
+              width: "78px",
+              height: "78px",
+              background: `radial-gradient(circle,rgba(255,206,120,${glow}) 0%,transparent 70%)`,
+            }}
+          />
+          <svg className="claw-sprite relative" width="20" height="26" viewBox="0 0 9 12" shapeRendering="crispEdges">
+            <rect x="3" y="6" width="3" height="5" fill="#4a3417" />
+            <rect x="1" y="2" width="7" height="5" fill="#ffd874" />
+            <rect x="2" y="1" width="5" height="2" fill="#ffe7a6" />
+          </svg>
+        </div>
+      ))}
+      {/* floor lamp (left-mid) with a warm glow */}
+      <div className="absolute" style={{ left: "2.5%", top: "52%" }}>
+        <div
+          className="pointer-events-none absolute rounded-full"
+          style={{
+            left: "-26px",
+            top: "-30px",
+            width: "96px",
+            height: "96px",
+            background: `radial-gradient(circle,rgba(255,214,130,${glow + 0.12}) 0%,transparent 70%)`,
+          }}
+        />
+        <svg className="claw-sprite relative" width="30" height="78" viewBox="0 0 13 34" shapeRendering="crispEdges">
+          <rect x="2" y="1" width="9" height="2" fill="#4a3417" />
+          <rect x="3" y="2" width="7" height="5" fill="#ffd874" />
+          <rect x="2" y="2" width="9" height="2" fill="#ffe7a6" />
+          <rect x="6" y="7" width="1" height="23" fill="#6a4a23" />
+          <rect x="3" y="30" width="7" height="2" fill="#4a3417" />
+        </svg>
+      </div>
+      {/* small potted plant near the lounge */}
+      <svg className="absolute claw-sprite" style={{ left: "9%", top: "94%", transform: "translateY(-100%)" }} width="40" height="54" viewBox="0 0 18 24" shapeRendering="crispEdges">
+        <rect x="6" y="2" width="5" height="6" fill="#4fbf7c" />
+        <rect x="3" y="6" width="6" height="6" fill="#3ea96a" />
+        <rect x="9" y="7" width="6" height="6" fill="#2f8f58" />
+        <rect x="6" y="13" width="5" height="4" fill="#6a4a23" />
+        <rect x="4" y="17" width="9" height="6" fill="#c98a3a" />
+        <rect x="4" y="17" width="9" height="2" fill="#e0a85a" />
+      </svg>
+      {/* string lights swooping along the top of the wall */}
+      <div
+        className="pointer-events-none absolute inset-x-[3%] top-[1.2%] h-[10px]"
+        style={{ borderTop: "2px solid rgba(74,52,23,0.45)", borderRadius: "0 0 50% 50%/0 0 100% 100%" }}
+      >
+        <div className="flex h-full items-end justify-between px-2">
+          {Array.from({ length: 16 }).map((_, i) => {
+            const c = ["#ffd874", "#8fd6a0", "#f0a3a3", "#9ec3f0"][i % 4];
+            return (
+              <span
+                key={i}
+                className={light !== "day" ? "claw-twinkle" : undefined}
+                style={{
+                  display: "block",
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "9999px",
+                  background: c,
+                  boxShadow: light !== "day" ? `0 0 9px 2.5px ${c}88` : "none",
+                  animationDelay: `${(i % 5) * 0.4}s`,
+                }}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {/* bookshelf against the wall (right side) */}
+      <svg className="absolute claw-sprite" style={{ right: "11%", top: "30.5%", transform: "translateY(-100%)" }} width="84" height="100" viewBox="0 0 36 43" shapeRendering="crispEdges">
+        <rect x="0" y="0" width="36" height="43" fill="#6a4a23" />
+        <rect x="2" y="2" width="32" height="11" fill="#4a3417" />
+        <rect x="2" y="15" width="32" height="11" fill="#4a3417" />
+        <rect x="2" y="28" width="32" height="11" fill="#4a3417" />
+        {/* spines, shelf 1 */}
+        <rect x="4" y="4" width="3" height="9" fill="#b5503f" />
+        <rect x="8" y="5" width="3" height="8" fill="#3e7fa3" />
+        <rect x="12" y="4" width="4" height="9" fill="#e3b23a" />
+        <rect x="17" y="6" width="3" height="7" fill="#4fa36a" />
+        <rect x="21" y="4" width="3" height="9" fill="#8a5fc9" />
+        <rect x="25" y="5" width="4" height="8" fill="#c97a3a" />
+        {/* spines, shelf 2 */}
+        <rect x="4" y="18" width="4" height="8" fill="#4fa36a" />
+        <rect x="9" y="17" width="3" height="9" fill="#e3b23a" />
+        <rect x="13" y="19" width="3" height="7" fill="#b5503f" />
+        <rect x="17" y="17" width="4" height="9" fill="#3e7fa3" />
+        <rect x="22" y="18" width="3" height="8" fill="#c97a3a" />
+        <rect x="26" y="17" width="3" height="9" fill="#8a5fc9" />
+        {/* shelf 3: books + a tiny plant */}
+        <rect x="4" y="31" width="3" height="8" fill="#3e7fa3" />
+        <rect x="8" y="30" width="4" height="9" fill="#b5503f" />
+        <rect x="13" y="32" width="3" height="7" fill="#e3b23a" />
+        <rect x="24" y="33" width="6" height="3" fill="#4fbf7c" />
+        <rect x="25" y="36" width="4" height="3" fill="#c98a3a" />
+      </svg>
     </>
+  );
+}
+
+// ── the office cat ──────────────────────────────────────────────────────
+// Wanders the floor on a slow CSS glide, occasionally curls up for a nap by
+// the floor lamp, and pops hearts when petted. Purely cosmetic — runs on its
+// own timer, independent of the work sim.
+const CAT_NAP = { x: 7, y: 60 }; // beside the floor lamp
+function OfficeCat() {
+  const [pos, setPos] = useState({ x: 70, y: 72 });
+  const [mode, setMode] = useState<"wander" | "sleep">("wander");
+  const [dir, setDir] = useState(1); // 1 → facing right
+  const [hearts, setHearts] = useState<number[]>([]);
+  const heartSeq = useRef(0);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setMode((m) => {
+        if (m === "sleep") {
+          // 30% chance to wake each tick
+          if (Math.random() < 0.3) return "wander";
+          return m;
+        }
+        // 22% chance to head off for a nap
+        if (Math.random() < 0.22) {
+          setPos((p) => {
+            setDir(CAT_NAP.x >= p.x ? 1 : -1);
+            return CAT_NAP;
+          });
+          return "sleep";
+        }
+        const next = { x: 8 + Math.random() * 80, y: 38 + Math.random() * 52 };
+        setPos((p) => {
+          setDir(next.x >= p.x ? 1 : -1);
+          return next;
+        });
+        return m;
+      });
+    }, 5200);
+    return () => clearInterval(id);
+  }, []);
+
+  const pet = () => {
+    const id = ++heartSeq.current;
+    setHearts((hs) => [...hs, id]);
+    setTimeout(() => setHearts((hs) => hs.filter((h) => h !== id)), 1100);
+    if (mode === "sleep") setMode("wander");
+  };
+
+  return (
+    <div
+      className="absolute cursor-pointer"
+      style={{
+        left: `${pos.x}%`,
+        top: `${pos.y}%`,
+        zIndex: Math.round(pos.y),
+        transition: "left 4.6s linear, top 4.6s linear",
+      }}
+      onClick={pet}
+      title="撸猫"
+    >
+      {hearts.map((h) => (
+        <span key={h} className="claw-heart pointer-events-none absolute -top-4 left-1/2 text-[12px]">
+          ❤️
+        </span>
+      ))}
+      {mode === "sleep" && (
+        <span className="claw-zz pointer-events-none absolute -top-3 left-[70%] font-mono text-[10px] font-bold text-ink-2">
+          z
+        </span>
+      )}
+      {mode === "wander" ? (
+        <svg width="40" height="30" viewBox="0 0 20 15" className="claw-sprite" shapeRendering="crispEdges" style={{ transform: `scaleX(${dir})` }}>
+          {/* tail (flicks) */}
+          <g className="claw-cat-tail">
+            <rect x="0" y="5" width="2" height="5" fill="#d98a3a" />
+          </g>
+          {/* body */}
+          <rect x="2" y="7" width="10" height="5" fill="#e8a04a" />
+          <rect x="3" y="8" width="3" height="2" fill="#d98a3a" />
+          <rect x="8" y="8" width="2" height="2" fill="#d98a3a" />
+          {/* legs */}
+          <rect x="3" y="12" width="2" height="2" fill="#d98a3a" />
+          <rect x="9" y="12" width="2" height="2" fill="#d98a3a" />
+          {/* head + ears */}
+          <rect x="11" y="3" width="6" height="6" fill="#e8a04a" />
+          <rect x="11" y="1" width="2" height="2" fill="#e8a04a" />
+          <rect x="15" y="1" width="2" height="2" fill="#e8a04a" />
+          <rect x="12" y="2" width="1" height="1" fill="#f0bfa0" />
+          <rect x="15" y="2" width="1" height="1" fill="#f0bfa0" />
+          {/* eyes + nose */}
+          <rect x="13" y="5" width="1" height="1" fill="#16140f" />
+          <rect x="16" y="5" width="1" height="1" fill="#16140f" />
+          <rect x="14.5" y="7" width="1" height="1" fill="#b5503f" />
+          {/* chest patch */}
+          <rect x="11" y="9" width="2" height="3" fill="#fbf3e4" />
+        </svg>
+      ) : (
+        <svg width="36" height="24" viewBox="0 0 18 12" className="claw-sprite" shapeRendering="crispEdges">
+          {/* curled-up loaf */}
+          <rect x="2" y="4" width="12" height="6" fill="#e8a04a" />
+          <rect x="3" y="3" width="10" height="2" fill="#e8a04a" />
+          <rect x="4" y="5" width="3" height="2" fill="#d98a3a" />
+          <rect x="9" y="6" width="3" height="2" fill="#d98a3a" />
+          {/* tail wrapped around */}
+          <rect x="1" y="8" width="13" height="2" fill="#d98a3a" />
+          {/* ears poking up */}
+          <rect x="11" y="1" width="2" height="2" fill="#e8a04a" />
+          <rect x="14" y="2" width="2" height="2" fill="#e8a04a" />
+          {/* closed eyes */}
+          <rect x="11" y="5" width="2" height="1" fill="#16140f" />
+        </svg>
+      )}
+    </div>
   );
 }
