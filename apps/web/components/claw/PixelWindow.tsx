@@ -73,9 +73,13 @@ export function PixelWindow({
       dragHandleClassName="pw-drag"
       disableDragging={maxed}
       enableResizing={!maxed}
-      style={{ zIndex: z }}
+      // react-rnd hardcodes inline `display: inline-block` on its root, which
+      // beats the `flex` class and silently collapses the whole height chain
+      // (flex-1 → h-full → overflow-y-auto) — long window content was clipped
+      // unscrollably. User style spreads LAST in rnd's merge, so flex here wins.
+      style={{ zIndex: z, display: "flex", flexDirection: "column" }}
       onMouseDown={onFocus}
-      className="flex flex-col overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
+      className="overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
     >
       {/* title bar — drag handle (pw-drag) */}
       <div
