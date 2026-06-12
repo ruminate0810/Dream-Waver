@@ -99,6 +99,10 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         if (ev.kind === "claw.plan") {
           setMeetingKind("kickoff");
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+        } else if (ev.kind === "claw.debate") {
+          // consensus reached — keep the kickoff meeting going a beat longer
+          setMeetingKind("kickoff");
+          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
         } else if (ev.data?.agent === "critic" && (ev.kind === "tool.start" || ev.kind === "tool.end")) {
           // critic is reviewing/rewriting → convene (and keep extending) the 评审会
           setMeetingKind("review");

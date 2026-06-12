@@ -45,6 +45,7 @@ type Bubble =
       streaming?: boolean;
     }
   | { kind: "say"; worker: string; text: string; id: string }
+  | { kind: "debate"; agreed: string; id: string }
   | { kind: "error"; text: string; id: string };
 
 export function ClawChat({
@@ -101,6 +102,29 @@ export function ClawChat({
             durationMs: ev.data.duration_ms,
           }),
         );
+      } else if (k === "claw.debate") {
+        // 协商: render each proposal as a worker line + the consensus card.
+        const raw = ev.data.claw_debate_json;
+        if (raw) {
+          try {
+            const d = JSON.parse(raw) as {
+              proposals?: { role: string; text: string }[];
+              agreed?: string;
+            };
+            const add: Bubble[] = (d.proposals ?? []).map((p) => ({
+              kind: "say" as const,
+              worker: p.role,
+              text: p.text,
+              id: cryptoRandomId(),
+            }));
+            if (d.agreed?.trim()) {
+              add.push({ kind: "debate", agreed: d.agreed.trim(), id: cryptoRandomId() });
+            }
+            if (add.length) setBubbles((prev) => [...prev, ...add]);
+          } catch {
+            /* malformed payload — ignore */
+          }
+        }
       } else if (k === "agent.finish") {
         setBubbles((prev) => finalizeLatestAssistant(prev));
         inFlightRef.current = false;
@@ -289,6 +313,14 @@ export function ClawChat({
 }
 
 function BubbleRow({ bubble }: { bubble: Bubble }) {
+  if (bubble.kind === "debate") {
+    return (
+      <div className="rounded-pixel border-2 border-accent/45 bg-accent-soft/55 px-3 py-2.5">
+        <p className="mb-1 font-mono text-[10px] font-bold tracking-wide text-accent">⚖ 开工例会 · 一致方案</p>
+        <p className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-ink">{bubble.agreed}</p>
+      </div>
+    );
+  }
   if (bubble.kind === "say") {
     return (
       <div className="flex items-start gap-2.5">

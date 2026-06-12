@@ -45,6 +45,15 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	titles, roles := sess.SetPlanTasks(tasks)
 	r.emit(ctx, event.NewClawPlan(titles, roles))
 
+	// ── Phase 1.5 — kickoff debate (真·多 agent 协商) ────────────────────
+	// The assigned execution roles each propose an angle; the coordinator
+	// reconciles them into an agreed approach that threads into the writer +
+	// critic. Best-effort: any failure leaves no consensus and proceeds. Skips
+	// on follow-ups (the report already exists) and when <2 voices participate.
+	if !isFollowup {
+		r.runDebate(ctx, sess, goal)
+	}
+
 	// ── Phase 2 — concurrent execution (researcher / engineer / designer) ─
 	findings := r.runExecutionPhase(ctx, sess, goal)
 
@@ -262,6 +271,152 @@ func fallbackPlan(goal string, avail map[string]bool) []Task {
 	return out
 }
 
+// ── Phase 1.5: kickoff debate (真·多 agent 协商) ──────────────────────────
+
+// debateTimeout bounds the whole协商 round so it can never hang a run.
+const debateTimeout = 100 * time.Second
+
+type debateProposal struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+// runDebate stages a real multi-agent discussion before execution: each
+// assigned execution role proposes, in one short LLM turn, the angle it would
+// push for this goal; the coordinator then reconciles the proposals into an
+// "agreed approach" stored on the session (threaded into writer + critic). A
+// single claw.debate event carries the proposals + consensus for the office to
+// stage the kickoff meeting as a genuine debate. Entirely best-effort.
+func (r *Runner) runDebate(ctx context.Context, sess *Session, goal string) {
+	roles := r.debateParticipants(sess)
+	if len(roles) < 2 {
+		return // a debate needs at least two voices
+	}
+	dctx, cancel := context.WithTimeout(ctx, debateTimeout)
+	defer cancel()
+
+	// 1) proposals — concurrent, one cheap worker-tier turn each.
+	var (
+		wg    sync.WaitGroup
+		mu    sync.Mutex
+		props []debateProposal
+		sem   = make(chan struct{}, execConcurrency)
+	)
+	for _, role := range roles {
+		roleDef, ok := RoleByKey(role)
+		if !ok {
+			continue
+		}
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(rd Role) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if text := r.proposeAngle(dctx, rd, goal); text != "" {
+				mu.Lock()
+				props = append(props, debateProposal{Role: rd.Key, Text: text})
+				mu.Unlock()
+			}
+		}(roleDef)
+	}
+	wg.Wait()
+	if len(props) < 2 {
+		return // not enough landed to be a discussion
+	}
+	// Keep proposals in a stable role order for a readable transcript.
+	props = orderProposals(props)
+
+	// 2) coordinator reconciles the proposals into an agreed approach.
+	agreed := r.reconcileDebate(dctx, goal, props)
+	if agreed != "" {
+		sess.SetDebate(agreed)
+	}
+
+	// 3) one event carries the whole transcript + consensus to the office.
+	payload, err := json.Marshal(struct {
+		Proposals []debateProposal `json:"proposals"`
+		Agreed    string           `json:"agreed"`
+	}{Proposals: props, Agreed: agreed})
+	if err == nil {
+		r.emit(ctx, event.NewClawDebate(string(payload)))
+	}
+}
+
+// debateParticipants are the enabled execution roles that the plan actually
+// assigned work to — the people who'd really be in the kickoff meeting.
+func (r *Runner) debateParticipants(sess *Session) []string {
+	var out []string
+	for _, role := range executionRoles() {
+		if r.roleEnabled(role) && len(sess.TaskIndicesForRole(role)) > 0 {
+			out = append(out, role)
+		}
+	}
+	return out
+}
+
+// orderProposals returns the proposals in a stable role order (researcher →
+// engineer → designer) so the transcript reads the same every run.
+func orderProposals(props []debateProposal) []debateProposal {
+	byRole := map[string]debateProposal{}
+	for _, p := range props {
+		byRole[p.Role] = p
+	}
+	var out []debateProposal
+	for _, role := range executionRoles() {
+		if p, ok := byRole[role]; ok {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// proposeAngle asks one role, in its own voice, for the 1–2 points it would
+// push for the goal. One worker-tier turn, no tools, tightly capped.
+func (r *Runner) proposeAngle(ctx context.Context, role Role, goal string) string {
+	sys := fmt.Sprintf("你是%s。团队刚在开工例会上接到一个任务。\n"+
+		"用你的专业视角,提出这个任务最该抓住的 1–2 个要点或角度——直接说观点,中文,≤60 字,不要客套、不要罗列工具。",
+		role.DisplayName)
+	resp, err := r.Router.For("worker").AskTool(ctx, llm.AskToolRequest{
+		Model:        r.Router.ModelFor("worker"),
+		SystemPrompt: sys,
+		Messages:     []schema.Message{schema.NewUser("任务目标:" + goal)},
+		MaxTokens:    220,
+		Temperature:  0.6,
+	})
+	if err != nil {
+		return ""
+	}
+	return truncateClaw(strings.TrimSpace(collapseLines(resp.Content)), 110)
+}
+
+// reconcileDebate has the coordinator fold the proposals into a short agreed
+// approach (the report's 3–5 must-cover points). Planner tier; capped.
+func (r *Runner) reconcileDebate(ctx context.Context, goal string, props []debateProposal) string {
+	var b strings.Builder
+	b.WriteString("你是调度员(工头)。下面是团队成员在开工例会上的提案。\n")
+	for _, p := range props {
+		rd, _ := RoleByKey(p.Role)
+		fmt.Fprintf(&b, "【%s】%s\n", rd.DisplayName, p.Text)
+	}
+	b.WriteString("\n把它们综合成一个简短的「一致方案」:最终报告应覆盖的 3–5 个要点(每点一句,中文),供撰稿员据此写作。只列要点,≤180 字。")
+	resp, err := r.Router.For("planner").AskTool(ctx, llm.AskToolRequest{
+		Model:        r.Router.ModelFor("planner"),
+		SystemPrompt: b.String(),
+		Messages:     []schema.Message{schema.NewUser("任务目标:" + goal)},
+		MaxTokens:    500,
+		Temperature:  0.3,
+	})
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(resp.Content)
+}
+
+// collapseLines flattens a multi-line proposal into one tidy line.
+func collapseLines(s string) string {
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' }), " ")
+}
+
 // ── Phase 2: concurrent execution ────────────────────────────────────────
 
 // runExecutionPhase runs the researcher/engineer/designer sub-agents that the
@@ -379,6 +534,9 @@ func (r *Runner) buildCriticMsg(goal string, sess *Session, report string, findi
 	if brief := strings.TrimSpace(sess.Brief()); brief != "" {
 		fmt.Fprintf(&b, "用户额外要求(受众/深度/篇幅/格式):%s\n", brief)
 	}
+	if agreed := strings.TrimSpace(sess.Debate()); agreed != "" {
+		fmt.Fprintf(&b, "开工例会的一致方案(核对报告是否覆盖):\n%s\n", agreed)
+	}
 	fmt.Fprintf(&b, "\n撰稿员交来的报告草稿(待评审):\n%s\n", report)
 
 	var mats strings.Builder
@@ -445,6 +603,9 @@ func (r *Runner) buildWriterMsg(goal string, sess *Session, findings map[string]
 	fmt.Fprintf(&b, "总目标:%s\n", goal)
 	if brief := strings.TrimSpace(sess.Brief()); brief != "" {
 		fmt.Fprintf(&b, "用户额外要求(受众/深度/篇幅/格式,务必遵守):%s\n", brief)
+	}
+	if agreed := strings.TrimSpace(sess.Debate()); agreed != "" {
+		fmt.Fprintf(&b, "开工例会的一致方案(报告须覆盖这些要点):\n%s\n", agreed)
 	}
 	b.WriteString("\n团队交来的材料:\n")
 	for _, role := range []string{RoleResearcher, RoleEngineer, RoleDesigner} {

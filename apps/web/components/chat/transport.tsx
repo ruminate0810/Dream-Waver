@@ -62,7 +62,9 @@ export type EventKind =
   // version notification and the frontend GETs the markdown.
   | "claw.plan"
   | "claw.task.update"
-  | "claw.artifact.updated";
+  | "claw.artifact.updated"
+  // v6.4 — kickoff debate (协商): proposals + reconciled consensus
+  | "claw.debate";
 
 export type Tokens = {
   input: number;
@@ -136,6 +138,9 @@ export type EventData = {
   artifact_version?: number;
   artifact_bytes?: number;
   artifact_kind?: string; // v2: "report" | "figure" | "deck"
+
+  // v6.4 — claw.debate payload: JSON {proposals:[{role,text}],agreed}.
+  claw_debate_json?: string;
 };
 
 // ─── Sprint O.5 — games plan typed envelope ──────────────────────────

@@ -84,6 +84,7 @@ type Session struct {
 	figures         []Figure // generated images (work-package figures)
 	deck            *Deck    // generated slide deck (work-package, optional)
 	brief           string   // clarification answers (受众/深度/篇幅/格式), fed to writer + critic
+	debate          string   // kickoff-debate agreed approach (协商共识), fed to writer + critic
 
 	// Adaptive clarification gate (pause-before-planning). When the triage
 	// step decides the goal is ambiguous, the run pauses here with the
@@ -217,6 +218,24 @@ func (s *Session) Brief() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.brief
+}
+
+// SetDebate records the agreed approach reconciled from the kickoff debate,
+// so the writer and critic build on the team's协商共识. No-op for empty.
+func (s *Session) SetDebate(agreed string) {
+	if strings.TrimSpace(agreed) == "" {
+		return
+	}
+	s.mu.Lock()
+	s.debate = agreed
+	s.mu.Unlock()
+}
+
+// Debate returns the kickoff-debate agreed approach (empty if none).
+func (s *Session) Debate() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.debate
 }
 
 // SetClarifyPending records that the run is paused awaiting answers to the

@@ -100,6 +100,11 @@ const (
 	// (reuses the ClarificationQuestions payload). The run is then in status
 	// awaiting_input until the answers arrive.
 	KindClawClarify Kind = "claw.clarify"
+	// KindClawDebate carries the kickoff协商: each participating role's
+	// proposal plus the coordinator's reconciled "agreed approach". Payload
+	// is a JSON string (ClawDebateJSON) — same skill-decoupling trick as the
+	// games/wizard payloads.
+	KindClawDebate Kind = "claw.debate"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -192,6 +197,11 @@ type EventData struct {
 	ArtifactVersion int      `json:"artifact_version,omitempty"`
 	ArtifactBytes   int      `json:"artifact_bytes,omitempty"`
 	ArtifactKind    string   `json:"artifact_kind,omitempty"` // v2: "report" | "figure" | "deck"
+
+	// ClawDebateJSON carries the kickoff协商 payload (KindClawDebate): a
+	// JSON-marshalled {proposals:[{role,text}],agreed}. String-marshalled to
+	// keep the event package free of skill imports (same as GamePlanJSON).
+	ClawDebateJSON string `json:"claw_debate_json,omitempty"`
 }
 
 // Tokens summarizes LLM usage attached to a llm.thought event.
@@ -442,6 +452,13 @@ func NewClawClarify(questions []string) Event {
 	return Event{Kind: KindClawClarify, Data: EventData{
 		ClarificationQuestions: questions,
 	}}
+}
+
+// NewClawDebate announces the kickoff协商: participant proposals + the
+// reconciled agreed approach. payloadJSON is a marshalled
+// {proposals:[{role,text}],agreed} object (built by the skill layer).
+func NewClawDebate(payloadJSON string) Event {
+	return Event{Kind: KindClawDebate, Data: EventData{ClawDebateJSON: payloadJSON}}
 }
 
 // NewClawArtifactUpdated notifies that a new artifact version exists.
