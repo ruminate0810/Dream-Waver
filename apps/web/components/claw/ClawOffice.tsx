@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Rnd } from "react-rnd";
 import { FileText, Image as ImageIcon, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
 import clsx from "clsx";
 
@@ -51,13 +52,6 @@ function flightSources(key: string, status: (k: string) => string): string[] {
   }
   return [];
 }
-
-type DockAnchor = "bc" | "br" | "tr";
-const DOCK_ANCHORS: Record<DockAnchor, string> = {
-  bc: "bottom-2 left-1/2 -translate-x-1/2",
-  br: "bottom-2 right-3",
-  tr: "top-9 right-3",
-};
 
 export function ClawOffice({ run }: { run: ClawRun }) {
   const stream = useAgentEventStream();
@@ -141,34 +135,50 @@ export function ClawOffice({ run }: { run: ClawRun }) {
     setWinOpen(true);
   };
 
-  // draggable dock with persisted anchor
-  const [dockAnchor, setDockAnchor] = useState<DockAnchor>("bc");
-  useEffect(() => {
-    const saved = localStorage.getItem(OFFICE_CONFIG.storage.dock) as DockAnchor | null;
-    if (saved && DOCK_ANCHORS[saved]) setDockAnchor(saved);
-  }, []);
+  // draggable dock — free placement via react-rnd, position persisted as
+  // scene fractions so it survives resize. Drag by the grip handle only.
   const sceneRef = useRef<HTMLDivElement>(null);
-  const onDockDrag = (e: React.PointerEvent) => {
+  const dockRnd = useRef<Rnd>(null);
+  const [dockPos, setDockPos] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    const move = (ev: PointerEvent) => ev.preventDefault();
-    const up = (ev: PointerEvent) => {
-      const r = scene.getBoundingClientRect();
-      const px = (ev.clientX - r.left) / r.width;
-      const py = (ev.clientY - r.top) / r.height;
-      const next: DockAnchor = py < 0.4 ? "tr" : px > 0.66 ? "br" : "bc";
-      setDockAnchor(next);
+    const id = requestAnimationFrame(() => {
+      const el = dockRnd.current?.getSelfElement();
+      const dw = el?.offsetWidth ?? 380;
+      const dh = el?.offsetHeight ?? 46;
+      let fx = 0.5;
+      let fy = 0.97; // bottom-center default
       try {
-        localStorage.setItem(OFFICE_CONFIG.storage.dock, next);
+        const s = JSON.parse(localStorage.getItem(OFFICE_CONFIG.storage.dock) || "null");
+        if (s && typeof s.fx === "number") {
+          fx = s.fx;
+          fy = s.fy;
+        }
       } catch {
-        /* no persistence */
+        /* legacy/absent value → default */
       }
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    e.preventDefault();
+      setDockPos({
+        x: Math.round((scene.clientWidth - dw) * fx),
+        y: Math.round((scene.clientHeight - dh) * fy),
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, []);
+  const persistDock = (x: number, y: number) => {
+    const scene = sceneRef.current;
+    const el = dockRnd.current?.getSelfElement();
+    if (!scene || !el) return;
+    const spanW = scene.clientWidth - el.offsetWidth;
+    const spanH = scene.clientHeight - el.offsetHeight;
+    try {
+      localStorage.setItem(
+        OFFICE_CONFIG.storage.dock,
+        JSON.stringify({ fx: spanW > 0 ? x / spanW : 0.5, fy: spanH > 0 ? y / spanH : 0.97 }),
+      );
+    } catch {
+      /* no persistence */
+    }
   };
 
   // per-agent todos from the role-tagged plan
@@ -442,11 +452,23 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         </div>
       )}
 
-      {/* ── dock (draggable, snaps to anchors) ──────────────────────── */}
-      <div className={clsx("absolute z-40 flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-surface/95 px-1.5 py-1.5 shadow-pixel-sm", DOCK_ANCHORS[dockAnchor])}>
+      {/* ── dock (free-drag via react-rnd, position persisted) ──────── */}
+      <Rnd
+        ref={dockRnd}
+        bounds="parent"
+        enableResizing={false}
+        dragHandleClassName="dock-drag"
+        size={{ width: "auto", height: "auto" }}
+        position={dockPos ?? { x: 0, y: 0 }}
+        onDragStop={(_e, d) => {
+          setDockPos({ x: d.x, y: d.y });
+          persistDock(d.x, d.y);
+        }}
+        style={{ zIndex: 40, opacity: dockPos ? 1 : 0 }}
+        className="flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-surface/95 px-1.5 py-1.5 shadow-pixel-sm"
+      >
         <span
-          onPointerDown={onDockDrag}
-          className="grid h-6 w-4 cursor-grab touch-none place-items-center text-line-2 hover:text-ink-2 active:cursor-grabbing"
+          className="dock-drag grid h-6 w-4 cursor-grab touch-none place-items-center text-line-2 hover:text-ink-2 active:cursor-grabbing"
           aria-label="拖动 dock"
         >
           <GripVertical size={12} strokeWidth={2} />
@@ -483,7 +505,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           active={bindOpen}
           onClick={() => setBindOpen((o) => !o)}
         />
-      </div>
+      </Rnd>
 
       {/* ── 真·动态改绑 window ───────────────────────────────────────── */}
       {bindOpen && (
