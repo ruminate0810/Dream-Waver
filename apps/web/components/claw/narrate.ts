@@ -126,6 +126,12 @@ export function nextSteps(run: ClawRun): NextStep[] {
   if ((run.figures?.length ?? 0) === 0) {
     out.push({ label: "加配图", text: "给报告配 1–2 张说明性示意图。" });
   }
+  // 修图 (edit_image): only once there's a figure to work on. op is natural-
+  // language — "把第 2 张图抠图"/"扩成 16:9" work too.
+  if ((run.figures?.length ?? 0) > 0) {
+    out.push({ label: "高清化配图", text: "让设计师把最新那张配图高清化(enhance),让细节更清晰。" });
+    out.push({ label: "抠图去背景", text: "让设计师把最新那张配图抠图(remove_bg),留下透明背景的主体。" });
+  }
   // i2v: only once there's a figure to animate, and no clip yet. Resolution /
   // duration are natural-language — "做成 1080p 10 秒" works too.
   if ((run.figures?.length ?? 0) > 0 && (run.videos?.length ?? 0) === 0) {
