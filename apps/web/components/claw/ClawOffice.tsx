@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { FileText, Image as ImageIcon, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight } from "lucide-react";
+import { FileText, Image as ImageIcon, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
 import clsx from "clsx";
 
-import type { ClawRun } from "@/lib/api";
+import { getClawRoles, type ClawRun, type ClawRolesConfig } from "@/lib/api";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
@@ -14,6 +14,7 @@ import { ArtifactBody, type WorkTab } from "./ArtifactPanel";
 import { useWorkerStates, type WorkerView } from "./useWorkerStates";
 import { useOfficeSim, OFFICE_CONFIG, STATIONS, MEETING_TABLE, type SimView } from "./officeSim";
 import { useWardrobe, OUTFITS } from "./outfits";
+import { BindingsPanel } from "./BindingsPanel";
 
 // ClawOffice is the full-page Sims-style office. A central tick engine
 // (officeSim) moves every worker along corridor paths, books slots so nobody
@@ -61,11 +62,24 @@ const DOCK_ANCHORS: Record<DockAnchor, string> = {
 export function ClawOffice({ run }: { run: ClawRun }) {
   const stream = useAgentEventStream();
   const { views, lastActivity } = useWorkerStates(run.plan ?? []);
-  const { defs, outfitOf, setOutfit } = useWardrobe();
+  const { defs: wardrobeDefs, outfitOf, setOutfit } = useWardrobe();
   const [focus, setFocus] = useState<string | null>(null);
   const [winOpen, setWinOpen] = useState(false);
+  const [bindOpen, setBindOpen] = useState(false);
   const [tab, setTab] = useState<WorkTab>("report");
   const autoOpened = useRef(false);
+
+  // 真·动态改绑 — live bindings from the backend, merged over the registry so
+  // the popover/plates reflect reality; the BindingsPanel edits them.
+  const [rolesCfg, setRolesCfg] = useState<ClawRolesConfig | null>(null);
+  useEffect(() => {
+    getClawRoles().then(setRolesCfg).catch(() => {});
+  }, []);
+  const defs = wardrobeDefs.map((d) => {
+    const r = rolesCfg?.roles.find((x) => x.key === d.key);
+    return r ? { ...d, tools: r.tools } : d;
+  });
+  const disabledSet = new Set(rolesCfg?.roles.filter((r) => !r.enabled).map((r) => r.key) ?? []);
 
   // 下班 party
   const [offDuty, setOffDuty] = useState(false);
@@ -263,11 +277,13 @@ export function ClawOffice({ run }: { run: ClawRun }) {
                     v?.status === "working" ? "text-accent" : v?.status === "done" ? "text-grass" : "text-muted",
                   )}
                 >
-                  {v?.status === "working"
-                    ? v.detail || "工作中"
-                    : v?.status === "done"
-                      ? `✓ ×${v.calls} · ${fmtDuration(v.totalMs)}`
-                      : ""}
+                  {disabledSet.has(def.key)
+                    ? "已停用"
+                    : v?.status === "working"
+                      ? v.detail || "工作中"
+                      : v?.status === "done"
+                        ? `✓ ×${v.calls} · ${fmtDuration(v.totalMs)}`
+                        : ""}
                 </div>
               </div>
             </div>
@@ -461,7 +477,26 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           active={meeting}
           onClick={() => setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs)}
         />
+        <DockButton
+          icon={<Plug size={13} strokeWidth={2} />}
+          label="绑定"
+          active={bindOpen}
+          onClick={() => setBindOpen((o) => !o)}
+        />
       </div>
+
+      {/* ── 真·动态改绑 window ───────────────────────────────────────── */}
+      {bindOpen && (
+        <PixelWindow
+          title="团队绑定 · roles ⇄ tools"
+          z={110}
+          onClose={() => setBindOpen(false)}
+          onFocus={() => {}}
+          initial={{ left: 0.18, top: 0.1, width: 0.64, height: 0.78 }}
+        >
+          <BindingsPanel onApplied={setRolesCfg} />
+        </PixelWindow>
+      )}
 
       {/* ── the work-package window ────────────────────────────────── */}
       {winOpen && (

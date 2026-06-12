@@ -315,6 +315,40 @@ func (h *handlers) GetClawDeck(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, f)
 }
 
+// GetClawRoles returns the live role↔tool bindings + enablement (真·动态改绑)
+// so the office can render and edit the team configuration.
+func (h *handlers) GetClawRoles(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Claw == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "claw not configured")
+		return
+	}
+	writeJSON(w, http.StatusOK, h.deps.Claw.ConfigSnapshot())
+}
+
+// PutClawRoles applies a new binding configuration: re-assign the rebindable
+// execution tools between exec roles and/or toggle optional roles. Validated
+// + persisted; takes effect on the NEXT run (sub-agents read the effective
+// bindings when assembled).
+func (h *handlers) PutClawRoles(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Claw == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "claw not configured")
+		return
+	}
+	var req struct {
+		Assign  map[string]string `json:"assign"`
+		Enabled map[string]bool   `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if err := h.deps.Claw.SetConfig(req.Assign, req.Enabled); err != nil {
+		errorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, h.deps.Claw.ConfigSnapshot())
+}
+
 // PostClawMessage is the follow-up endpoint. The user's instruction
 // re-drives the agent loop (Continue) with the prior plan + report + history
 // restored. 202 immediately; the frontend polls GET /claw/{id} + listens on

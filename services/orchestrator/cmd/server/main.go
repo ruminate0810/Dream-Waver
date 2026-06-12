@@ -227,6 +227,9 @@ func main() {
 		// pipeline. nil greys out the producer worker.
 		Pipeline: pipeline,
 	}
+	// 真·动态改绑 — load persisted role↔tool bindings (file-based so it works
+	// without a database; PUT /claw/roles re-saves it).
+	clawRunner.LoadConfig(filepath.Join(cfg.OutDir, "claw-roles.json"))
 
 	// ─── Video — Opendream click-to-regen cinematic short pipeline ───
 	// The Go side is just a bridge: it forwards story_spec.json runs to

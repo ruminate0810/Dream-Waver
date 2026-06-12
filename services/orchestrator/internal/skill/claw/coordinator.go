@@ -146,22 +146,33 @@ func (r *Runner) planWithRoles(ctx context.Context, sess *Session, goal string, 
 
 func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, avail map[string]bool, isFollowup bool) ([]Task, error) {
 	var b strings.Builder
-	b.WriteString("你是调度员(工头)。把用户的目标拆成 3–7 个有序子任务,每个子任务指派给一个角色。\n可用角色:\n")
-	if avail[RoleResearcher] {
-		b.WriteString("- researcher:联网检索事实、最新数据、来源链接\n")
+	b.WriteString("你是调度员(工头)。把用户的目标拆成 3–7 个有序子任务,每个子任务指派给一个角色。\n可用角色(按其当前持有的工具派活):\n")
+	toolZh := map[string]string{
+		"web_search":     "联网检索事实与来源",
+		"code_execute":   "运行代码做计算/解析/核对",
+		"generate_image": "生成配图",
 	}
-	if avail[RoleEngineer] {
-		b.WriteString("- engineer:用代码做计算、解析数据、核对数字\n")
-	}
-	if avail[RoleDesigner] {
-		b.WriteString("- designer:为报告生成配图\n")
+	for _, key := range RebindTargets {
+		if !avail[key] {
+			continue
+		}
+		var caps []string
+		for _, t := range r.EffectiveTools(key) {
+			if zh, ok := toolZh[t]; ok {
+				caps = append(caps, zh)
+			}
+		}
+		if len(caps) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "- %s:%s\n", key, strings.Join(caps, ";"))
 	}
 	b.WriteString("- writer:撰写最终 Markdown 报告\n")
 	if avail[RoleProducer] {
 		b.WriteString("- producer:把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck 时才用)\n")
 	}
 	b.WriteString("\n规则:\n- 必须有且仅有一个 writer 子任务(撰写最终报告)。\n")
-	b.WriteString("- 研究/找数据 → researcher;计算/核对数字 → engineer;需要配图 → designer。\n")
+	b.WriteString("- 子任务要派给「持有相应能力工具」的角色(见上),不要派给没有该工具的角色。\n")
 	if avail[RoleProducer] {
 		b.WriteString("- 用户要幻灯片/PPT/deck 时,在 writer 之后加一个 producer 子任务;否则不要加。\n")
 	}

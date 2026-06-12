@@ -623,6 +623,42 @@ export async function getClawRun(id: string): Promise<ClawRun> {
 
 /** Follow-up: re-drive the agent loop. Status flips back to "running"
  *  until a new report version is ready. */
+// ── 真·动态改绑 — live role↔tool bindings ─────────────────────────────────
+
+export type ClawRoleView = {
+  key: string;
+  name: string;
+  tier: string;
+  tools: string[];
+  enabled: boolean;
+  locked: boolean; // cannot be disabled (coordinator / writer)
+  wired: boolean; // at least one tool's capability is configured
+};
+
+export type ClawRolesConfig = {
+  roles: ClawRoleView[];
+  assign: Record<string, string>; // tool → role key
+  pool: string[]; // rebindable tools
+  tool_wired: Record<string, boolean>;
+};
+
+export async function getClawRoles(): Promise<ClawRolesConfig> {
+  const res = await fetch("/api/v1/claw/roles");
+  return unwrap<ClawRolesConfig>(res);
+}
+
+export async function putClawRoles(
+  assign: Record<string, string>,
+  enabled: Record<string, boolean>,
+): Promise<ClawRolesConfig> {
+  const res = await fetch("/api/v1/claw/roles", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assign, enabled }),
+  });
+  return unwrap<ClawRolesConfig>(res);
+}
+
 export async function postClawMessage(jobId: string, content: string): Promise<void> {
   const res = await fetch(`/api/v1/claw/${jobId}/messages`, {
     method: "POST",

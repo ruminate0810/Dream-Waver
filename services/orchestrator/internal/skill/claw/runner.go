@@ -26,6 +26,9 @@ type Runner struct {
 	Images        image.Searcher    // optional; the designer's image source
 	ImagesEnabled bool              // true when a real (non-Noop) image provider is wired
 	Pipeline      *slides.Pipeline  // optional; the producer's deck generator
+
+	// 真·动态改绑 — runtime role↔tool bindings + role enablement (config.go).
+	runnerConfigState
 }
 
 // Run is the cold-start path: fresh session, coordinate the team from the

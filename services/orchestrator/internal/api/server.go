@@ -199,6 +199,9 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/claw/{id}/messages", h.PostClawMessage)
 		r.Get("/claw/{id}/artifact", h.GetClawArtifact)
 		r.Get("/claw/{id}/deck", h.GetClawDeck)
+		// 真·动态改绑 — live role↔tool bindings (read + edit).
+		r.Get("/claw/roles", h.GetClawRoles)
+		r.Put("/claw/roles", h.PutClawRoles)
 
 		r.Get("/sessions/{id}/events", h.SessionEvents)
 		// Sprint AA.2 — replay log (JSON, not WS). FE hydrates on cold
