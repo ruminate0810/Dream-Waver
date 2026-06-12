@@ -134,6 +134,8 @@ export function useOfficeSim(inputs: {
   views: Record<string, WorkerView>;
   offDuty: boolean;
   meetingUntil: number;
+  /** who sits at the head slot + leads the talk; defaults to the coordinator. */
+  meetingChair?: string;
 }): Record<string, SimView> {
   const inputRef = useRef(inputs);
   inputRef.current = inputs;
@@ -192,11 +194,11 @@ export function useOfficeSim(inputs: {
       }
       return STATIONS[arg] ?? LOUNGE_SLOTS[0];
     };
-    const candidatesFor = (key: string, site: string): { id: string; p: P }[] => {
+    const candidatesFor = (key: string, site: string, chair: string): { id: string; p: P }[] => {
       if (site === "desk") return [{ id: `desk:${key}`, p: STATIONS[key] }];
       if (site === "meet") {
         const ids =
-          key === WORKERS[0].key
+          key === chair
             ? [0]
             : MEET_SLOTS.map((_, i) => i).filter((i) => i !== 0);
         return ids.map((i) => ({ id: `meet:${i}`, p: MEET_SLOTS[i] }));
@@ -231,6 +233,7 @@ export function useOfficeSim(inputs: {
       const now = Date.now();
       const { views, offDuty, meetingUntil } = inputRef.current;
       const meeting = meetingUntil > now;
+      const chair = inputRef.current.meetingChair || WORKERS[0].key;
       const out: Record<string, SimView> = {};
       const c = OFFICE_CONFIG;
 
@@ -270,7 +273,7 @@ export function useOfficeSim(inputs: {
         // 2) (re)book slot when the site changes
         if (a.site !== want || !a.slotId) {
           release(w.key);
-          const got = book(w.key, candidatesFor(w.key, want));
+          const got = book(w.key, candidatesFor(w.key, want, chair));
           if (got) {
             a.slotId = got.id;
             a.site = want;
@@ -305,7 +308,7 @@ export function useOfficeSim(inputs: {
           if (meeting && a.site === "meet") {
             // everyone faces the table centre
             a.facing = MEETING_TABLE.x + MEETING_TABLE.w / 2 >= a.x ? 1 : -1;
-            gesture = w.key === WORKERS[0].key ? beat(MEET_LEAD, 1700) : beat(MEET_ATTEND);
+            gesture = w.key === chair ? beat(MEET_LEAD, 1700) : beat(MEET_ATTEND);
           } else if (a.site.startsWith("visit:")) {
             const host = agents[a.site.split(":")[1]];
             if (host) a.facing = host.x >= a.x ? 1 : -1;

@@ -86,19 +86,32 @@ export function ClawOffice({ run }: { run: ClawRun }) {
     setOffDuty(false);
   }, [run.status]);
 
-  // 会议室: kickoff meeting when the plan lands; dock button re-convenes.
+  // 会议室: two real meetings tied to the pipeline —
+  //   • kickoff (claw.plan): coordinator chairs, team aligns on the split
+  //   • 评审会 (critic activity): the autonomous critic-revise round is staged
+  //     live — the 评审员 takes the head seat and leads while the writer revises.
+  // The dock button re-convenes a coordinator-chaired standup.
   const [meetingUntil, setMeetingUntil] = useState(0);
+  const [meetingKind, setMeetingKind] = useState<"kickoff" | "review">("kickoff");
   useEffect(
     () =>
       stream.subscribe((ev: AgentEvent) => {
-        if (ev.kind === "claw.plan") setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+        if (ev.kind === "claw.plan") {
+          setMeetingKind("kickoff");
+          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+        } else if (ev.data?.agent === "critic" && (ev.kind === "tool.start" || ev.kind === "tool.end")) {
+          // critic is reviewing/rewriting → convene (and keep extending) the 评审会
+          setMeetingKind("review");
+          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+        }
       }),
     [stream],
   );
   const meeting = meetingUntil > Date.now();
+  const meetingChair = meetingKind === "review" ? "critic" : WORKERS[0].key;
 
   // the sim drives every body in the room
-  const sim = useOfficeSim({ views, offDuty, meetingUntil });
+  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair });
 
   // handoff flights on real start transitions
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -233,7 +246,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           </svg>
           {meeting && (
             <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[4px] border border-ink/40 bg-accent px-1.5 py-[1px] font-mono text-[9.5px] font-bold text-white">
-              例会中 · 对齐分工
+              {meetingKind === "review" ? "评审会 · 复盘改稿" : "例会中 · 对齐分工"}
             </span>
           )}
         </div>
@@ -328,7 +341,13 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         </div>
         {(offDuty || meeting || lastActivity) && (
           <div className="absolute bottom-2 left-3 z-40 max-w-[48%] truncate rounded-[4px] border border-ink/25 bg-surface/90 px-2 py-[3px] font-mono text-[10px] text-ink-2">
-            {meeting ? "▶ 开工例会 — 调度员对齐分工中" : offDuty ? "✓ 收工!全员下班 — 作品包在 dock" : lastActivity}
+            {meeting
+              ? meetingKind === "review"
+                ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
+                : "▶ 开工例会 — 调度员对齐分工中"
+              : offDuty
+                ? "✓ 收工!全员下班 — 作品包在 dock"
+                : lastActivity}
           </div>
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
@@ -520,7 +539,10 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           icon={<Users size={13} strokeWidth={2} />}
           label="例会"
           active={meeting}
-          onClick={() => setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs)}
+          onClick={() => {
+            setMeetingKind("kickoff");
+            setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+          }}
         />
         <DockButton
           icon={<Plug size={13} strokeWidth={2} />}
