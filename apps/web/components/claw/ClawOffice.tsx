@@ -183,6 +183,23 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   // the participants trade 💢/💬 around the meeting table while it lasts.
   const [debate, setDebate] = useState<{ roles: string[]; until: number } | null>(null);
 
+  // 敲钟 — 纳斯达克 style: the moment the run finishes, the office bell
+  // rings (swing + confetti) and the whole team cheers before heading to
+  // the lounge party.
+  const [bellUntil, setBellUntil] = useState(0);
+  const prevRunStatus = useRef(run.status);
+  useEffect(() => {
+    if (prevRunStatus.current !== "finished" && run.status === "finished") {
+      const until = Date.now() + 7000;
+      setBellUntil(until);
+      WORKERS.forEach((w, i) => {
+        pulses.current[w.key] = { g: "cheer", until: until - i * 200 };
+      });
+    }
+    prevRunStatus.current = run.status;
+  }, [run.status]);
+  const bellRinging = bellUntil > Date.now();
+
   // handoff flights on real start transitions
   const [flights, setFlights] = useState<Flight[]>([]);
   const prevStatus = useRef<Record<string, string> | null>(null);
@@ -529,6 +546,35 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         {/* the office cat — wanders, naps by the lamp, pettable */}
         <OfficeCat posRef={catPos} />
 
+        {/* 交付钟 — rings 纳斯达克-style when the run finishes */}
+        <div className="absolute" style={{ left: "37%", top: "78%", zIndex: 78 }}>
+          {bellRinging && (
+            <>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-5 left-1/2 text-[14px]">🎉</span>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-4 left-0 text-[12px]" style={{ animationDelay: "0.5s" }}>
+                ✨
+              </span>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-4 left-[80%] text-[12px]" style={{ animationDelay: "1s" }}>
+                🎊
+              </span>
+            </>
+          )}
+          <svg width="44" height="62" viewBox="0 0 20 28" className="claw-sprite" shapeRendering="crispEdges">
+            {/* stand */}
+            <rect x="9" y="2" width="2" height="4" fill="#4a3417" />
+            <rect x="4" y="24" width="12" height="2" fill="#84591c" />
+            <rect x="8" y="20" width="4" height="4" fill="#6a4a23" />
+            {/* the bell (swings while ringing) */}
+            <g className={bellRinging ? "claw-bell-ring" : undefined}>
+              <rect x="8" y="6" width="4" height="2" fill="#e3b23a" />
+              <rect x="6" y="8" width="8" height="6" fill="#ffd23e" />
+              <rect x="5" y="14" width="10" height="2" fill="#e3a13a" />
+              <rect x="9" y="16" width="2" height="2" fill="#84591c" />
+              <rect x="7" y="9" width="2" height="3" fill="#ffe79a" />
+            </g>
+          </svg>
+        </div>
+
         {/* 咖啡偶遇碰杯 — two workers at the coffee waypoint clink */}
         {(() => {
           const at = defs.filter((d) => {
@@ -655,9 +701,11 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             {light === "day" ? "☀ 白天" : light === "dusk" ? "🌇 黄昏" : "🌙 夜晚"}
           </button>
         </div>
-        {(coffee || offDuty || meeting || lastActivity || (bonk && bonk.until > Date.now())) && (
+        {(bellRinging || coffee || offDuty || meeting || lastActivity || (bonk && bonk.until > Date.now())) && (
           <div className="absolute bottom-2 left-3 z-40 max-w-[48%] truncate rounded-[4px] border border-ink/25 bg-surface/90 px-2 py-[3px] font-mono text-[10px] text-ink-2">
-            {coffee
+            {bellRinging
+              ? "🔔 敲钟!任务交付 — 全员庆祝!"
+              : coffee
               ? "☕ 咖啡时间!全员回血中 — 谢谢老板"
               : bonk && bonk.until > Date.now()
                 ? `🔨 ${WORKERS.find((w) => w.key === bonk.bonker)?.zh}抄起小锤去找${WORKERS.find((w) => w.key === bonk.host)?.zh}「谈谈」`

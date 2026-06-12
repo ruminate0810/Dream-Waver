@@ -461,6 +461,13 @@ summary:focus-visible,
   45%, 55% { transform: rotate(6deg); }
 }
 
+/* 交付钟 — 纳斯达克 ring: the bell swings on its hinge */
+.claw-bell-ring { transform-box: fill-box; transform-origin: 50% 8%; animation: claw-bell-swing 0.45s ease-in-out infinite; }
+@keyframes claw-bell-swing {
+  0%, 100% { transform: rotate(-16deg); }
+  50% { transform: rotate(16deg); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .claw-walk-in, .claw-bob { animation: none; }
   .claw-desk-on .claw-screen, .claw-doc-fly { animation: none; }
@@ -470,7 +477,7 @@ summary:focus-visible,
   [class*="claw-act-"] .claw-armR,
   [class*="claw-act-"] .claw-rig { animation: none; }
   .claw-popover[data-state] { animation: none; }
-  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle, .claw-hammer { animation: none; }
+  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle, .claw-hammer, .claw-bell-ring { animation: none; }
 }
 
 /* Soft grain we overlay on the paper background. Encoded as a data-URL in
