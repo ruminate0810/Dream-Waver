@@ -19,7 +19,15 @@ export type WorkerView = {
   gesture?: string; // current tool's signature action
   calls: number;
   totalMs: number;
+  // 结果反应 — a transient gesture played in REACTION to a real outcome
+  // (tool error → facepalm, key-tool success → eureka). Expires by time so
+  // the office tick loop naturally clears it without a new event.
+  reactionGesture?: string;
+  reactionUntil?: number;
 };
+
+// tools whose success is worth a little celebration (not every tool.end)
+const CHEER_TOOLS = new Set(["code_execute", "generate_image", "write_document", "generate_deck"]);
 
 type Acc = {
   roleByIndex: Record<number, string>;
@@ -29,6 +37,7 @@ type Acc = {
   detail: Record<string, string>;
   calls: Record<string, number>;
   totalMs: Record<string, number>;
+  reactions: Record<string, { g: string; until: number }>;
   lastActivity: string; // ticker line: "工程师 · 执行 python 代码"
 };
 
@@ -41,6 +50,7 @@ function emptyAcc(): Acc {
     detail: {},
     calls: {},
     totalMs: {},
+    reactions: {},
     lastActivity: "",
   };
 }
@@ -84,10 +94,18 @@ function reduce(acc: Acc, ev: AgentEvent): Acc {
       running[key].delete(d.tool_id);
       const currentTool = { ...acc.currentTool };
       if (running[key].size === 0) delete currentTool[key];
+      // 结果反应: error → facepalm; meaningful success → eureka.
+      const reactions = { ...acc.reactions };
+      if (d.error) {
+        reactions[key] = { g: "facepalm", until: Date.now() + 2400 };
+      } else if (d.tool_name && CHEER_TOOLS.has(d.tool_name)) {
+        reactions[key] = { g: "eureka", until: Date.now() + 1700 };
+      }
       return {
         ...acc,
         running,
         currentTool,
+        reactions,
         calls: { ...acc.calls, [key]: (acc.calls[key] ?? 0) + 1 },
         totalMs: { ...acc.totalMs, [key]: (acc.totalMs[key] ?? 0) + (d.duration_ms ?? 0) },
       };
@@ -135,12 +153,15 @@ export function useWorkerStates(plan: ClawTask[]): {
       else if (hadWork && allResolved) status = "done";
 
       const tool = acc.currentTool[def.key];
+      const reaction = acc.reactions[def.key];
       views[def.key] = {
         status,
         detail: acc.detail[def.key],
         gesture: tool ? TOOL_ACTION[tool] : undefined,
         calls: acc.calls[def.key] ?? 0,
         totalMs: acc.totalMs[def.key] ?? 0,
+        reactionGesture: reaction?.g,
+        reactionUntil: reaction?.until,
       };
     }
     return { views, lastActivity: acc.lastActivity };

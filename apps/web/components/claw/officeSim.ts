@@ -328,6 +328,13 @@ export function useOfficeSim(inputs: {
           }
         }
 
+        // 结果反应 — a live outcome reaction (facepalm / eureka) overrides the
+        // cycling gesture for its short window, wherever the worker is standing.
+        if (!walking) {
+          const v = views[w.key];
+          if (v?.reactionUntil && v.reactionUntil > now && v.reactionGesture) gesture = v.reactionGesture;
+        }
+
         out[w.key] = { x: a.x, y: a.y, facing: a.facing, walking, gesture, site: a.site };
       });
 

@@ -23,6 +23,7 @@ import {
   type ToolCallEntry,
   type ToolCallStatus,
 } from "@/components/chat/ToolStrip";
+import { narrationFor, nextSteps, workerColor, workerZh } from "./narrate";
 
 // ClawChat is the process timeline for /claw/[id]. Structurally a sibling of
 // GameChat: a flat list of bubbles (no nested turn model). It folds the
@@ -42,6 +43,7 @@ type Bubble =
       tools?: ToolCallEntry[];
       streaming?: boolean;
     }
+  | { kind: "say"; worker: string; text: string; id: string }
   | { kind: "error"; text: string; id: string };
 
 export function ClawChat({
@@ -58,10 +60,19 @@ export function ClawChat({
   const [sending, setSending] = useState(false);
   const inFlightRef = useRef<boolean>(run.status === "running");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const saidRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const handle = (ev: AgentEvent) => {
       const k: EventKind = ev.kind;
+      // 角色发声 — interleave first-person team lines from the real events.
+      const say = narrationFor(ev, saidRef.current);
+      if (say) {
+        setBubbles((prev) => [
+          ...prev,
+          { kind: "say", worker: say.worker, text: say.text, id: cryptoRandomId() },
+        ]);
+      }
       if (k === "llm.token") {
         const delta = ev.data.text ?? "";
         if (!delta) return;
@@ -123,12 +134,12 @@ export function ClawChat({
     }
   }, [run.status]);
 
-  const onSubmit = useCallback(
-    async (e?: FormEvent | KeyboardEvent) => {
-      e?.preventDefault();
-      const text = draft.trim();
+  const send = useCallback(
+    async (raw: string) => {
+      const text = raw.trim();
       if (!text || sending) return;
       setSending(true);
+      saidRef.current = new Set(); // a fresh turn — let the team narrate again
       const userBubble: Bubble = { kind: "user", text, id: cryptoRandomId() };
       const pendingBubble: Bubble = {
         kind: "assistant",
@@ -155,7 +166,15 @@ export function ClawChat({
         setSending(false);
       }
     },
-    [draft, sending, run.job_id, onPendingEdit],
+    [sending, run.job_id, onPendingEdit],
+  );
+
+  const onSubmit = useCallback(
+    (e?: FormEvent | KeyboardEvent) => {
+      e?.preventDefault();
+      void send(draft);
+    },
+    [draft, send],
   );
 
   const status = useMemo(() => {
@@ -186,6 +205,26 @@ export function ClawChat({
           ))}
         </div>
       </div>
+
+      {run.status === "finished" && (run.artifact_version ?? 0) > 0 && !running && (
+        <div className="border-t-2 border-line px-1 pb-1 pt-2">
+          <p className="mb-1.5 font-mono text-[10px] font-bold tracking-wide text-muted">下一步 ↓ 一点就派活</p>
+          <div className="flex flex-wrap gap-1.5">
+            {nextSteps(run).map((s) => (
+              <button
+                key={s.label}
+                type="button"
+                disabled={sending}
+                onClick={() => void send(s.text)}
+                className="rounded-pixel border-2 border-line-2 bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink-2 transition-colors hover:border-ink hover:bg-accent-soft hover:text-accent disabled:opacity-50"
+                title={s.text}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <form
         onSubmit={onSubmit}
@@ -228,6 +267,23 @@ export function ClawChat({
 }
 
 function BubbleRow({ bubble }: { bubble: Bubble }) {
+  if (bubble.kind === "say") {
+    return (
+      <div className="flex items-start gap-2.5">
+        <span
+          className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-pixel border-2 border-ink font-mono text-[10px] font-bold text-white"
+          style={{ background: workerColor(bubble.worker) }}
+          aria-hidden
+        >
+          {workerZh(bubble.worker).slice(0, 1)}
+        </span>
+        <div className="flex-1 pt-0.5">
+          <span className="font-mono text-[11px] font-bold text-ink-2">{workerZh(bubble.worker)}</span>
+          <p className="font-mono text-[13.5px] leading-relaxed text-ink">{bubble.text}</p>
+        </div>
+      </div>
+    );
+  }
   if (bubble.kind === "user") {
     return (
       <div className="flex gap-3">
