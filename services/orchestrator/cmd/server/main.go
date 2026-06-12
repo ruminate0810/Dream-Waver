@@ -220,6 +220,11 @@ func main() {
 	if designBridge != nil {
 		clawVideo = seedanceVideo{bridge: designBridge}
 	}
+	// Designer's post-production ops — nil greys out edit_image.
+	var clawEditor claw.ImageEditor
+	if designBridge != nil {
+		clawEditor = designEditor{bridge: designBridge}
+	}
 
 	// ─── Claw — general AI worker (plan → research → markdown report) ───
 	// Third vertical on the shared pipeline: a ToolCallAgent loop reusing
@@ -245,6 +250,8 @@ func main() {
 		Pipeline: pipeline,
 		// Videographer worker's image-to-video source (design bridge / Seedance).
 		Video: clawVideo,
+		// Designer worker's post-production ops (design bridge edit endpoints).
+		Editor: clawEditor,
 	}
 	// 真·动态改绑 — load persisted role↔tool bindings (file-based so it works
 	// without a database; PUT /claw/roles re-saves it).
@@ -358,6 +365,56 @@ func (s seedanceVideo) ImageToVideo(ctx context.Context, imageURL, prompt, resol
 		return "", err
 	}
 	return resp.VideoURL, nil
+}
+
+// designEditor adapts the design bridge's image-edit endpoints into the claw
+// designer's ImageEditor capability (edit_image tool).
+type designEditor struct{ bridge *design.Bridge }
+
+func (d designEditor) EditImage(ctx context.Context, op, imageURL, prompt string, expand [4]int) (string, error) {
+	switch op {
+	case "remove_bg":
+		resp, err := d.bridge.RemoveBG(ctx, design.EditImageRequest{ImageURL: imageURL})
+		if err != nil {
+			return "", err
+		}
+		return resp.URL, nil
+	case "enhance":
+		resp, err := d.bridge.Enhance(ctx, design.EditImageRequest{ImageURL: imageURL})
+		if err != nil {
+			return "", err
+		}
+		return resp.URL, nil
+	case "colorize":
+		resp, err := d.bridge.Colorize(ctx, design.EditImageRequest{ImageURL: imageURL})
+		if err != nil {
+			return "", err
+		}
+		return resp.URL, nil
+	case "outpaint":
+		resp, err := d.bridge.Outpaint(ctx, design.OutpaintRequest{
+			ImageURL: imageURL,
+			Left:     expand[0],
+			Right:    expand[1],
+			Top:      expand[2],
+			Bottom:   expand[3],
+		})
+		if err != nil {
+			return "", err
+		}
+		return resp.URL, nil
+	case "img2img":
+		resp, err := d.bridge.Image2Image(ctx, design.Image2ImageRequest{
+			ImageURL: imageURL,
+			Prompt:   prompt,
+		})
+		if err != nil {
+			return "", err
+		}
+		return resp.URL, nil
+	default:
+		return "", fmt.Errorf("unknown image op %q", op)
+	}
 }
 
 func pickPrimary(cfg *config.Config) llm.Client {

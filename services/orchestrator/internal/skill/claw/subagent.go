@@ -79,6 +79,10 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if r.Video != nil {
 				out = append(out, &GenerateVideo{Video: r.Video, Session: sess, Emitter: r.Emitter})
 			}
+		case "edit_image":
+			if r.Editor != nil {
+				out = append(out, &EditImage{Editor: r.Editor, Session: sess, Emitter: r.Emitter})
+			}
 		case "write_document":
 			out = append(out, &WriteDocument{Session: sess, Emitter: r.Emitter})
 		case "generate_deck":

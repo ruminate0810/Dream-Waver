@@ -21,7 +21,7 @@ import (
 // orchestration tools (plan_tasks/update_task on the coordinator,
 // write_document on writer+critic, generate_deck on the producer) are FIXED
 // — the phase machine runs those roles by key.
-var RebindableTools = []string{"web_search", "code_execute", "generate_image"}
+var RebindableTools = []string{"web_search", "code_execute", "generate_image", "edit_image"}
 
 // RebindTargets are the roles a rebindable tool may be assigned to.
 var RebindTargets = []string{RoleResearcher, RoleEngineer, RoleDesigner}
@@ -199,6 +199,8 @@ func (r *Runner) toolWired(name string) bool {
 		return r.Pipeline != nil
 	case "generate_video":
 		return r.Video != nil
+	case "edit_image":
+		return r.Editor != nil
 	default: // plan_tasks / update_task / write_document — always available
 		return true
 	}

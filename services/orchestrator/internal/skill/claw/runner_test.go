@@ -413,3 +413,74 @@ func TestParsePlanShape(t *testing.T) {
 		t.Fatalf("plan shape wrong: %+v", out)
 	}
 }
+
+// fakeEditor records the last op and returns a derived URL so the designer's
+// edit_image path is exercisable offline.
+type fakeEditor struct{ lastOp string }
+
+func (f *fakeEditor) EditImage(_ context.Context, op, imageURL, prompt string, expand [4]int) (string, error) {
+	f.lastOp = op
+	return imageURL + "?op=" + op, nil
+}
+
+// TestEditImageTool drives the edit_image tool directly: edits the latest
+// figure into a NEW figure (original kept), emits a figure artifact event,
+// and degrades gracefully with no figures / unknown op / missing img2img
+// prompt.
+func TestEditImageTool(t *testing.T) {
+	sess := &Session{}
+	em := &recordingEmitter{}
+	ed := &fakeEditor{}
+	tool := &EditImage{Editor: ed, Session: sess, Emitter: em}
+	ctx := event.WithSessionID(context.Background(), "sess-e")
+
+	// no figures yet → skip observation, not an error
+	res, err := tool.Execute(ctx, []byte(`{"op":"enhance"}`))
+	if err != nil || res.Error != "" {
+		t.Fatalf("no-figure call should soft-skip, got res=%+v err=%v", res, err)
+	}
+
+	sess.AddFigure("http://img.local/fig.png", "原图")
+
+	// happy path: enhance the latest figure → new figure appended
+	res, err = tool.Execute(ctx, []byte(`{"op":"enhance"}`))
+	if err != nil || res.Error != "" {
+		t.Fatalf("enhance failed: res=%+v err=%v", res, err)
+	}
+	figs := sess.Figures()
+	if len(figs) != 2 {
+		t.Fatalf("want 2 figures (original kept), got %d", len(figs))
+	}
+	if figs[1].URL != "http://img.local/fig.png?op=enhance" {
+		t.Fatalf("edited figure URL wrong: %q", figs[1].URL)
+	}
+	if ed.lastOp != "enhance" {
+		t.Fatalf("op not forwarded: %q", ed.lastOp)
+	}
+	if !em.hasArtifactKind("figure") {
+		t.Fatal("no figure artifact event emitted")
+	}
+
+	// outpaint with no pixels → defaults applied, still succeeds
+	if res, _ = tool.Execute(ctx, []byte(`{"op":"outpaint"}`)); res.Error != "" {
+		t.Fatalf("outpaint default failed: %+v", res)
+	}
+	if ed.lastOp != "outpaint" {
+		t.Fatalf("op not forwarded: %q", ed.lastOp)
+	}
+
+	// img2img without prompt → tool-level error (recoverable by the agent)
+	if res, _ = tool.Execute(ctx, []byte(`{"op":"img2img"}`)); res.Error == "" {
+		t.Fatal("img2img without prompt must error")
+	}
+	// unknown op → tool-level error
+	if res, _ = tool.Execute(ctx, []byte(`{"op":"sharpen"}`)); res.Error == "" {
+		t.Fatal("unknown op must error")
+	}
+
+	// unwired editor → soft skip
+	none := &EditImage{Session: sess}
+	if res, _ = none.Execute(ctx, []byte(`{"op":"enhance"}`)); res.Error != "" || res.Output == "" {
+		t.Fatalf("unwired editor should soft-skip, got %+v", res)
+	}
+}

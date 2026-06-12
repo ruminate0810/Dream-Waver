@@ -14,8 +14,8 @@ func TestDynamicRebinding(t *testing.T) {
 	r := &Runner{ImagesEnabled: true, Images: fakeImages{}}
 	r.LoadConfig(path)
 
-	// defaults: designer holds generate_image
-	if got := r.EffectiveTools(RoleDesigner); len(got) != 1 || got[0] != "generate_image" {
+	// defaults: designer holds generate_image + edit_image
+	if got := r.EffectiveTools(RoleDesigner); len(got) != 2 || got[0] != "generate_image" || got[1] != "edit_image" {
 		t.Fatalf("designer default tools = %v", got)
 	}
 
@@ -26,8 +26,8 @@ func TestDynamicRebinding(t *testing.T) {
 	if got := r.EffectiveTools(RoleEngineer); len(got) != 2 { // code_execute + generate_image
 		t.Fatalf("engineer tools after rebind = %v", got)
 	}
-	if got := r.EffectiveTools(RoleDesigner); len(got) != 0 {
-		t.Fatalf("designer should hold no tools, got %v", got)
+	if got := r.EffectiveTools(RoleDesigner); len(got) != 1 || got[0] != "edit_image" { // keeps edit_image
+		t.Fatalf("designer should keep only edit_image, got %v", got)
 	}
 	if r.roleEnabled(RoleDesigner) {
 		t.Fatal("designer should be disabled")
