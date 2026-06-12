@@ -75,6 +75,10 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if r.ImagesEnabled && r.Images != nil {
 				out = append(out, &GenerateImage{Images: r.Images, Session: sess, Emitter: r.Emitter})
 			}
+		case "generate_video":
+			if r.Video != nil {
+				out = append(out, &GenerateVideo{Video: r.Video, Session: sess, Emitter: r.Emitter})
+			}
 		case "write_document":
 			out = append(out, &WriteDocument{Session: sess, Emitter: r.Emitter})
 		case "generate_deck":
@@ -112,9 +116,10 @@ func (r *Runner) availableRoles() map[string]bool {
 	return map[string]bool{
 		RoleResearcher: r.roleEnabled(RoleResearcher),
 		RoleEngineer:   r.roleEnabled(RoleEngineer),
-		RoleDesigner:   r.roleEnabled(RoleDesigner),
-		RoleProducer:   r.roleEnabled(RoleProducer),
-		RoleWriter:     true,
+		RoleDesigner:     r.roleEnabled(RoleDesigner),
+		RoleProducer:     r.roleEnabled(RoleProducer),
+		RoleVideographer: r.roleEnabled(RoleVideographer),
+		RoleWriter:       true,
 	}
 }
 

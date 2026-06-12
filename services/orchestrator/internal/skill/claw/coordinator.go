@@ -71,6 +71,13 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 		r.runProducer(ctx, sess, goal)
 	}
 
+	// ── Phase 5 — videographer animates a key figure into a clip (if
+	//    assigned). On-demand: only planned when the user asked for a video,
+	//    and only acts when a figure already exists. Best-effort.
+	if writerErr == nil {
+		r.runVideographer(ctx, sess, goal)
+	}
+
 	// ── Post-run guards ──────────────────────────────────────────────────
 	if _, version := sess.Artifact(); version == 0 {
 		err := fmt.Errorf("团队完成但未产出报告")
@@ -180,10 +187,16 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	if avail[RoleProducer] {
 		b.WriteString("- producer:把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck 时才用)\n")
 	}
+	if avail[RoleVideographer] {
+		b.WriteString("- videographer:把某张配图做成几秒短视频(image-to-video,仅当用户明确要视频/短片/动起来时才用)\n")
+	}
 	b.WriteString("\n规则:\n- 必须有且仅有一个 writer 子任务(撰写最终报告)。\n")
 	b.WriteString("- 子任务要派给「持有相应能力工具」的角色(见上),不要派给没有该工具的角色。\n")
 	if avail[RoleProducer] {
 		b.WriteString("- 用户要幻灯片/PPT/deck 时,在 writer 之后加一个 producer 子任务;否则不要加。\n")
+	}
+	if avail[RoleVideographer] {
+		b.WriteString("- 用户要视频/短片/把图动起来时,在 writer 之后加一个 videographer 子任务;否则不要加。\n")
 	}
 	b.WriteString("- 只输出 JSON,不要任何额外文字,格式:{\"tasks\":[{\"title\":\"子任务\",\"role\":\"researcher\"}]}\n")
 	if isFollowup {
@@ -226,7 +239,8 @@ func parsePlan(content string, avail map[string]bool) []Task {
 	}
 
 	var exec []Task
-	var producer *Task // runs in Phase 4, after the writer
+	var producer *Task     // runs in Phase 4, after the writer
+	var videographer *Task // runs in Phase 4 too, after the writer (needs a figure)
 	for _, t := range parsed.Tasks {
 		title := strings.TrimSpace(t.Title)
 		role := strings.TrimSpace(t.Role)
@@ -242,6 +256,12 @@ func parsePlan(content string, avail map[string]bool) []Task {
 			}
 			continue
 		}
+		if role == RoleVideographer {
+			if avail[RoleVideographer] && videographer == nil {
+				videographer = &Task{Title: title, Role: RoleVideographer}
+			}
+			continue
+		}
 		// Drop tasks for disabled/unknown roles (defensive — prompt already
 		// only advertised available roles).
 		if role == "" || !avail[role] {
@@ -249,13 +269,16 @@ func parsePlan(content string, avail map[string]bool) []Task {
 		}
 		exec = append(exec, Task{Title: title, Role: role})
 		if len(exec) >= maxTasks-2 {
-			break // leave room for the writer (+ optional producer)
+			break // leave room for the writer (+ optional producer/videographer)
 		}
 	}
-	// execution tasks → writer → (optional) producer.
+	// execution tasks → writer → (optional) producer → (optional) videographer.
 	out := append(exec, Task{Title: "撰写完整报告", Role: RoleWriter})
 	if producer != nil {
 		out = append(out, *producer)
+	}
+	if videographer != nil {
+		out = append(out, *videographer)
 	}
 	return out
 }
@@ -590,6 +613,49 @@ func (r *Runner) runProducer(ctx context.Context, sess *Session, goal string) {
 		fmt.Fprintf(&b, "报告要点(节选):\n%s\n", truncateClaw(rep, 800))
 	}
 	b.WriteString("\n生成后 terminate。")
+	_, _ = r.runSubAgent(ctx, roleDef, sess, b.String())
+	for _, i := range idxs {
+		if sess.UpdateTask(i, TaskDone) {
+			r.emit(ctx, event.NewClawTaskUpdate(i, TaskDone))
+		}
+	}
+}
+
+// ── Phase 5: videographer animates a key figure into a clip ──────────────
+
+func (r *Runner) runVideographer(ctx context.Context, sess *Session, goal string) {
+	idxs := sess.TaskIndicesForRole(RoleVideographer)
+	if len(idxs) == 0 {
+		return // no video requested
+	}
+	// Skip (don't strand) when the capability is off or there's no figure to
+	// animate — image-to-video needs a source image.
+	if !r.roleEnabled(RoleVideographer) || len(sess.Figures()) == 0 {
+		for _, i := range idxs {
+			if sess.UpdateTask(i, TaskSkipped) {
+				r.emit(ctx, event.NewClawTaskUpdate(i, TaskSkipped))
+			}
+		}
+		return
+	}
+	for _, i := range idxs {
+		if sess.UpdateTask(i, TaskDoing) {
+			r.emit(ctx, event.NewClawTaskUpdate(i, TaskDoing))
+		}
+	}
+	roleDef, _ := RoleByKey(RoleVideographer)
+	var b strings.Builder
+	fmt.Fprintf(&b, "把作品包里的关键配图做成一段短视频(调用 generate_video,只调一次)。\n主题:%s\n", goal)
+	figs := sess.Figures()
+	b.WriteString("可用配图(figure_index 从 1 开始):\n")
+	for i, fg := range figs {
+		label := strings.TrimSpace(fg.Caption)
+		if label == "" {
+			label = "(无图注)"
+		}
+		fmt.Fprintf(&b, "%d. %s\n", i+1, label)
+	}
+	b.WriteString("\n挑最适合做动态的一张,给一句英文运镜/动态描述,生成后 terminate。")
 	_, _ = r.runSubAgent(ctx, roleDef, sess, b.String())
 	for _, i := range idxs {
 		if sess.UpdateTask(i, TaskDone) {

@@ -32,8 +32,9 @@ var togglableRoles = map[string]bool{
 	RoleResearcher: true,
 	RoleEngineer:   true,
 	RoleDesigner:   true,
-	RoleCritic:     true,
-	RoleProducer:   true,
+	RoleCritic:       true,
+	RoleProducer:     true,
+	RoleVideographer: true,
 }
 
 type roleConfig struct {
@@ -196,6 +197,8 @@ func (r *Runner) toolWired(name string) bool {
 		return r.ImagesEnabled && r.Images != nil
 	case "generate_deck":
 		return r.Pipeline != nil
+	case "generate_video":
+		return r.Video != nil
 	default: // plan_tasks / update_task / write_document — always available
 		return true
 	}

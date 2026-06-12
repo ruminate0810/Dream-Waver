@@ -204,6 +204,23 @@ func main() {
 		Sessions: gameSessions,
 	}
 
+	// ─── Design — dreamapi-sidecar (DreamAPI image generation + i2v) ──────
+	// Powers the TLDraw canvas's "+ AI image" button (POST
+	// /api/v1/design/images/generate) AND the Claw videographer's image-to-
+	// video (Seedance). Disabled when DREAMAPI_SIDECAR_URL is unset.
+	var designBridge *design.Bridge
+	if cfg.DreamapiSidecarURL != "" {
+		designBridge = design.NewBridge(cfg.DreamapiSidecarURL, nil)
+		slog.Info("design bridge enabled (dreamapi-sidecar)", "base_url", cfg.DreamapiSidecarURL)
+	} else {
+		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
+	}
+	// Videographer's i2v source — nil greys out the videographer worker.
+	var clawVideo claw.VideoGenerator
+	if designBridge != nil {
+		clawVideo = seedanceVideo{bridge: designBridge}
+	}
+
 	// ─── Claw — general AI worker (plan → research → markdown report) ───
 	// Third vertical on the shared pipeline: a ToolCallAgent loop reusing
 	// the same Hub + the optional Tavily (web_search) / sandbox
@@ -226,6 +243,8 @@ func main() {
 		// Producer worker's deck generator — reuses the slides deterministic
 		// pipeline. nil greys out the producer worker.
 		Pipeline: pipeline,
+		// Videographer worker's image-to-video source (design bridge / Seedance).
+		Video: clawVideo,
 	}
 	// 真·动态改绑 — load persisted role↔tool bindings (file-based so it works
 	// without a database; PUT /claw/roles re-saves it).
@@ -243,17 +262,6 @@ func main() {
 		slog.Info("video bridge enabled (Opendream FastAPI)", "base_url", cfg.OpendreamBaseURL)
 	} else {
 		slog.Info("video bridge disabled — set OPENDREAM_BASE_URL to enable /api/v1/video/*")
-	}
-
-	// ─── Design — dreamapi-sidecar (DreamAPI image generation) ────────
-	// Same pattern as video. Powers the TLDraw canvas's "+ AI image"
-	// button via POST /api/v1/design/images/generate.
-	var designBridge *design.Bridge
-	if cfg.DreamapiSidecarURL != "" {
-		designBridge = design.NewBridge(cfg.DreamapiSidecarURL, nil)
-		slog.Info("design bridge enabled (dreamapi-sidecar)", "base_url", cfg.DreamapiSidecarURL)
-	} else {
-		slog.Info("design bridge disabled — set DREAMAPI_SIDECAR_URL to enable /api/v1/design/*")
 	}
 
 	// ─── Billing service (X3a) ────────────────────────────────────────
@@ -334,6 +342,24 @@ func main() {
 // pickPrimary returns the LLM client chosen via LLM_PRIMARY_PROVIDER. Only
 // DeepSeek is wired right now; OpenAI / Anthropic providers can be slotted
 // back in here when their go.mod entries are added.
+// seedanceVideo adapts the design bridge's Seedance image-to-video into the
+// claw.VideoGenerator interface, keeping the claw package decoupled from the
+// design package (mirrors how image.Searcher feeds the designer).
+type seedanceVideo struct{ bridge *design.Bridge }
+
+func (s seedanceVideo) ImageToVideo(ctx context.Context, imageURL, prompt, resolution string, duration int) (string, error) {
+	resp, err := s.bridge.SeedanceI2V(ctx, design.SeedanceI2VRequest{
+		ImageURL:   imageURL,
+		Prompt:     prompt,
+		Resolution: resolution,
+		Duration:   duration,
+	})
+	if err != nil {
+		return "", err
+	}
+	return resp.VideoURL, nil
+}
+
 func pickPrimary(cfg *config.Config) llm.Client {
 	switch cfg.PrimaryProvider {
 	case "deepseek":

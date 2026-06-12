@@ -56,6 +56,10 @@ func (f *fakeRouter) AskToolStream(_ context.Context, req llm.AskToolRequest, _ 
 		if n == 1 {
 			return tc("write_document", map[string]any{"markdown": sampleReport}), nil
 		}
+	case RoleVideographer:
+		if n == 1 {
+			return tc("generate_video", map[string]any{"prompt": "slow cinematic zoom-in", "figure_index": 1, "resolution": "720p", "duration": 5}), nil
+		}
 	}
 	return tc("terminate", map[string]any{"reason": "done"}), nil
 }
@@ -69,6 +73,8 @@ func detectRole(sys string) string {
 	// Match the unique self-identification ("你是X") — the writer's prompt
 	// also *mentions* the other roles, so a bare Contains would misfire.
 	switch {
+	case strings.Contains(sys, "你是视频师"):
+		return RoleVideographer
 	case strings.Contains(sys, "你是设计师"):
 		return RoleDesigner
 	case strings.Contains(sys, "你是撰稿员"):
@@ -86,6 +92,17 @@ type fakeImages struct{}
 
 func (fakeImages) Search(context.Context, string) (*image.Result, error) {
 	return &image.Result{URL: "http://img.local/fig.png", Credit: "test"}, nil
+}
+
+// fakeVideo returns a fixed clip URL so the videographer (i2v) path is
+// exercisable offline without the design bridge.
+type fakeVideo struct{}
+
+func (fakeVideo) ImageToVideo(_ context.Context, imageURL, _, _ string, _ int) (string, error) {
+	if imageURL == "" {
+		return "", nil
+	}
+	return "http://vid.local/clip.mp4", nil
 }
 
 // recordingEmitter captures every emitted event.
@@ -197,6 +214,53 @@ func TestCoordinatorWorkPackage(t *testing.T) {
 	}
 	if figs := sess.Figures(); len(figs) != 1 || figs[0].URL == "" {
 		t.Fatalf("figures wrong: %+v", figs)
+	}
+	for i, task := range sess.PlanSnapshot() {
+		if task.Status != TaskDone {
+			t.Fatalf("task %d (%s) status=%q, want done", i+1, task.Role, task.Status)
+		}
+	}
+}
+
+// TestVideographerWorkPackage drives a designer→writer→videographer plan and
+// asserts the v7 image-to-video path: the designer makes a figure, the
+// videographer animates it into a work-package video, and the artifact event +
+// session state + checklist all reflect it.
+func TestVideographerWorkPackage(t *testing.T) {
+	plan := `{"tasks":[{"title":"为报告配图","role":"designer"},{"title":"撰写报告","role":"writer"},{"title":"把配图做成短视频","role":"videographer"}]}`
+	fr := &fakeRouter{planJSON: plan, steps: map[string]int{}}
+	em := &recordingEmitter{}
+	r := &Runner{
+		Router:        fr,
+		Emitter:       em,
+		Sessions:      NewSessionStore(),
+		Images:        fakeImages{},
+		ImagesEnabled: true,
+		Video:         fakeVideo{}, // wires the videographer
+	}
+
+	ctx := event.WithSessionID(context.Background(), "sess-v")
+	if err := r.Run(ctx, "job-v", "做一份带图的报告,并把封面图做成短视频"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if !em.hasArtifactKind("video") {
+		t.Fatal("no video artifact event emitted")
+	}
+	if !em.toolAgents()[RoleVideographer] {
+		t.Fatalf("videographer tool events missing: %v", em.toolAgents())
+	}
+
+	sess, _ := r.Sessions.Get("job-v")
+	vids := sess.Videos()
+	if len(vids) != 1 {
+		t.Fatalf("want 1 video, got %d", len(vids))
+	}
+	if vids[0].URL == "" || vids[0].Poster != "http://img.local/fig.png" {
+		t.Fatalf("video wrong: %+v", vids[0])
+	}
+	if vids[0].Resolution != "720p" || vids[0].Duration != 5 {
+		t.Fatalf("video metadata wrong: %+v", vids[0])
 	}
 	for i, task := range sess.PlanSnapshot() {
 		if task.Status != TaskDone {

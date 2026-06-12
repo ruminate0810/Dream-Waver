@@ -22,6 +22,7 @@ const (
 	RoleWriter      = "writer"      // 撰稿员 — write_document (assembles the report)
 	RoleCritic      = "critic"      // 评审员 — reviews + revises the report once (write_document)
 	RoleProducer    = "producer"    // 制片 — generate_deck
+	RoleVideographer = "videographer" // 视频师 — generate_video (animates a figure via i2v)
 )
 
 // Role is one worker definition. ToolNames are resolved to concrete tool
@@ -118,6 +119,18 @@ var allRoles = []Role{
 		MaxSteps:    4,
 		SystemPrompt: "你是制片。把已完成的报告用 generate_deck 转成一份幻灯片 deck(传报告主题与要点)。" +
 			"完成后 terminate。",
+	},
+	{
+		Key:         RoleVideographer,
+		DisplayName: "视频师",
+		ModelTier:   "worker",
+		ToolNames:   []string{"generate_video"},
+		MaxSteps:    4,
+		// Post-production: animates one already-generated figure into a short
+		// clip via image-to-video. Single-shot to bound the slow/costly render.
+		SystemPrompt: "你是视频师。把作品包里某张已生成的配图用 generate_video 做成一段几秒的短视频" +
+			"(传一句英文的运镜/动态描述,如镜头推拉、光影流动、人物微动;可指定 figure_index、resolution(480p/720p/1080p)、duration(4–12 秒))。" +
+			"**只调用一次 generate_video**,完成后用一句中文说明你做了什么,然后 terminate。",
 	},
 }
 

@@ -68,6 +68,18 @@ type Deck struct {
 	SlideCount int    `json:"slide_count,omitempty"`
 }
 
+// Video is one generated clip in the work package — produced by the
+// videographer worker's generate_video tool (image-to-video). URL is the
+// servable mp4; Poster is the source figure's URL; Caption + Resolution +
+// Duration are display metadata.
+type Video struct {
+	URL        string `json:"url"`
+	Poster     string `json:"poster,omitempty"`
+	Caption    string `json:"caption,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+	Duration   int    `json:"duration,omitempty"`
+}
+
 // Session is the per-run working state: the conversation history the
 // agent loop restores on a follow-up, the plan checklist, and the latest
 // markdown artifact + its monotonic version. All access is mutex-guarded
@@ -82,6 +94,7 @@ type Session struct {
 	artifact        string // the markdown report (work-package's main artifact)
 	artifactVersion int
 	figures         []Figure // generated images (work-package figures)
+	videos          []Video  // generated clips (work-package videos, i2v)
 	deck            *Deck    // generated slide deck (work-package, optional)
 	brief           string   // clarification answers (受众/深度/篇幅/格式), fed to writer + critic
 	debate          string   // kickoff-debate agreed approach (协商共识), fed to writer + critic
@@ -156,6 +169,24 @@ func (s *Session) Figures() []Figure {
 	defer s.mu.RUnlock()
 	out := make([]Figure, len(s.figures))
 	copy(out, s.figures)
+	return out
+}
+
+// AddVideo appends a generated clip and returns the new video count (used as
+// the video's version in the claw.artifact.updated notification).
+func (s *Session) AddVideo(v Video) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.videos = append(s.videos, v)
+	return len(s.videos)
+}
+
+// Videos returns a copy of the work-package videos.
+func (s *Session) Videos() []Video {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Video, len(s.videos))
+	copy(out, s.videos)
 	return out
 }
 
