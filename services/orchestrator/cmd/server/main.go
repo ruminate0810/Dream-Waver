@@ -225,6 +225,16 @@ func main() {
 	if designBridge != nil {
 		clawEditor = designEditor{bridge: designBridge}
 	}
+	// Designer's image source: prefer the design bridge's NanoBanana (df-ability
+	// keys, same gateway as Seedance) over the legacy orchestrator-side
+	// providers; fall back to the composite searcher when there's no bridge.
+	clawImages := imgSearcher
+	clawImagesEnabled := cfg.NanoBananaEnabled || cfg.UnsplashAccessKey != ""
+	if designBridge != nil {
+		clawImages = bridgeImages{bridge: designBridge}
+		clawImagesEnabled = true
+		slog.Info("claw designer image source: design bridge (NanoBanana via df-ability)")
+	}
 
 	// ─── Claw — general AI worker (plan → research → markdown report) ───
 	// Third vertical on the shared pipeline: a ToolCallAgent loop reusing
@@ -240,11 +250,11 @@ func main() {
 		Sessions:      clawSessions,
 		TavilyKey:     cfg.TavilyAPIKey,
 		SandboxClient: sandboxClient,
-		// Designer worker's image source. ImagesEnabled is true only when a
-		// real provider is wired (NanoBanana or Unsplash) — otherwise the
-		// composite is just Noop and the designer worker greys out.
-		Images:        imgSearcher,
-		ImagesEnabled: cfg.NanoBananaEnabled || cfg.UnsplashAccessKey != "",
+		// Designer worker's image source. ImagesEnabled is true when a real
+		// provider is wired — the design bridge's NanoBanana when present,
+		// else the legacy NanoBanana/Unsplash composite.
+		Images:        clawImages,
+		ImagesEnabled: clawImagesEnabled,
 		// Producer worker's deck generator — reuses the slides deterministic
 		// pipeline. nil greys out the producer worker.
 		Pipeline: pipeline,
@@ -365,6 +375,28 @@ func (s seedanceVideo) ImageToVideo(ctx context.Context, imageURL, prompt, resol
 		return "", err
 	}
 	return resp.VideoURL, nil
+}
+
+// bridgeImages adapts the design bridge's NanoBanana (Gemini image gen via
+// the df-ability gateway — the same keys as the proven Seedance i2v) into the
+// image.Searcher shape the claw designer's generate_image tool consumes. This
+// makes the designer generate REAL figures wherever the design bridge is up,
+// even when the legacy orchestrator-side NanoBanana/Unsplash path is
+// unconfigured.
+type bridgeImages struct{ bridge *design.Bridge }
+
+func (b bridgeImages) Search(ctx context.Context, query string) (*image.Result, error) {
+	resp, err := b.bridge.NanoBanana(ctx, design.NanoBananaRequest{
+		Prompt: query,
+		Model:  "nano-banana-2",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.URL == "" {
+		return nil, nil
+	}
+	return &image.Result{URL: resp.URL}, nil
 }
 
 // designEditor adapts the design bridge's image-edit endpoints into the claw
