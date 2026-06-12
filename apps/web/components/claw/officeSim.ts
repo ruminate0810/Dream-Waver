@@ -26,16 +26,17 @@ export const OFFICE_CONFIG = {
   pauseTicks: 7,
   meetingMs: 15000, // walk-in (~5s from the far lounge) + a real discussion
   stroll: {
-    idleMin: 7000,
-    idleVar: 8000,
+    idleMin: 16000,
+    idleVar: 18000,
     workingMin: 26000,
     workingVar: 22000,
-    doneMin: 13000,
-    doneVar: 13000,
+    doneMin: 18000,
+    doneVar: 16000,
     lingerMin: 3400,
     lingerVar: 2600,
     workingLinger: 2300,
-    visitChance: 0.45,
+    visitChance: 0.25,
+    maxAway: 2, // at most this many workers out strolling/visiting at once
   },
   storage: {
     chat: "claw-chat-open",
@@ -204,8 +205,15 @@ export function useOfficeSim(inputs: {
             : MEET_SLOTS.map((_, i) => i).filter((i) => i !== 0);
         return ids.map((i) => ({ id: `meet:${i}`, p: MEET_SLOTS[i] }));
       }
-      if (site === "lounge")
-        return LOUNGE_SLOTS.map((p, i) => ({ id: `lounge:${i}`, p })).sort(() => Math.random() - 0.5);
+      if (site === "lounge") {
+        // each worker prefers a FIXED lounge seat (their index, rotated) so the
+        // off-duty arrangement is tidy and nobody re-shuffles spots mid-party
+        const wi = Math.max(0, WORKERS.findIndex((w) => w.key === key));
+        return LOUNGE_SLOTS.map((_, i) => {
+          const j = (wi + i) % LOUNGE_SLOTS.length;
+          return { id: `lounge:${j}`, p: LOUNGE_SLOTS[j] };
+        });
+      }
       if (site.startsWith("way:")) {
         const wi = Number(site.split(":")[1]);
         const w = WAYPOINTS[wi];
@@ -240,9 +248,12 @@ export function useOfficeSim(inputs: {
 
       // who is hosting a guest this tick (visitor arrived at their visit slot)
       const guests: Record<string, string> = {};
+      // how many workers are currently out on a trip (calm-office cap)
+      let away = 0;
       for (const w of WORKERS) {
         const a = agents[w.key];
         if (a.site.startsWith("visit:") && a.path.length === 0) guests[a.site.split(":")[1]] = w.key;
+        if (a.site.startsWith("way:") || a.site.startsWith("visit:")) away += 1;
       }
 
       WORKERS.forEach((w, wi) => {
@@ -254,11 +265,14 @@ export function useOfficeSim(inputs: {
         if (meeting) want = "meet";
         else if (offDuty) want = "lounge";
         else {
-          const home = status === "idle" ? "lounge" : "desk";
+          // calm office: everyone's home is their OWN DESK (idle workers sit
+          // there with lounge-y gestures); the lounge is for off-duty only.
+          const home = "desk";
           const onTrip = a.site.startsWith("way:") || a.site.startsWith("visit:");
           if (onTrip && now < a.lingerUntil) want = a.site; // keep lingering
-          else if (!onTrip && now > a.nextStrollAt && a.path.length === 0) {
+          else if (!onTrip && now > a.nextStrollAt && a.path.length === 0 && away < c.stroll.maxAway) {
             want = pickStroll(w.key, status);
+            away += 1;
             const s = c.stroll;
             a.lingerUntil =
               now + 1200 + (status === "working" ? s.workingLinger : s.lingerMin + Math.random() * s.lingerVar);
