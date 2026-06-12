@@ -178,6 +178,7 @@ type ClawRun struct {
 	Artifact        string          // latest markdown report (full text)
 	ArtifactVersion int
 	Figures         json.RawMessage // []claw.Figure snapshot (work-package images)
+	Videos          json.RawMessage // []claw.Video snapshot (work-package clips, i2v)
 	Deck            json.RawMessage // claw.Deck snapshot (work-package slide deck)
 	Memory          json.RawMessage // []schema.Message snapshot
 	Error           string

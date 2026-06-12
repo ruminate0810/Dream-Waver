@@ -192,6 +192,14 @@ type clawDeckView struct {
 	URL        string `json:"url"` // same-origin download → .pptx
 }
 
+type clawVideoView struct {
+	URL        string `json:"url"`
+	Poster     string `json:"poster,omitempty"`
+	Caption    string `json:"caption,omitempty"`
+	Resolution string `json:"resolution,omitempty"`
+	Duration   int    `json:"duration,omitempty"`
+}
+
 type clawJobView struct {
 	JobID           string           `json:"job_id"`
 	SessionID       string           `json:"session_id"`
@@ -202,6 +210,7 @@ type clawJobView struct {
 	ArtifactVersion int              `json:"artifact_version,omitempty"`
 	ArtifactURL     string           `json:"artifact_url,omitempty"`
 	Figures         []clawFigureView `json:"figures,omitempty"`
+	Videos          []clawVideoView  `json:"videos,omitempty"`
 	Deck            *clawDeckView    `json:"deck,omitempty"`
 	ClarificationQuestions []string  `json:"clarification_questions,omitempty"`
 	Error           string           `json:"error,omitempty"`
@@ -243,6 +252,12 @@ func (h *handlers) GetClaw(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, f := range sess.Figures() {
 			v.Figures = append(v.Figures, clawFigureView{URL: f.URL, Caption: f.Caption})
+		}
+		for _, vid := range sess.Videos() {
+			v.Videos = append(v.Videos, clawVideoView{
+				URL: vid.URL, Poster: vid.Poster, Caption: vid.Caption,
+				Resolution: vid.Resolution, Duration: vid.Duration,
+			})
 		}
 		if d := sess.DeckArtifact(); d != nil {
 			v.Deck = &clawDeckView{
@@ -469,8 +484,8 @@ func (h *handlers) persistTerminalClawRun(wsID uuid.UUID, job clawJob) {
 	// clawJob only tracks metadata.
 	if h.deps.ClawSessions != nil {
 		if sess, ok := h.deps.ClawSessions.Get(job.ID); ok {
-			memory, plan, figures, deck, artifact, version := sess.SnapshotForPersist()
-			row.Memory, row.Plan, row.Figures, row.Deck, row.Artifact, row.ArtifactVersion = memory, plan, figures, deck, artifact, version
+			memory, plan, figures, videos, deck, artifact, version := sess.SnapshotForPersist()
+			row.Memory, row.Plan, row.Figures, row.Videos, row.Deck, row.Artifact, row.ArtifactVersion = memory, plan, figures, videos, deck, artifact, version
 			if row.Title == "" {
 				row.Title = strings.TrimSpace(sess.Title)
 			}

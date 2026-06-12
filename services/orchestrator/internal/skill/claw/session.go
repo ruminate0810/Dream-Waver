@@ -369,7 +369,7 @@ func (s *Session) SetHistory(h []schema.Message) {
 // layer writes to store.ClawRuns: memory (history), plan, artifact, and
 // version. Best-effort marshaling — a failure yields a nil blob and the
 // store's coalesce keeps the prior column value.
-func (s *Session) SnapshotForPersist() (memory, plan, figures, deck json.RawMessage, artifact string, version int) {
+func (s *Session) SnapshotForPersist() (memory, plan, figures, videos, deck json.RawMessage, artifact string, version int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.History) > 0 {
@@ -381,10 +381,13 @@ func (s *Session) SnapshotForPersist() (memory, plan, figures, deck json.RawMess
 	if len(s.figures) > 0 {
 		figures, _ = json.Marshal(s.figures)
 	}
+	if len(s.videos) > 0 {
+		videos, _ = json.Marshal(s.videos)
+	}
 	if s.deck != nil {
 		deck, _ = json.Marshal(s.deck)
 	}
-	return memory, plan, figures, deck, s.artifact, s.artifactVersion
+	return memory, plan, figures, videos, deck, s.artifact, s.artifactVersion
 }
 
 // ─── SessionStore ───────────────────────────────────────────────────────
@@ -464,6 +467,9 @@ func (s *SessionStore) GetOrLoad(ctx context.Context, workspaceID uuid.UUID, job
 	}
 	if len(row.Figures) > 0 {
 		_ = json.Unmarshal(row.Figures, &sess.figures)
+	}
+	if len(row.Videos) > 0 {
+		_ = json.Unmarshal(row.Videos, &sess.videos)
 	}
 	if len(row.Deck) > 0 {
 		var d Deck
