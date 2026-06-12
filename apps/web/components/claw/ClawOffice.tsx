@@ -219,13 +219,106 @@ export function ClawOffice({ run }: { run: ClawRun }) {
     >
       {/* ── the room ───────────────────────────────────────────────── */}
       <div className="absolute inset-0">
-        <div className="absolute inset-x-0 top-0 h-[30%] bg-surface-2" />
-        <div className="absolute inset-x-0 top-[30%] h-[3px] bg-ink/15" />
+        {/* ── wall: warm wallpaper + faint stripe + wainscot + skirting ── */}
         <div
-          className="absolute inset-x-0 bottom-0 top-[30%] bg-[#e7dfcd]"
+          className="absolute inset-x-0 top-0 h-[30%]"
+          style={{ background: "linear-gradient(180deg,#ddc9a2 0%,#d2bc90 100%)" }}
+        />
+        <div
+          className="absolute inset-x-0 top-0 h-[30%]"
           style={{
-            backgroundImage: "repeating-linear-gradient(0deg, rgba(22,20,15,0.05) 0 1px, transparent 1px 26px)",
+            backgroundImage:
+              "repeating-linear-gradient(90deg,rgba(120,92,50,0.09) 0 2px,transparent 2px 18px)",
           }}
+        />
+        {/* wainscot paneling band along the foot of the wall */}
+        <div
+          className="absolute inset-x-0"
+          style={{
+            top: "22%",
+            height: "8%",
+            background: "linear-gradient(180deg,#cba978 0%,#bb9560 100%)",
+            backgroundImage:
+              "repeating-linear-gradient(90deg,rgba(80,52,20,0.22) 0 2px,transparent 2px 34px)",
+            boxShadow: "inset 0 2px 0 rgba(255,244,214,0.55)",
+          }}
+        />
+        {/* skirting board (wall↔floor join) */}
+        <div
+          className="absolute inset-x-0"
+          style={{ top: "30%", height: "6px", transform: "translateY(-6px)", background: "#8a6534" }}
+        />
+        {/* ── floor: warm wood planks (staggered seams + grain) ── */}
+        <div
+          className="absolute inset-x-0 bottom-0 top-[30%]"
+          style={{ background: "linear-gradient(180deg,#cda869 0%,#c0985400 100%), #c8a261" }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 top-[30%]"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(0deg,rgba(74,48,18,0.20) 0 2px,transparent 2px 32px)," +
+              "repeating-linear-gradient(0deg,transparent 0 30px,rgba(255,242,205,0.10) 30px 32px)," +
+              "repeating-linear-gradient(90deg,rgba(74,48,18,0.10) 0 2px,transparent 2px 130px)",
+          }}
+        />
+        {/* cozy area rug under the meeting table */}
+        <div
+          className="absolute"
+          style={{
+            left: `${MEETING_TABLE.x}%`,
+            top: `${MEETING_TABLE.y + 5}%`,
+            transform: "translate(calc(-50% + 118px),-55%)",
+            width: "300px",
+            height: "146px",
+            borderRadius: "8px",
+            background: "radial-gradient(circle at 50% 50%,#b5503f 0%,#a3402f 62%,#8c3526 100%)",
+            border: "4px solid #d98a5a",
+            boxShadow: "inset 0 0 0 8px rgba(217,138,90,0.35)",
+            opacity: 0.9,
+          }}
+        />
+        {/* ── ambient lighting: golden wash + window beam + vignette ── */}
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(120% 80% at 22% 0%,rgba(255,224,150,0.30) 0%,transparent 55%)",
+            mixBlendMode: "soft-light",
+          }}
+        />
+        {/* sunbeam shaft from the top-left window */}
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: "6%",
+            top: "12%",
+            width: "215px",
+            height: "470px",
+            background:
+              "linear-gradient(166deg,rgba(255,238,176,0.46) 0%,rgba(255,236,170,0.12) 44%,transparent 66%)",
+            transform: "skewX(-20deg) rotate(4deg)",
+            transformOrigin: "top left",
+            filter: "blur(3px)",
+          }}
+        />
+        {/* warm pool where the beam lands on the floor */}
+        <div
+          className="pointer-events-none absolute"
+          style={{
+            left: "13%",
+            top: "44%",
+            width: "240px",
+            height: "120px",
+            background:
+              "radial-gradient(ellipse at 50% 50%,rgba(255,234,165,0.34) 0%,transparent 70%)",
+            transform: "skewX(-22deg)",
+            filter: "blur(4px)",
+          }}
+        />
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ boxShadow: "inset 0 0 120px 28px rgba(40,26,10,0.30)" }}
         />
         <Decor />
 
