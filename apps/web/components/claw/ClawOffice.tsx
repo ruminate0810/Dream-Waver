@@ -39,7 +39,14 @@ const PHASES = PHASE_ORDER.map((p) => ({
   workers: WORKERS.filter((w) => w.phase === p).map((w) => w.key),
 })).filter((p) => p.workers.length > 0);
 
-type Flight = { id: number; from: { x: number; y: number }; to: { x: number; y: number }; delay: number };
+type Flight = {
+  id: number;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  fromKey: string;
+  toKey: string;
+  delay: number;
+};
 let flightSeq = 1;
 
 function flightSources(key: string, status: (k: string) => string): string[] {
@@ -126,7 +133,12 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   const meetingChair = meetingKind === "review" ? "critic" : WORKERS[0].key;
 
   // the sim drives every body in the room
-  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair });
+  // gesture pulses — short UI-driven gesture overrides (交接击掌 etc.) the
+  // sim reads each tick; cheap one-way channel, no re-renders.
+  const pulses = useRef<Record<string, { g: string; until: number }>>({});
+  // live cat position, written by OfficeCat — lets the room react to the cat
+  const catPos = useRef<{ x: number; y: number; sleeping: boolean } | null>(null);
+  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses });
 
   // handoff flights on real start transitions
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -145,7 +157,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
       if (!to) continue;
       flightSources(w.key, (k) => prev[k] ?? "idle").forEach((src, i) => {
         const from = STATIONS[src];
-        if (from) add.push({ id: flightSeq++, from, to, delay: i * 220 });
+        if (from) add.push({ id: flightSeq++, from, to, fromKey: src, toKey: w.key, delay: i * 220 });
       });
     }
     if (add.length > 0) setFlights((f) => [...f, ...add]);
@@ -455,13 +467,61 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           />
         ))}
 
-        {/* handoff flights */}
+        {/* handoff flights — on landing both ends do a quick 击掌 cheer */}
         {flights.map((f) => (
-          <FlyingDoc key={f.id} flight={f} onDone={(id) => setFlights((fs) => fs.filter((x) => x.id !== id))} />
+          <FlyingDoc
+            key={f.id}
+            flight={f}
+            onDone={(id) => {
+              const until = Date.now() + 1300;
+              pulses.current[f.fromKey] = { g: "cheer", until };
+              pulses.current[f.toKey] = { g: "cheer", until };
+              setFlights((fs) => fs.filter((x) => x.id !== id));
+            }}
+          />
         ))}
 
         {/* the office cat — wanders, naps by the lamp, pettable */}
-        <OfficeCat />
+        <OfficeCat posRef={catPos} />
+
+        {/* 咖啡偶遇碰杯 — two workers at the coffee waypoint clink */}
+        {(() => {
+          const at = defs.filter((d) => {
+            const s = sim[d.key];
+            return s && !s.walking && s.site === "way:0";
+          });
+          if (at.length < 2) return null;
+          const a = sim[at[0].key];
+          const b = sim[at[1].key];
+          return (
+            <span
+              className="claw-emote claw-emote-show absolute z-[60] text-[15px]"
+              style={{ left: `${(a.x + b.x) / 2 + 1.5}%`, top: `${Math.min(a.y, b.y) - 8}%` }}
+            >
+              🥂
+            </span>
+          );
+        })()}
+
+        {/* 猫来串门 — a worker near the cat gets a little ❤️ */}
+        {catPos.current &&
+          (() => {
+            const c = catPos.current!;
+            const near = defs.find((d) => {
+              const s = sim[d.key];
+              return s && !s.walking && Math.abs(s.x - c.x) + Math.abs(s.y - c.y) < 8;
+            });
+            if (!near) return null;
+            const s = sim[near.key];
+            return (
+              <span
+                className="pointer-events-none absolute z-[60] text-[11px]"
+                style={{ left: `${s.x + 2}%`, top: `${s.y - 8}%` }}
+              >
+                ❤️
+              </span>
+            );
+          })()}
 
         {/* coffee break: a ☕ floats over every head */}
         {coffee &&
@@ -544,6 +604,21 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             >
               <X size={10} strokeWidth={2.4} />
             </button>
+          </div>
+          {/* 人设卡 — title / motto / trait chips */}
+          <div className="mb-2 rounded-[5px] border border-ink/20 bg-paper px-2 py-1.5">
+            <p className="font-mono text-[10px] font-bold" style={{ color: focusedDef.shirt }}>
+              {focusedDef.persona.title}
+            </p>
+            <p className="mt-0.5 font-mono text-[10px] leading-snug text-ink-2">「{focusedDef.persona.motto}」</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {focusedDef.persona.traits.map((t) => (
+                <span key={t} className="rounded-[3px] border border-ink/25 bg-surface px-1 py-px font-mono text-[9px] text-ink-2">
+                  {t}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1 font-mono text-[9px] text-muted">癖好:{focusedDef.persona.quirk}</p>
           </div>
           <dl className="space-y-1 font-mono text-[11px] text-ink-2">
             <div className="flex justify-between">
@@ -772,9 +847,22 @@ function OfficeWorker({
     return () => clearTimeout(t);
   }, [pokedUntil, poked]);
 
+  // 口头禅 — every so often a standing worker blurts their persona motto
+  const [mottoShow, setMottoShow] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (Math.random() < 0.08) {
+        setMottoShow(true);
+        setTimeout(() => setMottoShow(false), 3000);
+      }
+    }, 7000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!sim) return null;
   const gesture = poked && !sim.walking ? "wave" : sim.gesture;
   const emoKey = !sim.walking && gesture ? ACT[gesture]?.emo : undefined;
+  const motto = mottoShow && !sim.walking && !poked;
 
   return (
     <button
@@ -793,14 +881,18 @@ function OfficeWorker({
       }}
       aria-label={`${def.zh} · ${status}`}
     >
-      {emoKey && (
+      {motto ? (
+        <div className="claw-emote claw-emote-show absolute -top-7 left-1/2 z-10 flex items-center justify-center whitespace-nowrap rounded-[5px] border-2 border-ink bg-surface px-1.5 py-0.5 font-mono text-[9px] font-bold text-ink shadow-pixel-sm">
+          {def.persona.motto}
+        </div>
+      ) : emoKey ? (
         <div
           key={gesture}
           className="claw-emote claw-emote-show absolute -top-6 left-1/2 z-10 flex h-5 min-w-[18px] items-center justify-center rounded-[5px] border-2 border-ink bg-surface px-1 font-mono text-[10px] font-extrabold text-ink shadow-pixel-sm"
         >
           {EMO[emoKey]}
         </div>
-      )}
+      ) : null}
       <span className="absolute -bottom-[3px] left-1/2 h-[5px] w-[36px] -translate-x-1/2 rounded-[50%] bg-ink/15" />
       <span className="block" style={{ transform: `scaleX(${sim.facing})` }}>
         <WorkerSprite
@@ -1099,9 +1191,16 @@ function Decor({
 // the floor lamp, and pops hearts when petted. Purely cosmetic — runs on its
 // own timer, independent of the work sim.
 const CAT_NAP = { x: 7, y: 60 }; // beside the floor lamp
-function OfficeCat() {
+function OfficeCat({
+  posRef,
+}: {
+  posRef?: React.MutableRefObject<{ x: number; y: number; sleeping: boolean } | null>;
+}) {
   const [pos, setPos] = useState({ x: 70, y: 72 });
   const [mode, setMode] = useState<"wander" | "sleep">("wander");
+  useEffect(() => {
+    if (posRef) posRef.current = { x: pos.x, y: pos.y, sleeping: mode === "sleep" };
+  }, [pos, mode, posRef]);
   const [dir, setDir] = useState(1); // 1 → facing right
   const [hearts, setHearts] = useState<number[]>([]);
   const heartSeq = useRef(0);

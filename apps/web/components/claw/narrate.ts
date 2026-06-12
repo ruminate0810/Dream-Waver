@@ -11,22 +11,26 @@ export function workerColor(key: string): string {
   return WORKERS.find((w) => w.key === key)?.shirt ?? "#6a55ff";
 }
 
-// first-person intro a worker says when it picks up its first task
+// first-person intro a worker says when it picks up its first task —
+// in-character per persona (调研员=情报猎手, 工程师=沉默键盘侠, 设计师=像素
+// 洁癖, 撰稿员=咬文嚼字, 制片=赶档期, 视频师=运镜狂魔)
 const INTRO: Record<string, (detail: string) => string> = {
-  web_search: (d) => `这块我去查 — ${d || "联网核实事实与来源"}。`,
-  code_execute: () => "数据交给我,我跑段代码算清楚。",
-  generate_image: (d) => `我来画${d ? `「${d}」` : "张配图"}。`,
-  write_document: () => "材料齐了,我开始整合成报告。",
-  generate_deck: () => "报告我拿去做成幻灯片。",
-  generate_video: () => "我把这张图动起来,做成一段短片。",
+  web_search: (d) => `交给我去刨 — ${d || "联网核实事实与来源"}。出处不硬我不收工。`,
+  code_execute: () => "(推了推墨镜)数据给我,跑段代码就知道了。",
+  generate_image: (d) => `我来画${d ? `「${d}」` : "张配图"} — 今天配色必须完美。`,
+  edit_image: (d) => `这张图交给我精修 — ${d || "抠图、高清,安排"}。`,
+  write_document: () => "材料齐了,我开写 — 这稿起码润八遍。",
+  generate_deck: () => "报告给我,今晚必须出片!幻灯片这就排。",
+  generate_video: () => "上三脚架!我把这张图推、拉、摇、移起来。",
 };
 
 // a worker's closing line on a meaningful success
 const DONE: Record<string, string> = {
-  code_execute: "算出来了 ✓",
-  generate_image: "配图出炉啦 ✦",
-  generate_deck: "幻灯片做好了 ✓",
-  generate_video: "短片剪好了 ►",
+  code_execute: "跑完了,数字不会骗人 ✓",
+  generate_image: "配图出炉,一个像素都没歪 ✦",
+  edit_image: "修好了,放大看也经得起 ✦",
+  generate_deck: "片出了!档期保住了 ✓",
+  generate_video: "成片!这条最稳 ►",
 };
 
 export type SayLine = { worker: string; text: string };
@@ -73,8 +77,8 @@ export function narrationFor(ev: AgentEvent, said: Set<string>): SayLine | null 
       if (said.has(key)) return null;
       said.add(key);
       return w === "critic"
-        ? { worker: w, text: "审完了,挑出几处改好,交终稿。" }
-        : { worker: w, text: "初稿写好了,交给评审把关。" };
+        ? { worker: w, text: "审完了。挑出几处毛病,都给你们改好了 — 终稿。" }
+        : { worker: w, text: "初稿写好了。评审员,尽管来挑。" };
     }
     const line = DONE[d.tool_name ?? ""];
     if (line) {

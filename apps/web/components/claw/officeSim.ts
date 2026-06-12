@@ -138,6 +138,8 @@ export function useOfficeSim(inputs: {
   meetingUntil: number;
   /** who sits at the head slot + leads the talk; defaults to the coordinator. */
   meetingChair?: string;
+  /** short UI-driven gesture overrides (交接击掌 etc.) — read each tick. */
+  pulses?: { current: Record<string, { g: string; until: number }> };
 }): Record<string, SimView> {
   const inputRef = useRef(inputs);
   inputRef.current = inputs;
@@ -238,6 +240,11 @@ export function useOfficeSim(inputs: {
       return `way:${Math.floor(Math.random() * WAYPOINTS.length)}`;
     };
 
+    // 完工庆祝 — when a worker flips working→done, desk neighbours turn and
+    // cheer for a moment. Tracked in the tick closure.
+    const lastStatus: Record<string, WorkerStatus> = {};
+    const cheers: Record<string, { until: number; tx: number }> = {};
+
     const timer = setInterval(() => {
       const now = Date.now();
       const { views, offDuty, meetingUntil } = inputRef.current;
@@ -245,6 +252,19 @@ export function useOfficeSim(inputs: {
       const chair = inputRef.current.meetingChair || WORKERS[0].key;
       const out: Record<string, SimView> = {};
       const c = OFFICE_CONFIG;
+
+      for (const w of WORKERS) {
+        const st: WorkerStatus = views[w.key]?.status ?? "idle";
+        if (lastStatus[w.key] === "working" && st === "done") {
+          const fs = STATIONS[w.key];
+          for (const n of WORKERS) {
+            if (n.key === w.key) continue;
+            const ns = STATIONS[n.key];
+            if (ns.y === fs.y && Math.abs(ns.x - fs.x) < 26) cheers[n.key] = { until: now + 2400, tx: fs.x };
+          }
+        }
+        lastStatus[w.key] = st;
+      }
 
       // who is hosting a guest this tick (visitor arrived at their visit slot)
       const guests: Record<string, string> = {};
@@ -339,10 +359,17 @@ export function useOfficeSim(inputs: {
           } else if (a.site === "lounge") {
             gesture = beat(LOUNGE, 4100);
           } else if (a.site === "desk") {
-            a.facing = 1; // desks face right (prop sits to the right)
-            const v = views[w.key];
-            gesture =
-              status === "working" ? v?.gesture || beat(w.actions, 1700) : status === "done" ? beat(["nod", "look", "stretch", "write"], 3600) : beat(LOUNGE, 4100);
+            const ch = cheers[w.key];
+            if (ch && ch.until > now) {
+              // 完工庆祝: turn toward the finisher and cheer
+              a.facing = ch.tx >= a.x ? 1 : -1;
+              gesture = "cheer";
+            } else {
+              a.facing = 1; // desks face right (prop sits to the right)
+              const v = views[w.key];
+              gesture =
+                status === "working" ? v?.gesture || beat(w.actions, 1700) : status === "done" ? beat(["nod", "look", "stretch", "write"], 3600) : beat(LOUNGE, 4100);
+            }
           }
         }
 
@@ -351,6 +378,9 @@ export function useOfficeSim(inputs: {
         if (!walking) {
           const v = views[w.key];
           if (v?.reactionUntil && v.reactionUntil > now && v.reactionGesture) gesture = v.reactionGesture;
+          // UI pulse (交接击掌 etc.) wins over everything for its moment
+          const p = inputRef.current.pulses?.current?.[w.key];
+          if (p && p.until > now) gesture = p.g;
         }
 
         out[w.key] = { x: a.x, y: a.y, facing: a.facing, walking, gesture, site: a.site };

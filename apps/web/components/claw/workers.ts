@@ -74,11 +74,23 @@ export const TOOL_ACTION: Record<string, string> = {
 // strip, handoff-flight sources), so adding an agent = adding one entry.
 export type WorkerPhase = "plan" | "exec" | "write" | "review" | "produce";
 
+// Persona — the character sheet behind each worker. Shown on the office
+// popover (人设卡), sprinkled into idle speech bubbles (口头禅), and used to
+// keep narrate.ts lines in-character. Pure flavor: no behavioral coupling.
+export type Persona = {
+  title: string; // 头衔, e.g. "工头·甘特图之神"
+  bio: string; // 一句话人设
+  motto: string; // 口头禅 — occasionally pops as an idle speech bubble
+  quirk: string; // 小癖好
+  traits: [string, string, string]; // 性格三键, shown as chips
+};
+
 export type WorkerDef = {
   key: string; // == backend role key == event `agent`
   name: string; // English plate
   zh: string; // 中文 plate
   phase: WorkerPhase;
+  persona: Persona;
   tools: string[]; // tools that attribute to this worker (fallback when no agent field)
   shirt: string;
   shirtDark?: string; // right-side shading on the shirt (derived look)
@@ -98,6 +110,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "plan",
     name: "Coordinator",
     zh: "调度员",
+    persona: {
+      title: "工头 · 甘特图之神",
+      bio: "把一团混沌排成整齐日程表的人",
+      motto: "都给我排上日程!",
+      quirk: "白板笔从不离手",
+      traits: ["统筹 SS", "操心 MAX", "嗓门 洪亮"],
+    },
     tools: ["plan_tasks", "update_task"],
     shirt: "#6a55ff",
     shirtDark: "#5142cc",
@@ -114,6 +133,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "exec",
     name: "Researcher",
     zh: "调研员",
+    persona: {
+      title: "情报猎手",
+      bio: "没有他刨不出来的来源",
+      motto: "等等,这个我再查一下——",
+      quirk: "收藏夹两万条,都说有用",
+      traits: ["好奇 MAX", "求证 强迫症", "书签 囤积癖"],
+    },
     tools: ["web_search", "web_research", "tavily_search"],
     shirt: "#3a7bd5",
     shirtDark: "#2c61ab",
@@ -130,6 +156,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "exec",
     name: "Engineer",
     zh: "工程师",
+    persona: {
+      title: "沉默的键盘侠",
+      bio: "话不多,代码替他说",
+      motto: "能跑就别动它。",
+      quirk: "墨镜在室内也不摘",
+      traits: ["专注 深潜", "话少 .exe", "咖啡 续命"],
+    },
     tools: ["code_execute"],
     shirt: "#e3a13a",
     shirtDark: "#bd811f",
@@ -146,6 +179,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "exec",
     name: "Designer",
     zh: "设计师",
+    persona: {
+      title: "像素洁癖患者",
+      bio: "差 1px 都睡不着的人",
+      motto: "这个粉……再饱和 3%。",
+      quirk: "看什么都想对齐",
+      traits: ["审美 锐利", "配色 玄学", "细节 放大镜"],
+    },
     tools: ["generate_image", "edit_image"],
     shirt: "#d9569b",
     shirtDark: "#b03d7c",
@@ -161,6 +201,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "write",
     name: "Writer",
     zh: "撰稿员",
+    persona: {
+      title: "咬文嚼字大师",
+      bio: "能把一堆数据写成一个故事",
+      motto: "这句我再润八遍。",
+      quirk: "删掉的段落都偷偷留着",
+      traits: ["文笔 丝滑", "推敲 无限", "键盘 咖啡渍"],
+    },
     tools: ["write_document"],
     shirt: "#b5371e",
     shirtDark: "#8e2a15",
@@ -176,6 +223,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "review",
     name: "Reviewer",
     zh: "评审员",
+    persona: {
+      title: "毒舌但讲理",
+      bio: "刀子嘴,checklist 心",
+      motto: "依据呢?来源呢?",
+      quirk: "红笔批注比正文还长",
+      traits: ["挑刺 精准", "标准 严苛", "表扬 限量"],
+    },
     tools: [], // purely agent-attributed (shares write_document with the writer)
     shirt: "#2a9d8f",
     shirtDark: "#1e7a6f",
@@ -192,6 +246,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "produce",
     name: "Producer",
     zh: "制片",
+    persona: {
+      title: "档期守护者",
+      bio: "永远在赶下一个 deadline",
+      motto: "今晚必须出片!",
+      quirk: "每分钟看一次表",
+      traits: ["执行 闪电", "排期 帝王", "催稿 专业"],
+    },
     tools: ["generate_deck"],
     shirt: "#2aa198",
     shirtDark: "#1f7d76",
@@ -208,6 +269,13 @@ export const WORKERS: WorkerDef[] = [
     phase: "produce",
     name: "Videographer",
     zh: "视频师",
+    persona: {
+      title: "运镜狂魔",
+      bio: "万物皆可推、拉、摇、移",
+      motto: "再来一条,这条更稳!",
+      quirk: "总用手指比取景框",
+      traits: ["运镜 丝滑", "灯光 偏执", "成片 洁癖"],
+    },
     tools: ["generate_video"],
     shirt: "#7c5cbf",
     shirtDark: "#5e4494",
