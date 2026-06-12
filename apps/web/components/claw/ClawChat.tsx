@@ -10,6 +10,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { ArrowUp, Loader2, User2, Bot } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
 
 import { postClawMessage, type ClawRun } from "@/lib/api";
@@ -200,31 +201,52 @@ export function ClawChat({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-1 pb-6 pt-4 [scrollbar-width:thin]">
         <div className="flex flex-col gap-4">
-          {bubbles.map((b) => (
-            <BubbleRow key={b.id} bubble={b} />
-          ))}
+          <AnimatePresence initial={false}>
+            {bubbles.map((b) => (
+              <motion.div
+                key={b.id}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, height: 0, marginTop: -16 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                <BubbleRow bubble={b} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
         </div>
       </div>
 
-      {run.status === "finished" && (run.artifact_version ?? 0) > 0 && !running && (
-        <div className="border-t-2 border-line px-1 pb-1 pt-2">
-          <p className="mb-1.5 font-mono text-[10px] font-bold tracking-wide text-muted">下一步 ↓ 一点就派活</p>
-          <div className="flex flex-wrap gap-1.5">
-            {nextSteps(run).map((s) => (
-              <button
-                key={s.label}
-                type="button"
-                disabled={sending}
-                onClick={() => void send(s.text)}
-                className="rounded-pixel border-2 border-line-2 bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink-2 transition-colors hover:border-ink hover:bg-accent-soft hover:text-accent disabled:opacity-50"
-                title={s.text}
-              >
-                {s.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {run.status === "finished" && (run.artifact_version ?? 0) > 0 && !running && (
+          <motion.div
+            className="overflow-hidden border-t-2 border-line px-1 pb-1 pt-2"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <p className="mb-1.5 font-mono text-[10px] font-bold tracking-wide text-muted">下一步 ↓ 一点就派活</p>
+            <div className="flex flex-wrap gap-1.5">
+              {nextSteps(run).map((s, i) => (
+                <motion.button
+                  key={s.label}
+                  type="button"
+                  disabled={sending}
+                  onClick={() => void send(s.text)}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.05 + i * 0.04, duration: 0.16 }}
+                  className="rounded-pixel border-2 border-line-2 bg-surface px-2.5 py-1 font-mono text-[11px] font-semibold text-ink-2 transition-colors hover:border-ink hover:bg-accent-soft hover:text-accent disabled:opacity-50"
+                  title={s.text}
+                >
+                  {s.label}
+                </motion.button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <form
         onSubmit={onSubmit}

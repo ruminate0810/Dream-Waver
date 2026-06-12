@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
+import * as Popover from "@radix-ui/react-popover";
 import { FileText, Image as ImageIcon, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
 import clsx from "clsx";
 
@@ -333,9 +334,28 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         <PhaseStrip views={views} finished={run.status === "finished"} />
       </div>
 
-      {/* ── stats / wardrobe / bindings popover ─────────────────────── */}
-      {focusedDef && (
-        <div className="absolute right-3 top-9 z-50 w-[228px] rounded-pixel border-2 border-ink bg-surface p-3 shadow-pixel">
+      {/* ── stats / wardrobe / bindings popover (Radix, anchored to the
+            clicked worker; Escape / outside-click dismiss for free) ──── */}
+      <Popover.Root open={!!focusedDef} onOpenChange={(o) => { if (!o) setFocus(null); }}>
+        {focus && sim[focus] && (
+          <Popover.Anchor asChild>
+            <div
+              className="pointer-events-none absolute"
+              style={{ left: `${sim[focus].x}%`, top: `${sim[focus].y}%`, width: 1, height: 1 }}
+            />
+          </Popover.Anchor>
+        )}
+        <Popover.Portal>
+          <Popover.Content
+            side="left"
+            align="start"
+            sideOffset={30}
+            collisionPadding={12}
+            onOpenAutoFocus={(e) => e.preventDefault()}
+            className="claw-popover z-[120] w-[228px] rounded-pixel border-2 border-ink bg-surface p-3 shadow-pixel"
+          >
+            {focusedDef && (
+            <>
           <div className="mb-1.5 flex items-center justify-between">
             <span className="font-mono text-[12px] font-bold text-ink">
               {focusedDef.zh} <span className="text-[10px] font-normal text-muted">{focusedDef.name}</span>
@@ -449,8 +469,11 @@ export function ClawOffice({ run }: { run: ClawRun }) {
               ))}
             </div>
           </div>
-        </div>
-      )}
+            </>
+            )}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
 
       {/* ── dock (free-drag via react-rnd, position persisted) ──────── */}
       <Rnd
