@@ -458,13 +458,55 @@ function ReportSwipe({ markdown }: { markdown: string }) {
   );
 }
 
+// downloadFile force-saves a (possibly cross-origin OSS) asset: a plain
+// <a download> is ignored for cross-origin URLs, so we fetch the blob and
+// download that; if CORS blocks the fetch, fall back to opening in a new tab
+// so the user can still save it manually.
+async function downloadFile(url: string, filename: string) {
+  try {
+    const r = await fetch(url, { mode: "cors" });
+    if (!r.ok) throw new Error(String(r.status));
+    const blob = await r.blob();
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = obj;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(obj), 1000);
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
+// figureFilename derives a clean filename from the figure's caption (drops a
+// 海报: prefix, strips illegal chars), falling back to figure-N.
+function figureFilename(caption: string | undefined, i: number): string {
+  const base = (caption ?? "")
+    .replace(/^海报[:：]\s*/, "")
+    .replace(/[\\/:*?"<>|\n\r]+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return `${base || `figure-${i + 1}`}.png`;
+}
+
 function FiguresGallery({ figures }: { figures: ClawFigure[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
       {figures.map((f, i) => (
-        <figure key={i} className="overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+        <figure key={i} className="relative overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={f.url} alt={f.caption ?? `figure ${i + 1}`} className="block w-full" />
+          <button
+            type="button"
+            onClick={() => void downloadFile(f.url, figureFilename(f.caption, i))}
+            title="下载这张图"
+            aria-label="下载这张图"
+            className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-pixel border-2 border-ink bg-surface/95 text-ink-2 shadow-pixel-sm transition-transform hover:-translate-y-0.5 hover:text-ink"
+          >
+            <Download size={14} strokeWidth={2} />
+          </button>
           {f.caption && (
             <figcaption className="border-t-2 border-line px-2.5 py-1.5 font-mono text-[11px] text-ink-2">
               {f.caption}
@@ -496,14 +538,14 @@ function VideoGallery({ videos }: { videos: ClawVideo[] }) {
                 <span className="rounded-[3px] border border-line-2 bg-surface-2 px-1 py-[1px]">{v.resolution}</span>
               )}
               {v.duration ? <span>{v.duration}s</span> : null}
-              <a
-                href={v.url}
-                download={`clip-${i + 1}.mp4`}
+              <button
+                type="button"
+                onClick={() => void downloadFile(v.url, `${(v.caption || `clip-${i + 1}`).replace(/[\\/:*?"<>|\n\r]+/g, " ").trim().slice(0, 40)}.mp4`)}
                 className="grid h-5 w-5 place-items-center rounded-pixel border border-ink/40 text-ink-2 hover:text-ink"
                 aria-label="下载视频"
               >
                 <Download size={11} strokeWidth={2} />
-              </a>
+              </button>
             </span>
           </figcaption>
         </figure>
