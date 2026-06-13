@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { WORKERS } from "./workers";
+import { STATIONS_V12, MEETING_V12, LOUNGE_V12, WAYPOINTS_V12, LANES_V12 } from "./officeArt";
 import type { WorkerStatus, WorkerView } from "./useWorkerStates";
 
 // officeSim is the central "Sims" engine: ONE tick loop moves every worker
@@ -17,8 +18,8 @@ import type { WorkerStatus, WorkerView } from "./useWorkerStates";
 export const OFFICE_CONFIG = {
   spriteSize: 58,
   deskSize: 66,
-  rowYs: [40, 64] as const, // desk rows (feet line, % of scene)
-  lanes: [52, 76] as const, // walk corridors between/below the rows
+  rowYs: [40, 64] as const, // (legacy — v12 layout drives stations directly)
+  lanes: LANES_V12 as readonly number[], // walk corridors (v12: functional-pod lanes)
   speedX: 0.85, // % per tick
   speedY: 0.6,
   tickMs: 90,
@@ -47,48 +48,21 @@ export const OFFICE_CONFIG = {
 
 type P = { x: number; y: number };
 
-// ── Static geometry, derived from the registry ──────────────────────────
-export const STATIONS: Record<string, P> = (() => {
-  const out: Record<string, P> = {};
-  const backCount = Math.ceil(WORKERS.length / 2);
-  const rows = [WORKERS.slice(0, backCount), WORKERS.slice(backCount)];
-  rows.forEach((row, r) => {
-    row.forEach((w, i) => {
-      const x = row.length === 1 ? 42 : 5 + (i * 70) / (row.length - 1);
-      out[w.key] = { x: Math.round(x * 10) / 10, y: OFFICE_CONFIG.rowYs[r] };
-    });
-  });
-  return out;
-})();
+// ── Static geometry — v12 去 AI 味 layout (functional pods, see officeArt) ──
+export const STATIONS: Record<string, P> = STATIONS_V12;
 
-export const MEETING_TABLE = { x: 60, y: 88, w: 24, h: 7 }; // front-right floor
-const MEET_SLOTS: P[] = [
-  { x: 54, y: 88 }, // head — the coordinator chairs the meeting
-  { x: 61, y: 82 },
-  { x: 67, y: 82 },
-  { x: 73, y: 82 },
-  { x: 79, y: 88 }, // far end
-  { x: 61, y: 94 },
-  { x: 67, y: 94 },
-  { x: 73, y: 94 },
-];
+export const MEETING_TABLE = { x: MEETING_V12.tableX, y: MEETING_V12.tableY, w: 30, h: 8 };
+const MEET_SLOTS: P[] = MEETING_V12.seats;
 
-const LOUNGE_SLOTS: P[] = [
-  { x: 4, y: 90 },
-  { x: 9, y: 87 },
-  { x: 14, y: 90 },
-  { x: 19, y: 87 },
-  { x: 6, y: 95 },
-  { x: 11, y: 94 },
-  { x: 16, y: 95 },
-  { x: 21, y: 93 },
-];
+const LOUNGE_SLOTS: P[] = LOUNGE_V12;
 
-export const WAYPOINTS: { x: number; y: number; g: string; slots: number }[] = [
-  { x: 3, y: 88, g: "coffee", slots: 2 }, // coffee machine
-  { x: 92, y: 70, g: "think", slots: 2 }, // plant corner
-  { x: 47, y: 38, g: "look", slots: 2 }, // whiteboard
-];
+const WP_GESTURE: Record<string, string> = { coffee: "coffee", plant: "think", whiteboard: "look" };
+export const WAYPOINTS: { x: number; y: number; g: string; slots: number }[] = WAYPOINTS_V12.map((w) => ({
+  x: w.x,
+  y: w.y,
+  g: WP_GESTURE[w.kind] ?? "look",
+  slots: 2,
+}));
 
 // ── Sim state ────────────────────────────────────────────────────────────
 type Agent = {

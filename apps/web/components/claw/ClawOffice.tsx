@@ -15,6 +15,7 @@ import { PixelWindow } from "./PixelWindow";
 import { ArtifactBody, type WorkTab } from "./ArtifactPanel";
 import { useWorkerStates, type WorkerView } from "./useWorkerStates";
 import { useOfficeSim, OFFICE_CONFIG, STATIONS, MEETING_TABLE, type SimView } from "./officeSim";
+import { SPRITES, DESK_VARIANT, STATION_PROP, ZONES_V12, LOUNGE_V12, WAYPOINTS_V12, MEETING_V12 } from "./officeArt";
 import { useWardrobe, OUTFITS } from "./outfits";
 import { BindingsPanel } from "./BindingsPanel";
 
@@ -305,13 +306,24 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         {/* ── wall: warm wallpaper + faint stripe + wainscot + skirting ── */}
         <div
           className="absolute inset-x-0 top-0 h-[30%]"
-          style={{ background: "linear-gradient(180deg,#ddc9a2 0%,#d2bc90 100%)" }}
+          style={{ background: "linear-gradient(180deg, #e3d2ad 0%, #dccaa0 46%, #d2bc90 46.001%, #c9b07f 100%)" }}
         />
         <div
           className="absolute inset-x-0 top-0 h-[30%]"
           style={{
             backgroundImage:
               "repeating-linear-gradient(90deg,rgba(120,92,50,0.09) 0 2px,transparent 2px 18px)",
+          }}
+        />
+        {/* picture-rail line across the wall */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-[30%]"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, rgba(120,92,50,0.55) 0 1px, rgba(255,244,214,0.6) 1px 2px, rgba(120,92,50,0.30) 2px 3px, transparent 3px)",
+            backgroundPosition: "0 18%",
+            backgroundSize: "100% 100%",
+            backgroundRepeat: "no-repeat",
           }}
         />
         {/* wainscot paneling band along the foot of the wall */}
@@ -326,10 +338,16 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             boxShadow: "inset 0 2px 0 rgba(255,244,214,0.55)",
           }}
         />
-        {/* skirting board (wall↔floor join) */}
+        {/* skirting board (wall↔floor join) — beveled with highlight */}
         <div
           className="absolute inset-x-0"
-          style={{ top: "30%", height: "6px", transform: "translateY(-6px)", background: "#8a6534" }}
+          style={{
+            top: "30%",
+            height: "7px",
+            transform: "translateY(-7px)",
+            background: "linear-gradient(180deg, #a37b42 0%, #8a6534 40%, #6f4f28 100%)",
+            boxShadow: "inset 0 1px 0 rgba(255,244,214,0.7), 0 1px 1px rgba(40,26,10,0.35)",
+          }}
         />
         {/* ── floor: warm wood planks (staggered seams + grain) ── */}
         <div
@@ -345,22 +363,43 @@ export function ClawOffice({ run }: { run: ClawRun }) {
               "repeating-linear-gradient(90deg,rgba(74,48,18,0.10) 0 2px,transparent 2px 130px)",
           }}
         />
-        {/* cozy area rug under the meeting table */}
+        {/* plank-to-plank color variation — old-wood-floor look */}
         <div
-          className="absolute"
+          className="pointer-events-none absolute inset-x-0 bottom-0 top-[30%]"
           style={{
-            left: `${MEETING_TABLE.x}%`,
-            top: `${MEETING_TABLE.y + 5}%`,
-            transform: "translate(calc(-50% + 118px),-55%)",
-            width: "300px",
-            height: "146px",
-            borderRadius: "8px",
-            background: "radial-gradient(circle at 50% 50%,#b5503f 0%,#a3402f 62%,#8c3526 100%)",
-            border: "4px solid #d98a5a",
-            boxShadow: "inset 0 0 0 8px rgba(217,138,90,0.35)",
-            opacity: 0.9,
+            backgroundImage:
+              "repeating-linear-gradient(90deg, rgba(74,48,18,0.07) 0 130px, rgba(255,242,205,0.05) 130px 260px, transparent 260px 390px, rgba(58,38,14,0.06) 390px 520px)",
           }}
         />
+        {/* sparse wood knots */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 top-[30%]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 18% 22%, rgba(74,48,18,0.34) 0 1.4px, transparent 2.2px)," +
+              "radial-gradient(circle at 62% 58%, rgba(74,48,18,0.30) 0 1.6px, transparent 2.4px)," +
+              "radial-gradient(circle at 84% 34%, rgba(74,48,18,0.26) 0 1.3px, transparent 2.1px)",
+            backgroundSize: "230px 190px, 310px 260px, 270px 220px",
+          }}
+        />
+        {/* zone rugs — soft area rugs that delineate the functional pods
+            (执行工坊 / 稿件区 / 后期棚 / 茶水休息区), the去-AI-味 anchors */}
+        {ZONES_V12.map((z) => (
+          <div
+            key={z.name}
+            className="pointer-events-none absolute"
+            style={{
+              left: `${z.rugX}%`,
+              top: `${z.rugY}%`,
+              width: `${z.rugW}%`,
+              height: `${z.rugH}%`,
+              borderRadius: "10px",
+              background: z.rugColor,
+              opacity: 0.16,
+              boxShadow: `inset 0 0 0 3px ${z.rugColor}, inset 0 0 0 6px rgba(255,244,214,0.12)`,
+            }}
+          />
+        ))}
         {/* ── ambient lighting: golden wash + window beam + vignette ── */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -436,15 +475,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             zIndex: Math.round(MEETING_TABLE.y),
           }}
         >
-          <svg width="240" height="64" viewBox="0 0 96 26" className="claw-sprite" shapeRendering="crispEdges">
-            <rect x="2" y="4" width="92" height="12" fill="#a9742b" />
-            <rect x="2" y="3" width="92" height="2" fill="#c4915a" />
-            <rect x="6" y="16" width="4" height="9" fill="#84591c" />
-            <rect x="86" y="16" width="4" height="9" fill="#84591c" />
-            <rect x="22" y="6" width="8" height="5" fill="#fbfaf2" />
-            <rect x="46" y="7" width="9" height="4" fill="#fbfaf2" />
-            <rect x="68" y="6" width="7" height="5" fill="#fbfaf2" />
-          </svg>
+          <Sprite name="meeting-table" style={{ transform: "translateX(-50%)" }} />
           {meeting && (
             <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[4px] border border-ink/40 bg-accent px-1.5 py-[1px] font-mono text-[9.5px] font-bold text-white">
               {meetingKind === "review" ? "评审会 · 复盘改稿" : "例会中 · 对齐分工"}
@@ -467,19 +498,25 @@ export function ClawOffice({ run }: { run: ClawRun }) {
                 className={clsx("absolute bottom-0 left-[62px]", v?.status === "working" && "claw-desk-on")}
                 style={{ transform: "translateY(2px)" }}
               >
-                <svg
-                  width={OFFICE_CONFIG.deskSize}
-                  height={Math.round(OFFICE_CONFIG.deskSize * 0.875)}
-                  viewBox="0 0 32 28"
-                  className="claw-sprite"
-                  shapeRendering="crispEdges"
-                >
-                  <g dangerouslySetInnerHTML={{ __html: def.deskTool }} />
-                  <rect x="1" y="18" width="30" height="3" fill="#a9742b" />
-                  <rect x="1" y="17" width="30" height="1" fill="#c4915a" />
-                  <rect x="3" y="21" width="2" height="6" fill="#84591c" />
-                  <rect x="27" y="21" width="2" height="6" fill="#84591c" />
-                </svg>
+                {(() => {
+                  const dv = DESK_VARIANT[def.key] ?? "desk-a";
+                  const dsp = SPRITES[dv];
+                  return (
+                    <div className="relative" style={{ width: dsp.w, height: dsp.h }}>
+                      <Sprite name={dv} style={{ position: "absolute", inset: 0 }} />
+                      {/* monitor (deskTool) overlaid on the same 32×28 grid */}
+                      <svg
+                        className="claw-sprite absolute inset-0"
+                        width={dsp.w}
+                        height={dsp.h}
+                        viewBox="0 0 32 28"
+                        shapeRendering="crispEdges"
+                      >
+                        <g dangerouslySetInnerHTML={{ __html: def.deskTool }} />
+                      </svg>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="absolute left-[10px] top-[8px] w-[132px]">
                 <div className="inline-flex items-center gap-1.5 rounded-[4px] border border-ink/30 bg-surface/90 px-1.5 py-[1px]">
@@ -546,8 +583,8 @@ export function ClawOffice({ run }: { run: ClawRun }) {
         {/* the office cat — wanders, naps by the lamp, pettable */}
         <OfficeCat posRef={catPos} />
 
-        {/* 交付钟 — rings 纳斯达克-style when the run finishes */}
-        <div className="absolute" style={{ left: "37%", top: "78%", zIndex: 78 }}>
+        {/* 交付钟 — rings 纳斯达克-style when the run finishes (by the meeting table) */}
+        <div className="absolute" style={{ left: `${MEETING_TABLE.x - 17}%`, top: `${MEETING_TABLE.y - 4}%`, zIndex: 77 }}>
           {bellRinging && (
             <>
               <span className="claw-coffee-bub pointer-events-none absolute -top-5 left-1/2 text-[14px]">🎉</span>
@@ -1153,7 +1190,20 @@ function DockButton({
   );
 }
 
-// Decor — windows, whiteboard, clock, coffee machine (lounge), plant.
+// Sprite — renders a named v12 pixel asset (officeArt.SPRITES) at its native
+// size (× optional scale). The SVG strings already carry class + crispEdges;
+// we inject width/height so the browser rasterises at the intended pixel size.
+function Sprite({ name, scale = 1, className, style }: { name: string; scale?: number; className?: string; style?: React.CSSProperties }) {
+  const s = SPRITES[name];
+  if (!s) return null;
+  const w = Math.round(s.w * scale);
+  const h = Math.round(s.h * scale);
+  const html = s.svg.replace("<svg ", `<svg width="${w}" height="${h}" `);
+  return <span className={className} style={{ display: "inline-block", lineHeight: 0, ...style }} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// Decor v12 — props placed by the去-AI-味 layout (officeArt). Wall fixtures
+// hang on the upper band; floor props stand (bottom-anchored, z by depth).
 function Decor({
   light = "day",
   onCoffee,
@@ -1161,128 +1211,75 @@ function Decor({
   light?: "day" | "dusk" | "night";
   onCoffee?: () => void;
 }) {
-  // lamp/sconce glow grows as the room darkens
   const glow = light === "night" ? 0.6 : light === "dusk" ? 0.32 : 0.12;
+  const zOf = (t: string) => Math.round(parseFloat(t));
+
+  // wall fixtures (top band, top-anchored)
+  const WALL: { n: string; l: string; t: string }[] = [
+    { n: "window", l: "4%", t: "3%" },
+    { n: "corkboard", l: "26%", t: "5%" },
+    { n: "whiteboard", l: "44%", t: "2%" },
+    { n: "clock", l: "90%", t: "4%" },
+    { n: "plant-hang", l: "80%", t: "2%" },
+  ];
+  // floor props (bottom-anchored at their y), placed near their owning zone
+  const FLOOR: { n: string; l: string; t: string; scale?: number }[] = [
+    // 茶水休息区 (bottom-left)
+    { n: "fridge", l: "15%", t: "84%" },
+    { n: "snack-shelf", l: "1%", t: "72%" },
+    { n: "beanbag", l: "9%", t: "97%" },
+    // plants
+    { n: "plant-big", l: "26%", t: "76%" },
+    { n: "plant-mid", l: "95%", t: "60%" },
+    // 后期棚 + 执行工坊 back wall
+    { n: "bookshelf", l: "34%", t: "31%" },
+    // flavor props beside their desk (only those with real sprites)
+    { n: "server-rack", l: "28%", t: "47%" },
+    { n: "easel", l: "3%", t: "62%" },
+    { n: "tripod-light", l: "93%", t: "73%" },
+    { n: "paper-stack", l: "54%", t: "59%" },
+  ];
+
   return (
     <>
-      <svg className="absolute left-[8%] top-[4%] claw-sprite" width="84" height="62" viewBox="0 0 37 28" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="37" height="28" fill="#16140f" />
-        <rect x="2" y="2" width="15" height="11" fill="#bfe3f2" />
-        <rect x="20" y="2" width="15" height="11" fill="#bfe3f2" />
-        <rect x="2" y="15" width="15" height="11" fill="#cfeaf6" />
-        <rect x="20" y="15" width="15" height="11" fill="#cfeaf6" />
-        <rect x="5" y="4" width="6" height="2" fill="#fff" />
-        <rect x="24" y="7" width="7" height="2" fill="#fff" />
-      </svg>
-      <svg className="absolute left-[40%] top-[6%] claw-sprite" width="132" height="56" viewBox="0 0 60 26" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="60" height="26" fill="#16140f" />
-        <rect x="1" y="1" width="58" height="24" fill="#fbfaf2" />
-        <rect x="5" y="5" width="28" height="2" fill="#6a55ff" />
-        <rect x="5" y="10" width="40" height="1.6" fill="#c9c3b5" />
-        <rect x="5" y="14" width="34" height="1.6" fill="#c9c3b5" />
-        <rect x="5" y="18" width="38" height="1.6" fill="#c9c3b5" />
-        <rect x="46" y="14" width="9" height="6" fill="#3ea96a" />
-      </svg>
-      <svg className="absolute right-[5%] top-[5%] claw-sprite" width="38" height="38" viewBox="0 0 17 17" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="17" height="17" fill="#16140f" />
-        <rect x="1.5" y="1.5" width="14" height="14" fill="#fbfaf2" />
-        <rect x="8" y="4" width="1.4" height="5" fill="#16140f" />
-        <rect x="8" y="8" width="4" height="1.4" fill="#b5371e" />
-      </svg>
-      {/* coffee machine (lounge) — click to treat the whole team ☕ */}
+      {WALL.map((p) => (
+        <Sprite key={p.n} name={p.n} className="absolute" style={{ left: p.l, top: p.t }} />
+      ))}
+
+      {/* wall sconces with a glow that grows after dark */}
+      {[{ l: "19%" }, { l: "73%" }].map((s, i) => (
+        <div key={`sconce-${i}`} className="absolute" style={{ left: s.l, top: "16%" }}>
+          <div
+            className="pointer-events-none absolute rounded-full"
+            style={{ left: "-28px", top: "-24px", width: "74px", height: "74px", background: `radial-gradient(circle,rgba(255,206,120,${glow}) 0%,transparent 70%)` }}
+          />
+          <Sprite name="sconce" className="relative" />
+        </div>
+      ))}
+
+      {FLOOR.map((p) => (
+        <Sprite
+          key={p.n}
+          name={p.n}
+          scale={p.scale}
+          className="absolute"
+          style={{ left: p.l, top: p.t, transform: "translateY(-100%)", zIndex: zOf(p.t) }}
+        />
+      ))}
+
+      {/* coffee machine — clickable, steaming, by the lounge */}
       <div
         className="absolute cursor-pointer transition-transform hover:scale-105"
-        style={{ left: "1%", top: "92%", transform: "translateY(-100%)" }}
+        style={{ left: "1%", top: "84%", transform: "translateY(-100%)", zIndex: 84 }}
         onClick={onCoffee}
         title="请大家喝咖啡 ☕"
       >
         <span className="claw-steam absolute left-[16px] top-[6px] h-[7px] w-[3px] rounded-full bg-white/70" />
         <span className="claw-steam absolute left-[23px] top-[9px] h-[6px] w-[3px] rounded-full bg-white/60" style={{ animationDelay: "0.8s" }} />
         <span className="claw-steam absolute left-[29px] top-[7px] h-[5px] w-[2px] rounded-full bg-white/50" style={{ animationDelay: "1.5s" }} />
-        <svg className="claw-sprite" width="52" height="66" viewBox="0 0 23 29" shapeRendering="crispEdges">
-          <rect x="2" y="4" width="14" height="20" fill="#403a30" />
-          <rect x="3" y="5" width="12" height="7" fill="#16140f" />
-          <rect x="4" y="6" width="4" height="2" fill="#74e6a0" />
-          <rect x="6" y="14" width="6" height="4" fill="#16140f" />
-          <rect x="7" y="18" width="4" height="1" fill="#e3a13a" />
-          <rect x="0" y="24" width="20" height="2" fill="#84591c" />
-          <rect x="1" y="26" width="2" height="3" fill="#84591c" />
-          <rect x="17" y="26" width="2" height="3" fill="#84591c" />
-        </svg>
+        <Sprite name="coffee-machine" />
       </div>
-      {/* plant */}
-      <svg className="absolute claw-sprite" style={{ right: "1.5%", top: "74%", transform: "translateY(-100%)" }} width="46" height="64" viewBox="0 0 20 28" shapeRendering="crispEdges">
-        <rect x="7" y="2" width="6" height="6" fill="#3ea96a" />
-        <rect x="4" y="6" width="6" height="6" fill="#4fbf7c" />
-        <rect x="10" y="7" width="6" height="6" fill="#2f8f58" />
-        <rect x="8" y="13" width="4" height="5" fill="#6a4a23" />
-        <rect x="5" y="18" width="10" height="8" fill="#b5371e" />
-        <rect x="5" y="18" width="10" height="2" fill="#d8654a" />
-      </svg>
-      {/* framed pictures on the bare wall */}
-      <svg className="absolute left-[27%] top-[8%] claw-sprite" width="42" height="34" viewBox="0 0 19 15" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="19" height="15" fill="#7a5a2e" />
-        <rect x="1.5" y="1.5" width="16" height="12" fill="#fbfaf2" />
-        <rect x="3" y="3" width="6" height="5" fill="#8fb8e0" />
-        <rect x="11" y="3" width="3" height="3" fill="#e3b23a" />
-        <rect x="3" y="10" width="13" height="2.5" fill="#4fa36a" />
-      </svg>
-      <svg className="absolute left-[72%] top-[7%] claw-sprite" width="40" height="40" viewBox="0 0 18 18" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="18" height="18" fill="#7a5a2e" />
-        <rect x="1.5" y="1.5" width="15" height="15" fill="#fbfaf2" />
-        <rect x="3" y="4" width="12" height="2" fill="#b5503f" />
-        <rect x="3" y="8" width="9" height="2" fill="#c98a3a" />
-        <rect x="3" y="12" width="11" height="2" fill="#6a8fcf" />
-      </svg>
-      {/* wall sconces with a glow that grows after dark */}
-      {["21%", "83%"].map((lx, i) => (
-        <div key={`sconce-${i}`} className="absolute" style={{ left: lx, top: "16%" }}>
-          <div
-            className="pointer-events-none absolute rounded-full"
-            style={{
-              left: "-30px",
-              top: "-26px",
-              width: "78px",
-              height: "78px",
-              background: `radial-gradient(circle,rgba(255,206,120,${glow}) 0%,transparent 70%)`,
-            }}
-          />
-          <svg className="claw-sprite relative" width="20" height="26" viewBox="0 0 9 12" shapeRendering="crispEdges">
-            <rect x="3" y="6" width="3" height="5" fill="#4a3417" />
-            <rect x="1" y="2" width="7" height="5" fill="#ffd874" />
-            <rect x="2" y="1" width="5" height="2" fill="#ffe7a6" />
-          </svg>
-        </div>
-      ))}
-      {/* floor lamp (left-mid) with a warm glow */}
-      <div className="absolute" style={{ left: "2.5%", top: "52%" }}>
-        <div
-          className="pointer-events-none absolute rounded-full"
-          style={{
-            left: "-26px",
-            top: "-30px",
-            width: "96px",
-            height: "96px",
-            background: `radial-gradient(circle,rgba(255,214,130,${glow + 0.12}) 0%,transparent 70%)`,
-          }}
-        />
-        <svg className="claw-sprite relative" width="30" height="78" viewBox="0 0 13 34" shapeRendering="crispEdges">
-          <rect x="2" y="1" width="9" height="2" fill="#4a3417" />
-          <rect x="3" y="2" width="7" height="5" fill="#ffd874" />
-          <rect x="2" y="2" width="9" height="2" fill="#ffe7a6" />
-          <rect x="6" y="7" width="1" height="23" fill="#6a4a23" />
-          <rect x="3" y="30" width="7" height="2" fill="#4a3417" />
-        </svg>
-      </div>
-      {/* small potted plant near the lounge */}
-      <svg className="absolute claw-sprite" style={{ left: "9%", top: "94%", transform: "translateY(-100%)" }} width="40" height="54" viewBox="0 0 18 24" shapeRendering="crispEdges">
-        <rect x="6" y="2" width="5" height="6" fill="#4fbf7c" />
-        <rect x="3" y="6" width="6" height="6" fill="#3ea96a" />
-        <rect x="9" y="7" width="6" height="6" fill="#2f8f58" />
-        <rect x="6" y="13" width="5" height="4" fill="#6a4a23" />
-        <rect x="4" y="17" width="9" height="6" fill="#c98a3a" />
-        <rect x="4" y="17" width="9" height="2" fill="#e0a85a" />
-      </svg>
+
       {/* string lights swooping along the top of the wall */}
       <div
         className="pointer-events-none absolute inset-x-[3%] top-[1.2%] h-[10px]"
@@ -1309,33 +1306,6 @@ function Decor({
           })}
         </div>
       </div>
-      {/* bookshelf against the wall (right side) */}
-      <svg className="absolute claw-sprite" style={{ right: "11%", top: "30.5%", transform: "translateY(-100%)" }} width="84" height="100" viewBox="0 0 36 43" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="36" height="43" fill="#6a4a23" />
-        <rect x="2" y="2" width="32" height="11" fill="#4a3417" />
-        <rect x="2" y="15" width="32" height="11" fill="#4a3417" />
-        <rect x="2" y="28" width="32" height="11" fill="#4a3417" />
-        {/* spines, shelf 1 */}
-        <rect x="4" y="4" width="3" height="9" fill="#b5503f" />
-        <rect x="8" y="5" width="3" height="8" fill="#3e7fa3" />
-        <rect x="12" y="4" width="4" height="9" fill="#e3b23a" />
-        <rect x="17" y="6" width="3" height="7" fill="#4fa36a" />
-        <rect x="21" y="4" width="3" height="9" fill="#8a5fc9" />
-        <rect x="25" y="5" width="4" height="8" fill="#c97a3a" />
-        {/* spines, shelf 2 */}
-        <rect x="4" y="18" width="4" height="8" fill="#4fa36a" />
-        <rect x="9" y="17" width="3" height="9" fill="#e3b23a" />
-        <rect x="13" y="19" width="3" height="7" fill="#b5503f" />
-        <rect x="17" y="17" width="4" height="9" fill="#3e7fa3" />
-        <rect x="22" y="18" width="3" height="8" fill="#c97a3a" />
-        <rect x="26" y="17" width="3" height="9" fill="#8a5fc9" />
-        {/* shelf 3: books + a tiny plant */}
-        <rect x="4" y="31" width="3" height="8" fill="#3e7fa3" />
-        <rect x="8" y="30" width="4" height="9" fill="#b5503f" />
-        <rect x="13" y="32" width="3" height="7" fill="#e3b23a" />
-        <rect x="24" y="33" width="6" height="3" fill="#4fbf7c" />
-        <rect x="25" y="36" width="4" height="3" fill="#c98a3a" />
-      </svg>
     </>
   );
 }
