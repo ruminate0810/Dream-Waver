@@ -79,8 +79,12 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	}
 
 	// ── Post-run guards ──────────────────────────────────────────────────
-	if _, version := sess.Artifact(); version == 0 {
-		err := fmt.Errorf("团队完成但未产出报告")
+	// The deliverable need not be a report — accept any artifact (report /
+	// figures / videos / deck) so pure-visual runs don't false-alarm.
+	_, version := sess.Artifact()
+	hasArtifact := version > 0 || len(sess.Figures()) > 0 || len(sess.Videos()) > 0 || sess.DeckArtifact() != nil
+	if !hasArtifact {
+		err := fmt.Errorf("团队完成但没有任何产出")
 		if writerErr != nil {
 			err = fmt.Errorf("撰稿失败: %w", writerErr)
 		}
@@ -193,13 +197,15 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	if avail[RoleVideographer] {
 		b.WriteString("- videographer:把某张配图做成几秒短视频(image-to-video,仅当用户明确要视频/短片/动起来时才用)\n")
 	}
-	b.WriteString("\n规则:\n- 必须有且仅有一个 writer 子任务(撰写最终报告)。\n")
+	b.WriteString("\n规则:\n")
+	b.WriteString("- 默认收尾要有一个 writer 子任务(撰写最终 Markdown 报告)。\n")
+	b.WriteString("- 但如果用户只要纯视觉/媒体产出本身——海报、绘本、配图、短视频、PPT——并不需要文字报告,就不要 writer 子任务,让最终交付就是那个作品。拿不准时才加 writer。\n")
 	b.WriteString("- 子任务要派给「持有相应能力工具」的角色(见上),不要派给没有该工具的角色。\n")
 	if avail[RoleProducer] {
-		b.WriteString("- 用户要幻灯片/PPT/deck 时,在 writer 之后加一个 producer 子任务;否则不要加。\n")
+		b.WriteString("- 用户要幻灯片/PPT/deck 时,加一个 producer 子任务(它需要报告,所以这种情况要保留 writer);否则不要加。\n")
 	}
 	if avail[RoleVideographer] {
-		b.WriteString("- 用户要视频/短片/把图动起来时,在 writer 之后加一个 videographer 子任务;否则不要加。\n")
+		b.WriteString("- 用户要视频/短片/把图动起来时,加一个 videographer 子任务(放在配图任务之后);否则不要加。\n")
 	}
 	b.WriteString("- 只输出 JSON,不要任何额外文字,格式:{\"tasks\":[{\"title\":\"子任务\",\"role\":\"researcher\"}]}\n")
 	if isFollowup {
@@ -244,6 +250,7 @@ func parsePlan(content string, avail map[string]bool) []Task {
 	var exec []Task
 	var producer *Task     // runs in Phase 4, after the writer
 	var videographer *Task // runs in Phase 4 too, after the writer (needs a figure)
+	llmWantedWriter := false
 	for _, t := range parsed.Tasks {
 		title := strings.TrimSpace(t.Title)
 		role := strings.TrimSpace(t.Role)
@@ -251,7 +258,8 @@ func parsePlan(content string, avail map[string]bool) []Task {
 			continue
 		}
 		if role == RoleWriter {
-			continue // we append exactly one writer ourselves
+			llmWantedWriter = true // we append (at most) one writer ourselves
+			continue
 		}
 		if role == RoleProducer {
 			if avail[RoleProducer] && producer == nil {
@@ -275,8 +283,25 @@ func parsePlan(content string, avail map[string]bool) []Task {
 			break // leave room for the writer (+ optional producer/videographer)
 		}
 	}
-	// execution tasks → writer → (optional) producer → (optional) videographer.
-	out := append(exec, Task{Title: "撰写完整报告", Role: RoleWriter})
+	// Decide whether a written report is needed. Skip the writer ONLY for pure
+	// visual / media deliverables — the user wants the poster / 绘本 / video
+	// itself, not a report about it. Keep the writer whenever the LLM asked for
+	// one, there's analytical work (researcher/engineer) to write up, a producer
+	// will turn the report into a deck, or the plan has no execution tasks.
+	analytical := false
+	for _, t := range exec {
+		if t.Role == RoleResearcher || t.Role == RoleEngineer {
+			analytical = true
+			break
+		}
+	}
+	includeWriter := llmWantedWriter || analytical || producer != nil || len(exec) == 0
+
+	// execution tasks → (optional) writer → (optional) producer → (optional) videographer.
+	out := exec
+	if includeWriter {
+		out = append(out, Task{Title: "撰写完整报告", Role: RoleWriter})
+	}
 	if producer != nil {
 		out = append(out, *producer)
 	}
@@ -522,6 +547,9 @@ func (r *Runner) buildRoleTaskMsg(goal string, sess *Session, idxs []int) string
 
 func (r *Runner) runWriter(ctx context.Context, sess *Session, goal string, findings map[string]string, isFollowup bool) error {
 	idxs := sess.TaskIndicesForRole(RoleWriter)
+	if len(idxs) == 0 {
+		return nil // 纯视觉/媒体产出 — 这一单不需要文字报告
+	}
 	for _, i := range idxs {
 		if sess.UpdateTask(i, TaskDoing) {
 			r.emit(ctx, event.NewClawTaskUpdate(i, TaskDoing))

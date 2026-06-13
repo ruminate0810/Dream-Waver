@@ -374,6 +374,36 @@ func TestParsePlanProducerOrder(t *testing.T) {
 	}
 }
 
+// TestParsePlanSkipsWriterForVisual — a pure visual deliverable (designer
+// only, no writer in the LLM plan) must NOT get a tacked-on report; an
+// analytical plan still keeps the writer even if the LLM forgot it.
+func TestParsePlanSkipsWriterForVisual(t *testing.T) {
+	avail := map[string]bool{RoleDesigner: true, RoleResearcher: true, RoleWriter: true}
+
+	// poster only, LLM omitted writer → no writer appended
+	visual := parsePlan(`{"tasks":[{"title":"设计活动海报","role":"designer"}]}`, avail)
+	for _, tk := range visual {
+		if tk.Role == RoleWriter {
+			t.Fatalf("pure-visual plan should skip the writer: %+v", visual)
+		}
+	}
+	if len(visual) != 1 {
+		t.Fatalf("want just the designer task, got %+v", visual)
+	}
+
+	// analytical work with no writer in the plan → writer still appended (safety)
+	research := parsePlan(`{"tasks":[{"title":"查资料","role":"researcher"}]}`, avail)
+	if research[len(research)-1].Role != RoleWriter {
+		t.Fatalf("analytical plan must keep the writer: %+v", research)
+	}
+
+	// designer + explicit writer → writer respected
+	withWriter := parsePlan(`{"tasks":[{"title":"配图","role":"designer"},{"title":"写报告","role":"writer"}]}`, avail)
+	if withWriter[len(withWriter)-1].Role != RoleWriter {
+		t.Fatalf("explicit writer must be kept: %+v", withWriter)
+	}
+}
+
 // TestPlanningDegradation verifies a disabled capability (no image provider)
 // is never assigned: the planner-output parser drops a designer task when the
 // designer is unavailable, leaving just the writer — and the run still
