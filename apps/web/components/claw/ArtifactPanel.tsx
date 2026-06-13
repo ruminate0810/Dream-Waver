@@ -207,11 +207,37 @@ function TabButton({
   );
 }
 
-// DeckView — when the deck carries a preview_id, render a swipeable live
-// slide preview (each page is the slides pipeline's on-demand HTML in a
-// scaled iframe); otherwise fall back to the download card.
+// DeckView — when the deck carries a preview_id AND that slide session is
+// actually serving page HTML, render a swipeable live preview; otherwise
+// fall back to a clean download card (never the raw endpoint error).
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
+
+// DeckCard — the download fallback, with an optional hint line.
+function DeckCard({ deck, hint }: { deck: ClawDeck; hint?: string }) {
+  return (
+    <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 p-8 text-center">
+      <span className="grid h-14 w-14 place-items-center rounded-pixel border-2 border-ink bg-accent-soft text-accent shadow-pixel-sm">
+        <Layers size={24} strokeWidth={1.6} />
+      </span>
+      <div>
+        <p className="font-mono text-[15px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
+        {deck.slide_count ? (
+          <p className="mt-1 font-mono text-[12px] text-muted">{deck.slide_count} 页 · PowerPoint (.pptx)</p>
+        ) : null}
+        {hint ? <p className="mt-1.5 font-mono text-[11px] text-muted">{hint}</p> : null}
+      </div>
+      <a
+        href={deck.url}
+        download
+        className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
+      >
+        <Download size={14} strokeWidth={2} />
+        下载 .pptx
+      </a>
+    </div>
+  );
+}
 
 function DeckView({ deck }: { deck: ClawDeck }) {
   const count = deck.slide_count ?? 0;
@@ -219,6 +245,30 @@ function DeckView({ deck }: { deck: ClawDeck }) {
   const [dir, setDir] = useState(1);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(0.5);
+  // null = checking, true = serving HTML, false = unavailable → download card
+  const [previewOk, setPreviewOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!deck.preview_id || count === 0) {
+      setPreviewOk(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewOk(null);
+    (async () => {
+      try {
+        const r = await fetch(`/api/v1/slides/${deck.preview_id}/page/1.html`);
+        const ct = r.headers.get("content-type") ?? "";
+        if (!cancelled) setPreviewOk(r.ok && ct.includes("html"));
+      } catch {
+        if (!cancelled) setPreviewOk(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deck.preview_id, count]);
+
   useEffect(() => {
     const el = frameRef.current;
     if (!el) return;
@@ -226,7 +276,7 @@ function DeckView({ deck }: { deck: ClawDeck }) {
     ro.observe(el);
     setScale(el.clientWidth / SLIDE_W);
     return () => ro.disconnect();
-  }, [deck.preview_id]);
+  }, [deck.preview_id, previewOk]);
 
   const go = (next: number) => {
     if (next < 1 || next > count) return;
@@ -234,26 +284,12 @@ function DeckView({ deck }: { deck: ClawDeck }) {
     setPage(next);
   };
 
-  if (!deck.preview_id || count === 0) {
+  if (previewOk === false) return <DeckCard deck={deck} hint={deck.preview_id ? "在线预览暂不可用 — 下载 .pptx 查看完整版" : undefined} />;
+  if (previewOk === null) {
     return (
-      <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 p-8 text-center">
-        <span className="grid h-14 w-14 place-items-center rounded-pixel border-2 border-ink bg-accent-soft text-accent shadow-pixel-sm">
-          <Layers size={24} strokeWidth={1.6} />
-        </span>
-        <div>
-          <p className="font-mono text-[15px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
-          {deck.slide_count ? (
-            <p className="mt-1 font-mono text-[12px] text-muted">{deck.slide_count} 页 · PowerPoint (.pptx)</p>
-          ) : null}
-        </div>
-        <a
-          href={deck.url}
-          download
-          className="inline-flex items-center gap-2 rounded-pixel border-2 border-ink bg-accent px-4 py-2.5 font-mono text-[13px] font-semibold text-white shadow-pixel-sm transition-transform hover:translate-x-[1px] hover:translate-y-[1px] hover:shadow-pixel-hover active:translate-x-[3px] active:translate-y-[3px] active:!shadow-none"
-        >
-          <Download size={14} strokeWidth={2} />
-          下载 .pptx
-        </a>
+      <div className="flex h-full min-h-[220px] items-center justify-center gap-2 font-pixel text-[0.55rem] tracking-wide text-muted">
+        <span className="inline-block h-2 w-2 animate-pixpulse rounded-full bg-accent" />
+        载入预览…
       </div>
     );
   }
