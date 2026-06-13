@@ -166,8 +166,10 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	toolZh := map[string]string{
 		"web_search":     "联网检索事实与来源",
 		"code_execute":   "运行代码做计算/解析/核对",
-		"generate_image": "生成配图",
-		"edit_image":     "修图(抠图/高清化/上色/扩图/图生图)",
+		"generate_image":     "生成配图",
+		"edit_image":         "修图(抠图/高清化/上色/扩图/图生图)",
+		"generate_poster":    "设计海报/宣传图",
+		"generate_storybook": "绘制绘本/多格插画",
 	}
 	for _, key := range RebindTargets {
 		if !avail[key] {

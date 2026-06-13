@@ -484,3 +484,44 @@ func TestEditImageTool(t *testing.T) {
 		t.Fatalf("unwired editor should soft-skip, got %+v", res)
 	}
 }
+
+// TestVisualDeliverables drives generate_poster + generate_storybook: both
+// reuse the designer's image source and land figures, degrade gracefully
+// when unwired, and validate their args.
+func TestVisualDeliverables(t *testing.T) {
+	sess := &Session{}
+	em := &recordingEmitter{}
+	ctx := event.WithSessionID(context.Background(), "sess-vd")
+
+	poster := &GeneratePoster{Images: fakeImages{}, Session: sess, Emitter: em}
+	if res, _ := poster.Execute(ctx, []byte(`{"title":"像素之夜","theme":"retro arcade"}`)); res.Error != "" {
+		t.Fatalf("poster failed: %+v", res)
+	}
+	if len(sess.Figures()) != 1 {
+		t.Fatalf("poster should add 1 figure, got %d", len(sess.Figures()))
+	}
+	if got := sess.Figures()[0].Caption; got != "海报:像素之夜" {
+		t.Fatalf("poster caption = %q", got)
+	}
+	// missing required args → tool-level error
+	if res, _ := poster.Execute(ctx, []byte(`{"title":"x"}`)); res.Error == "" {
+		t.Fatal("poster without theme must error")
+	}
+
+	story := &GenerateStorybook{Images: fakeImages{}, Session: sess, Emitter: em}
+	if res, _ := story.Execute(ctx, []byte(`{"scenes":["a fox wakes up","the fox finds a friend","they watch the sunset"]}`)); res.Error != "" {
+		t.Fatalf("storybook failed: %+v", res)
+	}
+	if len(sess.Figures()) != 4 { // 1 poster + 3 panels
+		t.Fatalf("storybook should add 3 panels, total figures = %d", len(sess.Figures()))
+	}
+	if res, _ := story.Execute(ctx, []byte(`{"scenes":[]}`)); res.Error == "" {
+		t.Fatal("storybook without scenes must error")
+	}
+
+	// unwired image source → soft skip
+	none := &GeneratePoster{Session: sess}
+	if res, _ := none.Execute(ctx, []byte(`{"title":"a","theme":"b"}`)); res.Error != "" || res.Output == "" {
+		t.Fatalf("unwired poster should soft-skip, got %+v", res)
+	}
+}

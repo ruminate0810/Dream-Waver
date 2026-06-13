@@ -193,7 +193,7 @@ func (r *Runner) toolWired(name string) bool {
 		return strings.TrimSpace(r.TavilyKey) != ""
 	case "code_execute":
 		return r.SandboxClient != nil
-	case "generate_image":
+	case "generate_image", "generate_poster", "generate_storybook":
 		return r.ImagesEnabled && r.Images != nil
 	case "generate_deck":
 		return r.Pipeline != nil

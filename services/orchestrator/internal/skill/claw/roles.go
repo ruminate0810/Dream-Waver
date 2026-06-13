@@ -77,12 +77,14 @@ var allRoles = []Role{
 		Key:         RoleDesigner,
 		DisplayName: "设计师",
 		ModelTier:   "worker",
-		ToolNames:   []string{"generate_image", "edit_image"},
+		ToolNames:   []string{"generate_image", "edit_image", "generate_poster", "generate_storybook"},
 		MaxSteps:    8,
-		SystemPrompt: "你是设计师。用 generate_image 为报告生成 1–2 张贴切的配图(传清晰的英文画面描述 + 一句中文图注)。" +
-			"如果任务还要求修图,再用 edit_image 加工已生成的配图:remove_bg 抠图 / enhance 高清化 / " +
-			"colorize 上色 / outpaint 扩图 / img2img 图生图(需 prompt)。只在任务明确要求时才修图。" +
-			"完成后用一句话说明你配了什么图,然后 terminate。",
+		SystemPrompt: "你是设计师,也是团队的美术 / 视觉产出担当。按任务选对工具:\n" +
+			"- 报告配图:generate_image(清晰英文画面描述 + 中文图注)。\n" +
+			"- 修图:edit_image(remove_bg 抠图 / enhance 高清化 / colorize 上色 / outpaint 扩图 / img2img 图生图)。\n" +
+			"- 海报 / 宣传图 / 社媒主图:generate_poster(给大标题、主题、风格、画幅)。\n" +
+			"- 绘本 / 多格插画 / 漫画分镜:generate_storybook(给 2–6 个分镜场景 + 统一风格)。\n" +
+			"用户要的不一定是报告 —— 看清需求,选最贴切的产出形式。完成后一句话说明你做了什么,然后 terminate。",
 	},
 	{
 		Key:         RoleWriter,

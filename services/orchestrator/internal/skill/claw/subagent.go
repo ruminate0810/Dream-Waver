@@ -83,6 +83,14 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if r.Editor != nil {
 				out = append(out, &EditImage{Editor: r.Editor, Session: sess, Emitter: r.Emitter})
 			}
+		case "generate_poster":
+			if r.ImagesEnabled && r.Images != nil {
+				out = append(out, &GeneratePoster{Images: r.Images, Session: sess, Emitter: r.Emitter})
+			}
+		case "generate_storybook":
+			if r.ImagesEnabled && r.Images != nil {
+				out = append(out, &GenerateStorybook{Images: r.Images, Session: sess, Emitter: r.Emitter})
+			}
 		case "write_document":
 			out = append(out, &WriteDocument{Session: sess, Emitter: r.Emitter})
 		case "generate_deck":

@@ -19,6 +19,8 @@ const INTRO: Record<string, (detail: string) => string> = {
   code_execute: () => "(推了推墨镜)数据给我,跑段代码就知道了。",
   generate_image: (d) => `我来画${d ? `「${d}」` : "张配图"} — 今天配色必须完美。`,
   edit_image: (d) => `这张图交给我精修 — ${d || "抠图、高清,安排"}。`,
+  generate_poster: (d) => `海报我来 — ${d ? `主标题「${d}」` : "排版交给我"},一张就够抓眼球。`,
+  generate_storybook: () => "这个适合做成绘本,我一格一格画,风格统一。",
   write_document: () => "材料齐了,我开写 — 这稿起码润八遍。",
   generate_deck: () => "报告给我,今晚必须出片!幻灯片这就排。",
   generate_video: () => "上三脚架!我把这张图推、拉、摇、移起来。",
@@ -29,6 +31,8 @@ const DONE: Record<string, string> = {
   code_execute: "跑完了,数字不会骗人 ✓",
   generate_image: "配图出炉,一个像素都没歪 ✦",
   edit_image: "修好了,放大看也经得起 ✦",
+  generate_poster: "海报出稿!标题够大、留白够透 ✦",
+  generate_storybook: "绘本画好了,一页页连得上 ✦",
   generate_deck: "片出了!档期保住了 ✓",
   generate_video: "成片!这条最稳 ►",
 };
@@ -141,6 +145,9 @@ export function nextSteps(run: ClawRun): NextStep[] {
   if ((run.figures?.length ?? 0) > 0 && (run.videos?.length ?? 0) === 0) {
     out.push({ label: "做成短视频", text: "让视频师把最关键的那张配图做成一段 720p、5 秒的短视频,加点运镜和光影动态。" });
   }
+  // 多样产出 — the designer can turn this into more than a report
+  out.push({ label: "做张海报", text: "让设计师把这个主题做成一张吸睛的宣传海报,主标题醒目、风格现代。" });
+  out.push({ label: "做成绘本", text: "让设计师把核心内容改编成一本 4 页的插画绘本,画风温暖统一。" });
   if (!run.deck) {
     out.push({ label: "做成 PPT", text: "把这份报告做成一份幻灯片 deck。" });
   }

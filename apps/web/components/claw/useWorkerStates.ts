@@ -27,7 +27,7 @@ export type WorkerView = {
 };
 
 // tools whose success is worth a little celebration (not every tool.end)
-const CHEER_TOOLS = new Set(["code_execute", "generate_image", "edit_image", "write_document", "generate_deck", "generate_video"]);
+const CHEER_TOOLS = new Set(["code_execute", "generate_image", "edit_image", "generate_poster", "generate_storybook", "write_document", "generate_deck", "generate_video"]);
 
 type Acc = {
   roleByIndex: Record<number, string>;
@@ -192,6 +192,10 @@ function detailFor(tool: string, input?: string): string {
       };
       return opZh[str(obj?.op)] || "修图";
     }
+    case "generate_poster":
+      return str(obj?.title) ? `设计海报「${str(obj?.title)}」` : "设计海报";
+    case "generate_storybook":
+      return "绘制绘本";
     case "write_document":
       return "撰写报告";
     case "generate_deck":
