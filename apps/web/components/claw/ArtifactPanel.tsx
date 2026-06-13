@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, Check, FileText, Layers, Film, ChevronLeft, ChevronRight, BookOpen, ScrollText } from "lucide-react";
+import { Copy, Download, Check, FileText, Layers, Film, ChevronLeft, ChevronRight, BookOpen, ScrollText, FileCode2 } from "lucide-react";
 import clsx from "clsx";
+import { renderToStaticMarkup } from "react-dom/server";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { StatusChip } from "@/components/ui/pixel";
@@ -139,6 +140,9 @@ export function ArtifactBody({
             </IconButton>
             <IconButton label="复制" onClick={onCopy}>
               {copied ? <Check size={12} strokeWidth={2.4} /> : <Copy size={12} strokeWidth={2} />}
+            </IconButton>
+            <IconButton label="下载网页版 .html" onClick={() => downloadReportHtml(reportTitle(markdown), markdown)}>
+              <FileCode2 size={12} strokeWidth={2} />
             </IconButton>
             <a
               href={clawArtifactURL(jobId)}
@@ -478,6 +482,60 @@ async function downloadFile(url: string, filename: string) {
   } catch {
     window.open(url, "_blank", "noopener");
   }
+}
+
+// REPORT_CSS — a clean, self-contained document stylesheet for the exported
+// .html so it reads like a published article in any browser, offline.
+const REPORT_CSS = `
+*{box-sizing:border-box}
+body{margin:0;background:#f6f3ec;color:#1a1813;font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+main{max-width:760px;margin:0 auto;padding:56px 24px 96px}
+h1{font-size:2em;line-height:1.25;margin:0 0 .5em}
+h2{font-size:1.4em;margin:1.9em 0 .5em;padding-bottom:.25em;border-bottom:2px solid #e3ddcd}
+h3{font-size:1.15em;margin:1.4em 0 .4em}
+p{margin:.75em 0}
+a{color:#5b46e0;text-decoration:none}a:hover{text-decoration:underline}
+ul,ol{padding-left:1.5em}li{margin:.3em 0}
+img{max-width:100%;height:auto;border-radius:8px;margin:1.2em 0;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+table{border-collapse:collapse;width:100%;margin:1.3em 0;font-size:.95em}
+th,td{border:1px solid #d8d0bf;padding:7px 11px;text-align:left}
+th{background:#efe9da}
+code{background:#ece6d6;padding:2px 5px;border-radius:4px;font-size:.9em}
+pre{background:#2b2720;color:#f2ede0;padding:14px 16px;border-radius:10px;overflow:auto}pre code{background:none;padding:0}
+blockquote{margin:1em 0;padding:.3em 1.1em;border-left:3px solid #c9bfa6;color:#5a5443}
+hr{border:none;border-top:1px solid #ddd5c3;margin:2em 0}
+footer{margin-top:64px;padding-top:16px;border-top:1px solid #ddd5c3;color:#8a8170;font-size:.82em}
+`;
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+}
+
+function reportTitle(md: string): string {
+  return (md.match(/^#\s+(.+)$/m)?.[1] || "报告").trim();
+}
+
+// downloadReportHtml renders the markdown to clean semantic HTML (no chat-bubble
+// classes), wraps it with REPORT_CSS into a self-contained doc, and downloads it.
+function downloadReportHtml(title: string, markdown: string) {
+  const body = renderToStaticMarkup(
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>,
+  );
+  const doc = `<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>${REPORT_CSS}</style></head>
+<body><main>${body}<footer>由 Dream-Waver · Claw 团队生成</footer></main></body></html>`;
+  const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
+  const obj = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = obj;
+  a.download = `${title.replace(/[\\/:*?"<>|\n\r]+/g, " ").trim().slice(0, 40) || "报告"}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(obj), 1000);
 }
 
 // figureFilename derives a clean filename from the figure's caption (drops a
