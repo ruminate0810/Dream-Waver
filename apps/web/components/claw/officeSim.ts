@@ -52,7 +52,18 @@ type P = { x: number; y: number };
 export const STATIONS: Record<string, P> = STATIONS_V12;
 
 export const MEETING_TABLE = { x: MEETING_V12.tableX, y: MEETING_V12.tableY, w: 30, h: 8 };
-const MEET_SLOTS: P[] = MEETING_V12.seats;
+// 8 seats in two rows straddling the table, ~9% apart so sprites (≈58px)
+// never overlap — the v12 layout's seats were too tight (≈6%) and clumped.
+const MEET_SLOTS: P[] = [
+  { x: 47, y: 73 }, // head — the coordinator chairs
+  { x: 56, y: 73 },
+  { x: 65, y: 73 },
+  { x: 74, y: 73 },
+  { x: 47, y: 86 },
+  { x: 56, y: 86 },
+  { x: 65, y: 86 },
+  { x: 74, y: 86 },
+];
 
 const LOUNGE_SLOTS: P[] = LOUNGE_V12;
 

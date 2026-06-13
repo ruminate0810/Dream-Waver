@@ -3,10 +3,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import * as Popover from "@radix-ui/react-popover";
-import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
+import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug, Check } from "lucide-react";
 import clsx from "clsx";
 
-import { getClawRoles, type ClawRun, type ClawRolesConfig } from "@/lib/api";
+import { getClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
+import { TaskPlanCard } from "./TaskPlanCard";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
@@ -299,7 +300,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   return (
     <div
       ref={sceneRef}
-      className="relative h-full min-h-[420px] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
+      className="relative isolate h-full min-h-[420px] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
     >
       {/* ── the room ───────────────────────────────────────────────── */}
       <div className="absolute inset-0">
@@ -758,6 +759,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
           </div>
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
+        <OfficePlan run={run} />
       </div>
 
       {/* ── stats / wardrobe / bindings popover (Radix, anchored to the
@@ -1130,6 +1132,101 @@ function FlyingDoc({ flight, onDone }: { flight: Flight; onDone: (id: number) =>
           <rect x="2" y="5.6" width="3" height="0.8" fill="#c9c3b5" />
         </svg>
       </div>
+    </div>
+  );
+}
+
+// OfficePlan — the live sub-task checklist, floated at the office top-right
+// (moved out of the chat drawer). Seeded from the polled run.plan, driven
+// live by claw.plan / claw.task.update; collapsible so it never crowds the
+// scene.
+function OfficePlan({ run }: { run: ClawRun }) {
+  const stream = useAgentEventStream();
+  const [plan, setPlan] = useState<ClawTask[]>(run.plan ?? []);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    if (run.plan && run.plan.length > 0) setPlan((cur) => (cur.length === 0 ? run.plan! : cur));
+  }, [run.plan]);
+
+  useEffect(() => {
+    const handle = (ev: AgentEvent) => {
+      if (ev.kind === "claw.plan") {
+        const titles = ev.data.task_titles ?? [];
+        const roles = ev.data.task_roles ?? [];
+        setPlan(titles.map((t, i) => ({ title: t, role: roles[i], status: "pending" as const })));
+        setOpen(true);
+      } else if (ev.kind === "claw.task.update") {
+        const idx = ev.data.task_index ?? 0;
+        const status = (ev.data.task_status ?? "pending") as ClawTask["status"];
+        setPlan((prev) => {
+          if (idx < 1 || idx > prev.length) return prev;
+          const next = prev.slice();
+          next[idx - 1] = { ...next[idx - 1], status };
+          return next;
+        });
+      }
+    };
+    return stream.subscribe(handle);
+  }, [stream]);
+
+  if (plan.length === 0) return null;
+  const done = plan.filter((t) => t.status === "done" || t.status === "skipped").length;
+
+  return (
+    <div className="absolute right-3 top-11 z-[98] w-[clamp(210px,24vw,270px)]">
+      {open ? (
+        <div className="overflow-hidden rounded-pixel border-2 border-ink bg-paper/95 shadow-pixel-sm backdrop-blur-[1px]">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center justify-between border-b-2 border-ink bg-surface-2 px-2 py-1"
+            aria-label="收起任务清单"
+          >
+            <span className="font-pixel text-[0.5rem] tracking-wide text-accent">✦ 任务清单</span>
+            <span className="flex items-center gap-1 font-mono text-[10px] tabular-nums text-muted">
+              {done}/{plan.length}
+              <ChevronRight size={11} strokeWidth={2.4} className="rotate-[-90deg]" />
+            </span>
+          </button>
+          <ol className="max-h-[42vh] divide-y divide-line overflow-y-auto">
+            {plan.map((t, i) => (
+              <li key={i} className="flex items-start gap-2 px-2.5 py-1.5">
+                <span
+                  className={clsx(
+                    "mt-[1px] grid h-[14px] w-[14px] flex-none place-items-center rounded-[3px] border-2 border-ink text-white",
+                    t.status === "done" && "bg-grass",
+                    t.status === "doing" && "animate-pixpulse bg-accent",
+                    t.status === "pending" && "bg-surface",
+                    t.status === "skipped" && "bg-surface-2",
+                  )}
+                >
+                  {t.status === "done" && <Check size={9} strokeWidth={3} />}
+                  {t.status === "doing" && <span className="h-[5px] w-[5px] rounded-full bg-white" />}
+                </span>
+                <span
+                  className={clsx(
+                    "font-mono text-[11px] leading-snug",
+                    t.status === "doing" ? "font-semibold text-ink" : t.status === "skipped" ? "text-muted line-through" : t.status === "pending" ? "text-ink-2" : "text-ink",
+                  )}
+                >
+                  {t.title}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="ml-auto flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-paper/95 px-2 py-1 shadow-pixel-sm"
+        >
+          <span className="font-pixel text-[0.5rem] tracking-wide text-accent">✦ 任务</span>
+          <span className="font-mono text-[10px] tabular-nums text-muted">{done}/{plan.length}</span>
+          <ChevronLeft size={11} strokeWidth={2.4} className="rotate-[-90deg]" />
+        </button>
+      )}
     </div>
   );
 }
