@@ -6,7 +6,6 @@ import clsx from "clsx";
 
 import type { ClawRun } from "@/lib/api";
 import { ClawChat } from "./ClawChat";
-import { ClarificationCard } from "./ClarificationCard";
 import { OFFICE_CONFIG } from "./officeSim";
 
 // ChatDrawer makes the office full-page: the plan checklist + clarification
@@ -76,10 +75,8 @@ export function ChatDrawer({ run, onPendingEdit }: { run: ClawRun; onPendingEdit
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col px-3">
-          {run.status === "awaiting_input" && (run.clarification_questions?.length ?? 0) > 0 && (
-            <ClarificationCard jobId={run.job_id} questions={run.clarification_questions ?? []} onResume={onPendingEdit} />
-          )}
-          {/* plan checklist now floats at the office top-right (OfficePlan) */}
+          {/* clarification is now asked conversationally inside ClawChat;
+              the plan checklist floats at the office top-right (OfficePlan) */}
           <div className="min-h-0 flex-1">
             <ClawChat run={run} onPendingEdit={onPendingEdit} />
           </div>

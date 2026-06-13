@@ -85,6 +85,27 @@ export function ClawChat({
     setBubbles((prev) => [...prev, { kind: "say", worker: "coordinator", text, id: cryptoRandomId() }]);
   }, [run.status, run.artifact_version, run.figures, run.videos, run.deck]);
 
+  // 澄清 — instead of a rigid form card, the 调度员 ASKS in the chat: when the
+  // run pauses for clarification, drop a conversational coordinator bubble
+  // with the questions; the user just types the answer in the input below
+  // (which resumes the run). Re-armable if a later turn pauses again.
+  const clarifyShownRef = useRef(false);
+  useEffect(() => {
+    const qs = run.clarification_questions ?? [];
+    if (run.status === "awaiting_input" && qs.length > 0) {
+      if (clarifyShownRef.current) return;
+      clarifyShownRef.current = true;
+      const body = qs.map((q, i) => `${i + 1}. ${q}`).join("\n");
+      const text = `开工前我想先跟你对一下,这样产出更贴合你 👇\n\n${body}\n\n回我一句就行 —— 或者直接说「开干」,我自己来定。`;
+      setBubbles((prev) =>
+        prev.some((b) => b.id === "clarify") ? prev : [...prev, { kind: "say", worker: "coordinator", text, id: "clarify" }],
+      );
+    } else if (run.status !== "awaiting_input") {
+      clarifyShownRef.current = false;
+      setBubbles((prev) => prev.filter((b) => b.id !== "clarify"));
+    }
+  }, [run.status, run.clarification_questions]);
+
   useEffect(() => {
     const handle = (ev: AgentEvent) => {
       const k: EventKind = ev.kind;
@@ -232,6 +253,7 @@ export function ClawChat({
   }, [bubbles, run.status]);
 
   const running = sending || run.status === "running";
+  const awaiting = run.status === "awaiting_input";
 
   return (
     <div className="flex h-full flex-col">
@@ -306,7 +328,7 @@ export function ClawChat({
             }}
             disabled={running}
             rows={2}
-            placeholder="追问或继续派活，例如「把价格表改成人民币，并补一段风险提示」"
+            placeholder={awaiting ? "在这儿回答调度员的问题就能开工，或直接说「开干」…" : "追问或继续派活，例如「把价格表改成人民币，并补一段风险提示」"}
             className="flex-1 resize-none bg-transparent font-mono text-[14px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-60"
           />
           <button
@@ -327,7 +349,21 @@ export function ClawChat({
             )}
           </button>
         </div>
-        <p className="mt-2 font-mono text-[11px] text-muted">Enter 发送 · Shift+Enter 换行</p>
+        {awaiting ? (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="font-mono text-[11px] text-accent">↑ 调度员在等你回话</span>
+            <button
+              type="button"
+              onClick={() => void send("开干,按你的判断直接做。")}
+              disabled={sending}
+              className="rounded-pixel border-2 border-ink bg-surface px-2 py-0.5 font-mono text-[11px] font-semibold text-ink-2 shadow-pixel-sm transition-colors hover:text-ink disabled:opacity-50"
+            >
+              直接开干 →
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 font-mono text-[11px] text-muted">Enter 发送 · Shift+Enter 换行</p>
+        )}
       </form>
     </div>
   );
@@ -502,6 +538,8 @@ function seedBubbles(run: ClawRun): Bubble[] {
     });
   } else if (run.status === "error") {
     out.push({ kind: "error", text: run.error || "任务失败", id: "seed-err" });
+  } else if (run.status === "awaiting_input") {
+    // the clarification effect will drop the coordinator's question bubble
   } else {
     out.push({ kind: "assistant", text: "正在规划并开工…", status: "thinking", id: "seed-asst" });
   }
