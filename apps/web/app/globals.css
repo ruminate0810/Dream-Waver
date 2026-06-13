@@ -359,6 +359,56 @@ summary:focus-visible,
 @keyframes claw-facepalm { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: rotate(-135deg) translate(4px, 1px); } }
 @keyframes claw-hanghead { 0%, 100% { transform: rotate(0); } 40%, 70% { transform: translateY(2px) rotate(-6deg); } }
 
+/* ── 真·在工位上干活 — held tools per working gesture ──────────────────────
+   Each worker holds the right tool for the task and works it with a richer,
+   role-appropriate motion. Props are hidden until their gesture is active. */
+.claw-prop { opacity: 0; }
+.claw-act-write .claw-prop-pen { opacity: 1; }
+.claw-act-draw .claw-prop-brush { opacity: 1; }
+.claw-act-magnify .claw-prop-glass { opacity: 1; }
+.claw-act-film .claw-prop-clap { opacity: 1; }
+
+/* 撰写 — pen scribbles across the page (forearm makes little writing strokes,
+   head pecks down at the paper). */
+.claw-act-write .claw-armR { animation: claw-penwrite 0.45s ease-in-out infinite; transform-origin: 50% 12%; }
+@keyframes claw-penwrite {
+  0%, 100% { transform: rotate(-14deg) translate(0, 0); }
+  25%      { transform: rotate(-10deg) translate(1px, 1px); }
+  50%      { transform: rotate(-16deg) translate(2px, 0); }
+  75%      { transform: rotate(-10deg) translate(1px, 1px); }
+}
+
+/* 作图 — broad diagonal brush strokes (the painting motion), off hand steadies
+   the canvas. */
+.claw-act-draw .claw-armR { animation: claw-brushstroke 0.7s ease-in-out infinite; transform-origin: 50% 12%; }
+.claw-act-draw .claw-armL { animation: claw-point 1.6s ease-in-out infinite; }
+.claw-act-draw .claw-head { animation: claw-lookR 1.6s ease-in-out infinite; }
+@keyframes claw-brushstroke {
+  0%, 100% { transform: rotate(-22deg) translate(0, 0); }
+  50%      { transform: rotate(2deg) translate(-1px, 2px); }
+}
+
+/* 检索 — holds the magnifier up and sweeps it across the screen, head tracks. */
+.claw-act-magnify .claw-armR { animation: claw-scanglass 1.6s ease-in-out infinite; transform-origin: 50% 12%; }
+@keyframes claw-scanglass {
+  0%, 100% { transform: rotate(-34deg) translate(0, 0); }
+  50%      { transform: rotate(-34deg) translate(4px, -1px); }
+}
+
+/* 拍摄 — raises the clapperboard and snaps it on the beat. */
+.claw-act-film .claw-armR { animation: claw-clapsnap 1.1s ease-in-out infinite; transform-origin: 50% 12%; }
+.claw-act-film .claw-armL { animation: claw-hold 0.1s linear forwards; }
+.claw-act-film .claw-head { animation: claw-lookR 1.3s ease-in-out infinite; }
+@keyframes claw-clapsnap {
+  0%, 100% { transform: rotate(-58deg); }
+  20%, 28% { transform: rotate(-72deg); }
+  24%      { transform: rotate(-50deg); }
+}
+
+/* 敲码 — both hands hammer the keyboard fast + a focused screen-lean. */
+.claw-act-type .claw-rig { animation: claw-codelean 2.4s ease-in-out infinite; }
+@keyframes claw-codelean { 0%, 100% { transform: translateY(0); } 50% { transform: translate(1px, 1px); } }
+
 /* wave — greeting (also the "you clicked me" response) */
 .claw-act-wave .claw-armR { animation: claw-wavearm 0.45s ease-in-out infinite; }
 .claw-act-wave .claw-head { animation: claw-tilt 1.2s ease-in-out infinite; }

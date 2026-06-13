@@ -72,6 +72,34 @@ export function WorkerSprite({
             <rect x="19" y="16" width="3" height="3" fill={def.shirt} />
             <rect x="19" y="19" width="3" height="1" fill={def.shirtDark ?? def.shirt} />
             <rect x="19" y="20" width="3" height="2" fill={skin} />
+            {/* held tools — hidden by default, revealed per working gesture by
+                CSS (.claw-act-<g> .claw-prop-<x>); held in the right hand so
+                they move with the arm and sell "真正在干活". */}
+            <g className="claw-prop claw-prop-pen">
+              <rect x="21" y="22" width="1" height="5" fill="#3a6ea5" />
+              <rect x="21" y="21" width="1" height="1" fill="#e3b23a" />
+              <rect x="21" y="27" width="1" height="1" fill="#16140f" />
+            </g>
+            <g className="claw-prop claw-prop-brush">
+              <rect x="21" y="21" width="1" height="4" fill="#8a5a2b" />
+              <rect x="20" y="25" width="2" height="2" fill={def.shirt} />
+              <rect x="20" y="27" width="2" height="1" fill={def.shirtDark ?? def.shirt} />
+            </g>
+            <g className="claw-prop claw-prop-glass">
+              <rect x="20" y="24" width="2" height="1" fill="#6a4a23" />
+              <rect x="21" y="20" width="3" height="1" fill="#4a3417" />
+              <rect x="21" y="23" width="3" height="1" fill="#4a3417" />
+              <rect x="21" y="20" width="1" height="3" fill="#4a3417" />
+              <rect x="23" y="20" width="1" height="3" fill="#4a3417" />
+              <rect x="22" y="21" width="1" height="2" fill="#bfe3f2" opacity="0.8" />
+            </g>
+            <g className="claw-prop claw-prop-clap">
+              <rect x="20" y="22" width="5" height="3" fill="#16140f" />
+              <rect x="20" y="22" width="5" height="1" fill="#fbfaf2" />
+              <rect x="20" y="20" width="5" height="1" fill="#16140f" />
+              <rect x="21" y="20" width="1" height="1" fill="#fbfaf2" />
+              <rect x="23" y="20" width="1" height="1" fill="#fbfaf2" />
+            </g>
           </g>
           <g className="claw-head">
             {/* rounded ink ring */}
