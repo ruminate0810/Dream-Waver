@@ -511,6 +511,20 @@ summary:focus-visible,
   45%, 55% { transform: rotate(6deg); }
 }
 
+/* 交付完成 — confetti shower + a banner that pops then settles */
+.claw-confetti { border-radius: 1px; animation: claw-confetti-fall linear infinite; }
+@keyframes claw-confetti-fall {
+  0% { transform: translateY(0) rotate(0); opacity: 0; }
+  10% { opacity: 1; }
+  100% { transform: translateY(115vh) rotate(540deg); opacity: 0.9; }
+}
+.claw-celebrate { animation: claw-celebrate-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+@keyframes claw-celebrate-pop {
+  0% { transform: translateX(-50%) scale(0.5); opacity: 0; }
+  60% { transform: translateX(-50%) scale(1.08); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1); opacity: 1; }
+}
+
 /* 交付钟 — 纳斯达克 ring: the bell swings on its hinge */
 .claw-bell-ring { transform-box: fill-box; transform-origin: 50% 8%; animation: claw-bell-swing 0.45s ease-in-out infinite; }
 @keyframes claw-bell-swing {
@@ -527,7 +541,7 @@ summary:focus-visible,
   [class*="claw-act-"] .claw-armR,
   [class*="claw-act-"] .claw-rig { animation: none; }
   .claw-popover[data-state] { animation: none; }
-  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle, .claw-hammer, .claw-bell-ring { animation: none; }
+  .claw-cat-tail, .claw-heart, .claw-zz, .claw-steam, .claw-coffee-bub, .claw-twinkle, .claw-hammer, .claw-bell-ring, .claw-confetti, .claw-celebrate { animation: none; }
 }
 
 /* Soft grain we overlay on the paper background. Encoded as a data-URL in

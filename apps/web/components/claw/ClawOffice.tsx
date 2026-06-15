@@ -8,6 +8,7 @@ import clsx from "clsx";
 
 import { getClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
 import { TaskPlanCard } from "./TaskPlanCard";
+import { narrationFor } from "./narrate";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
@@ -113,9 +114,18 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   // The dock button re-convenes a coordinator-chaired standup.
   const [meetingUntil, setMeetingUntil] = useState(0);
   const [meetingKind, setMeetingKind] = useState<"kickoff" | "review">("kickoff");
+  // 桌面气泡 — agents speak ABOVE their heads in the office (not just in chat):
+  // narrationFor turns events into first-person lines; we show the latest per
+  // worker for ~5.5s. Sim re-renders (~90ms) expire them, no extra timer.
+  const [speech, setSpeech] = useState<Record<string, { text: string; until: number }>>({});
+  const officeSaidRef = useRef<Set<string>>(new Set());
   useEffect(
     () =>
       stream.subscribe((ev: AgentEvent) => {
+        const line = narrationFor(ev, officeSaidRef.current);
+        if (line && line.worker) {
+          setSpeech((prev) => ({ ...prev, [line.worker]: { text: line.text, until: Date.now() + 5500 } }));
+        }
         if (ev.kind === "claw.plan") {
           setMeetingKind("kickoff");
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
@@ -561,6 +571,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             view={views[def.key]}
             sim={sim[def.key]}
             offDuty={offDuty}
+            say={speech[def.key] && speech[def.key].until > Date.now() ? speech[def.key].text : undefined}
             onClick={(shift) =>
               shift ? triggerBonk(def.key) : setFocus((f) => (f === def.key ? null : def.key))
             }
@@ -583,6 +594,35 @@ export function ClawOffice({ run }: { run: ClawRun }) {
 
         {/* the office cat — wanders, naps by the lamp, pettable */}
         <OfficeCat posRef={catPos} />
+
+        {/* 🎉 交付完成 — scene-wide confetti + a centered banner on finish */}
+        {bellRinging && (
+          <div className="pointer-events-none absolute inset-0 z-[90] overflow-hidden">
+            {Array.from({ length: 36 }).map((_, i) => {
+              const c = ["#ffd23e", "#6a55ff", "#3ea96a", "#f0a3a3", "#9ec3f0", "#e3892b"][i % 6];
+              return (
+                <span
+                  key={i}
+                  className="claw-confetti absolute top-[-6%]"
+                  style={{
+                    left: `${(i * 37 + 11) % 100}%`,
+                    width: i % 3 === 0 ? "5px" : "7px",
+                    height: i % 3 === 0 ? "9px" : "7px",
+                    background: c,
+                    animationDelay: `${(i % 9) * 0.18}s`,
+                    animationDuration: `${2.4 + (i % 5) * 0.35}s`,
+                  }}
+                />
+              );
+            })}
+            <div className="claw-celebrate absolute left-1/2 top-[34%] -translate-x-1/2">
+              <div className="rounded-pixel border-2 border-ink bg-accent px-5 py-3 text-center shadow-pixel">
+                <p className="font-pixel text-[0.85rem] tracking-wide text-white">✦ 交付完成!</p>
+                <p className="mt-1 font-mono text-[11px] text-white/90">作品已放进作品包</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 交付钟 — rings 纳斯达克-style when the run finishes (by the meeting table) */}
         <div className="absolute" style={{ left: `${MEETING_TABLE.x - 17}%`, top: `${MEETING_TABLE.y - 4}%`, zIndex: 77 }}>
@@ -1023,11 +1063,14 @@ function OfficeWorker({
   sim,
   offDuty,
   onClick,
+  say,
 }: {
   def: WorkerDef;
   view?: WorkerView;
   sim?: SimView;
   offDuty: boolean;
+  /** the worker's current spoken line, shown as a speech bubble over the head. */
+  say?: string;
   /** shift=true → 老板的小锤 (boss discipline easter egg). */
   onClick: (shift: boolean) => void;
 }) {
@@ -1074,7 +1117,12 @@ function OfficeWorker({
       }}
       aria-label={`${def.zh} · ${status}`}
     >
-      {motto ? (
+      {say && !sim.walking ? (
+        <div className="claw-emote claw-emote-show absolute bottom-full left-1/2 z-20 mb-1.5 w-[150px] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface px-2 py-1 text-left font-mono text-[10px] leading-snug text-ink shadow-pixel-sm">
+          {say}
+          <span className="absolute -bottom-[6px] left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-ink" />
+        </div>
+      ) : motto ? (
         <div className="claw-emote claw-emote-show absolute -top-7 left-1/2 z-10 flex items-center justify-center whitespace-nowrap rounded-[5px] border-2 border-ink bg-surface px-1.5 py-0.5 font-mono text-[9px] font-bold text-ink shadow-pixel-sm">
           {def.persona.motto}
         </div>
