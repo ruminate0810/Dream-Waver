@@ -97,9 +97,15 @@ export function ClawChat({
       clarifyShownRef.current = true;
       const body = qs.map((q, i) => `${i + 1}. ${q}`).join("\n");
       const text = `开工前我想先跟你对一下,这样产出更贴合你 👇\n\n${body}\n\n回我一句就行 —— 或者直接说「开干」,我自己来定。`;
-      setBubbles((prev) =>
-        prev.some((b) => b.id === "clarify") ? prev : [...prev, { kind: "say", worker: "coordinator", text, id: "clarify" }],
-      );
+      setBubbles((prev) => {
+        // the run is PAUSED waiting on the user — drop the "正在规划并开工…"
+        // seed + any spinning assistant bubble so it doesn't look like it's
+        // working and asking at the same time.
+        const cleaned = prev.filter((b) => !(b.kind === "assistant" && b.status === "thinking"));
+        return cleaned.some((b) => b.id === "clarify")
+          ? cleaned
+          : [...cleaned, { kind: "say", worker: "coordinator", text, id: "clarify" }];
+      });
     } else if (run.status !== "awaiting_input") {
       clarifyShownRef.current = false;
       setBubbles((prev) => prev.filter((b) => b.id !== "clarify"));
