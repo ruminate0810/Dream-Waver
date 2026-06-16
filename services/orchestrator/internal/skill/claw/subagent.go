@@ -67,6 +67,10 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if strings.TrimSpace(r.TavilyKey) != "" {
 				out = append(out, tool.NewTavilySearch(r.TavilyKey))
 			}
+		case "find_kol":
+			if r.KOL != nil {
+				out = append(out, &FindKOL{Finder: r.KOL, Session: sess, Emitter: r.Emitter})
+			}
 		case "code_execute":
 			if r.SandboxClient != nil {
 				out = append(out, tool.CodeExecute{Client: r.SandboxClient})

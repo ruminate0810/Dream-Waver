@@ -169,6 +169,7 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	b.WriteString("你是调度员(工头)。把用户的目标拆成 3–7 个有序子任务,每个子任务指派给一个角色。\n可用角色(按其当前持有的工具派活):\n")
 	toolZh := map[string]string{
 		"web_search":     "联网检索事实与来源",
+		"find_kol":       "找网红/达人/KOL(YouTube,带订阅数与公开邮箱)",
 		"code_execute":   "运行代码做计算/解析/核对",
 		"generate_image":     "生成配图",
 		"edit_image":         "修图(抠图/高清化/上色/扩图/图生图)",

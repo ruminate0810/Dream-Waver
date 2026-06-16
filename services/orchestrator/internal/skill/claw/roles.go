@@ -56,10 +56,11 @@ var allRoles = []Role{
 		Key:         RoleResearcher,
 		DisplayName: "调研员",
 		ModelTier:   "worker",
-		ToolNames:   []string{"web_search"},
+		ToolNames:   []string{"web_search", "find_kol"},
 		MaxSteps:    10,
 		SystemPrompt: "你是调研员。用 web_search 检索事实、最新数据、来源链接来完成分配给你的子任务,可多次检索。" +
-			"完成后用一段简洁的中文小结你的发现(含关键数字与来源链接),然后 terminate。不要写最终报告——那是撰稿员的活。",
+			"如果任务是找网红 / 达人 / KOL / 红人选号 / outreach 名单,用 find_kol(传搜索词;可选 theme 过滤掉无关账号)拉一张达人表(含订阅数、公开邮箱、相关度),把整张 Markdown 表放进你的小结里。" +
+			"完成后用一段简洁的中文小结你的发现(含关键数字与来源链接 / 达人表),然后 terminate。不要写最终报告——那是撰稿员的活。",
 	},
 	{
 		Key:         RoleEngineer,
