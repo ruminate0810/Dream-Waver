@@ -12,7 +12,7 @@ import { narrationFor } from "./narrate";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
-import { WorkerSprite } from "./WorkerSprite";
+import { ChibiWorker } from "./ChibiWorker";
 import { PixelWindow } from "./PixelWindow";
 import { ArtifactBody, type WorkTab } from "./ArtifactPanel";
 import { useWorkerStates, type WorkerView } from "./useWorkerStates";
@@ -1057,6 +1057,40 @@ export function ClawOffice({ run }: { run: ClawRun }) {
 // OfficeWorker is now purely presentational: the sim hands position/facing/
 // walking/gesture; this renders the sprite (with outer facing-flip wrapper —
 // NOT on .claw-rig, which gestures animate), shadow, emote, and the poke.
+// 串门对话台词 — 做成真·一问一答:访客发问/提议(ask),主人回应(reply),
+// 临走道别(bye)。按 (角色 + 1.6s 时间窗) 确定性取词,一个「回合」里稳定不闪。
+const CHAT_ASK = [
+  "在忙啥呢?",
+  "你看这样行不?",
+  "这块能搭把手不?",
+  "进度到哪啦?",
+  "有空同步下不?",
+  "刚冒个新点子!",
+  "帮我瞅一眼?",
+  "卡了个问题…",
+  "咖啡要不要续?",
+  "这事儿归谁啊?",
+];
+const CHAT_REPLY = [
+  "嗯嗯有道理!",
+  "这块归我!",
+  "马上就好~",
+  "哈哈确实",
+  "收到收到",
+  "我看看哈",
+  "稳的,放心!",
+  "对对对!",
+  "好嘞没问题",
+  "让我想想…",
+];
+const CHAT_BYE = ["回头聊!", "加油加油!", "来,击个掌!", "我先回工位啦", "干得漂亮!", "散会散会~"];
+function pickChatLine(key: string, kind: "ask" | "reply" | "bye"): string {
+  const pool = kind === "bye" ? CHAT_BYE : kind === "reply" ? CHAT_REPLY : CHAT_ASK;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h + key.charCodeAt(i)) % 997;
+  return pool[(h + Math.floor(Date.now() / 1600)) % pool.length];
+}
+
 function OfficeWorker({
   def,
   view,
@@ -1097,8 +1131,13 @@ function OfficeWorker({
 
   if (!sim) return null;
   const gesture = poked && !sim.walking ? "wave" : sim.gesture;
-  const emoKey = !sim.walking && gesture ? ACT[gesture]?.emo : undefined;
-  const motto = mottoShow && !sim.walking && !poked;
+  // bubble priority: real narration > 串门闲聊台词. emote glyph is the fallback.
+  const narration = !sim.walking ? say : undefined;
+  const chatLine = !sim.walking && !narration && sim.chat ? pickChatLine(def.key, sim.chat) : undefined;
+  // 物件交互台词(接咖啡/翻书…)排在真叙述与串门之后
+  const bubbleText = narration ?? chatLine ?? (!sim.walking ? sim.say : undefined);
+  const emoKey = !sim.walking && !bubbleText && gesture ? ACT[gesture]?.emo : undefined;
+  const motto = mottoShow && !sim.walking && !poked && !bubbleText;
 
   return (
     <button
@@ -1117,9 +1156,9 @@ function OfficeWorker({
       }}
       aria-label={`${def.zh} · ${status}`}
     >
-      {say && !sim.walking ? (
+      {bubbleText ? (
         <div className="claw-emote claw-emote-show absolute bottom-full left-1/2 z-20 mb-1.5 w-[150px] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface px-2 py-1 text-left font-mono text-[10px] leading-snug text-ink shadow-pixel-sm">
-          {say}
+          {bubbleText}
           <span className="absolute -bottom-[6px] left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-ink" />
         </div>
       ) : motto ? (
@@ -1135,13 +1174,20 @@ function OfficeWorker({
         </div>
       ) : null}
       <span className="absolute -bottom-[3px] left-1/2 h-[5px] w-[36px] -translate-x-1/2 rounded-[50%] bg-ink/15" />
-      <span className="block" style={{ transform: `scaleX(${sim.facing})` }}>
-        <WorkerSprite
+      {/* v16 — cute chibi rendered as a true frame strip (hand-posed walk/idle/
+          sit cells snapped with steps()). Natural motion, keeps the chibi
+          charm. facing flips horizontally; sit when working at the desk. */}
+      <span
+        className="block"
+        style={{ filter: status === "idle" && !offDuty && !poked ? "grayscale(0.6) opacity(0.6)" : "none" }}
+      >
+        <ChibiWorker
           def={def}
-          gesture={gesture}
-          walking={sim.walking}
-          grey={status === "idle" && !offDuty && !poked}
-          size={OFFICE_CONFIG.spriteSize}
+          facing={sim.facing}
+          // 在自己工位上(没走动)就坐下来干活 —— 不管在忙/待命/做完
+          state={sim.walking ? "walk" : sim.site === "desk" ? "sit" : "idle"}
+          gesture={sim.walking ? undefined : gesture}
+          size={OFFICE_CONFIG.spriteSize + 8}
         />
       </span>
     </button>

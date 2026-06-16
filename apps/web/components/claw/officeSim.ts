@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { WORKERS } from "./workers";
-import { STATIONS_V12, MEETING_V12, LOUNGE_V12, WAYPOINTS_V12, LANES_V12 } from "./officeArt";
+import { STATIONS_V12, MEETING_V12, LOUNGE_V12, LANES_V12 } from "./officeArt";
 import type { WorkerStatus, WorkerView } from "./useWorkerStates";
 
 // officeSim is the central "Sims" engine: ONE tick loop moves every worker
@@ -67,12 +67,35 @@ const MEET_SLOTS: P[] = [
 
 const LOUNGE_SLOTS: P[] = LOUNGE_V12;
 
-const WP_GESTURE: Record<string, string> = { coffee: "coffee", plant: "think", whiteboard: "look" };
-export const WAYPOINTS: { x: number; y: number; g: string; slots: number }[] = WAYPOINTS_V12.map((w) => ({
-  x: w.x,
-  y: w.y,
-  g: WP_GESTURE[w.kind] ?? "look",
-  slots: 2,
+// ── Office objects the workers actually go use ──────────────────────────────
+// Each object = a standing spot beside a real Decor sprite (coords in
+// ClawOffice) + the themed gesture played there + a flavour line. `WAYPOINTS`
+// keeps its name/shape (the sim still books "way:<i>" slots), so the pathing
+// machinery is reused untouched; the richer fields just ride along.
+export type OfficeObject = { key: string; x: number; y: number; g: string; say: string; slots: number };
+export const OBJECTS: OfficeObject[] = [
+  { key: "coffee", x: 6, y: 80, g: "coffee", say: "续杯咖啡~", slots: 2 },
+  { key: "bookshelf", x: 38, y: 38, g: "browse", say: "翻翻资料", slots: 2 },
+  { key: "fridge", x: 19, y: 80, g: "snack", say: "补充能量!", slots: 1 },
+  { key: "snacks", x: 6, y: 69, g: "snack", say: "来点零食", slots: 1 },
+  { key: "whiteboard", x: 50, y: 37, g: "whiteboard", say: "理一下思路", slots: 2 },
+  { key: "plant", x: 30, y: 74, g: "water", say: "给绿植浇浇水", slots: 1 },
+  { key: "beanbag", x: 12, y: 92, g: "doze", say: "摸会儿鱼…", slots: 1 },
+];
+const OBJ_IDX: Record<string, number> = Object.fromEntries(OBJECTS.map((o, i) => [o.key, i]));
+// tool→object: a worker's live gesture (set from the tool it's running, via
+// TOOL_ACTION) occasionally sends it to the matching object — web_search→
+// magnify→书架, generate_deck/plan→point→白板.
+const GESTURE_OBJECT: Record<string, string> = {
+  magnify: "bookshelf",
+  read: "bookshelf",
+  point: "whiteboard",
+};
+export const WAYPOINTS: { x: number; y: number; g: string; slots: number }[] = OBJECTS.map((o) => ({
+  x: o.x,
+  y: o.y,
+  g: o.g,
+  slots: o.slots,
 }));
 
 // ── Sim state ────────────────────────────────────────────────────────────
@@ -95,6 +118,8 @@ export type SimView = {
   walking: boolean;
   gesture: string; // resolved act for this tick ("" = none)
   site: string;
+  chat?: "ask" | "reply" | "bye"; // 串门对话:访客发问 / 主人回应 / 临走道别 → 冒台词
+  say?: string; // 物件交互的台词(接咖啡/翻书…),由 ClawOffice 当气泡显示
 };
 
 const dist = (a: P, b: P) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
@@ -215,16 +240,40 @@ export function useOfficeSim(inputs: {
       return [];
     };
 
-    const pickStroll = (key: string, status: WorkerStatus): string => {
-      if (status === "working") return "way:0"; // quick coffee run only
+    // per-object cooldown so the whole team doesn't pile onto one object
+    const objCool: Record<number, number> = {};
+    const COOL = 11000;
+    const pickObjectIdx = (key: string, now: number): number => {
+      const def = WORKERS.find((w) => w.key === key);
+      const free = (i: number) => now > (objCool[i] ?? 0);
+      const faves = (def?.faves ?? []).map((k) => OBJ_IDX[k]).filter((i) => i != null && free(i));
+      const pool = faves.length ? faves : OBJECTS.map((_, i) => i).filter(free);
+      if (!pool.length) return -1;
+      const i = pool[Math.floor(Math.random() * pool.length)];
+      objCool[i] = now + COOL;
+      return i;
+    };
+    const pickStroll = (key: string, status: WorkerStatus, now: number): string => {
       const c = OFFICE_CONFIG.stroll;
+      if (status === "working") {
+        // tool→object: the live tool's gesture occasionally sends them to the
+        // matching object (查资料→书架 / 排期→白板); otherwise a quick coffee.
+        const g = inputRef.current.views[key]?.gesture;
+        const oi = g ? OBJ_IDX[GESTURE_OBJECT[g] ?? ""] : undefined;
+        if (oi != null && Math.random() < 0.55 && now > (objCool[oi] ?? 0)) {
+          objCool[oi] = now + COOL;
+          return `way:${oi}`;
+        }
+        return `way:${OBJ_IDX.coffee}`; // quick coffee run
+      }
       if (Math.random() < c.visitChance) {
         const hosts = WORKERS.filter(
           (w) => w.key !== key && (inputRef.current.views[w.key]?.status ?? "idle") !== "idle" && !slots.has(`visit:${w.key}`),
         );
         if (hosts.length > 0) return `visit:${hosts[Math.floor(Math.random() * hosts.length)].key}`;
       }
-      return `way:${Math.floor(Math.random() * WAYPOINTS.length)}`;
+      const oi = pickObjectIdx(key, now);
+      return `way:${oi >= 0 ? oi : OBJ_IDX.coffee}`;
     };
 
     // 完工庆祝 — when a worker flips working→done, desk neighbours turn and
@@ -281,11 +330,13 @@ export function useOfficeSim(inputs: {
           const onTrip = a.site.startsWith("way:") || a.site.startsWith("visit:");
           if (onTrip && now < a.lingerUntil) want = a.site; // keep lingering
           else if (!onTrip && now > a.nextStrollAt && a.path.length === 0 && away < c.stroll.maxAway) {
-            want = pickStroll(w.key, status);
+            want = pickStroll(w.key, status, now);
             away += 1;
             const s = c.stroll;
             a.lingerUntil =
               now + 1200 + (status === "working" ? s.workingLinger : s.lingerMin + Math.random() * s.lingerVar);
+            // 串门要聊一会儿:多给几秒,才有「真在交流」的来回
+            if (want.startsWith("visit:")) a.lingerUntil += 4200;
           } else want = home;
           if (onTrip && want === home) {
             const s = c.stroll;
@@ -327,6 +378,8 @@ export function useOfficeSim(inputs: {
         // 4) facing + gesture at destination
         const arrived = a.path.length === 0 && a.paused === 0;
         let gesture = "";
+        let chat: SimView["chat"];
+        let say: string | undefined;
         if (a.paused > 0) gesture = "look";
         else if (!walking && arrived) {
           const beat = (pool: string[], ms = 1900) => pool[(Math.floor(now / ms) + wi) % pool.length];
@@ -335,15 +388,28 @@ export function useOfficeSim(inputs: {
             a.facing = MEETING_TABLE.x + MEETING_TABLE.w / 2 >= a.x ? 1 : -1;
             gesture = w.key === chair ? beat(MEET_LEAD, 1700) : beat(MEET_ATTEND);
           } else if (a.site.startsWith("visit:")) {
+            // 串门访客:面对面停住 → 轮流说话(交替冒「…」)→ 临走击个掌
             const host = agents[a.site.split(":")[1]];
             if (host) a.facing = host.x >= a.x ? 1 : -1;
-            gesture = "talk";
+            const leaving = now > a.lingerUntil - 1100 && now < a.lingerUntil;
+            const myTurn = Math.floor(now / 1600) % 2 === 0;
+            if (leaving) { gesture = "cheer"; chat = "bye"; }
+            else if (myTurn) { gesture = "talk"; chat = "ask"; } // 访客发问/提议
+            else gesture = beat(["nod", "think", "look"], 800); // 听对方说:点头/琢磨/看
           } else if (guests[w.key]) {
+            // 东道主:转身面对访客,和访客错开节奏回应(偶尔被逗笑)
             const guest = agents[guests[w.key]];
             if (guest) a.facing = guest.x >= a.x ? 1 : -1;
-            gesture = "talk";
+            const leaving = guest && now > guest.lingerUntil - 1100 && now < guest.lingerUntil;
+            const myTurn = Math.floor(now / 1600) % 2 === 1; // opposite phase to the visitor
+            if (leaving) { gesture = "cheer"; chat = "bye"; }
+            else if (myTurn) { gesture = Math.floor(now / 1600) % 4 === 3 ? "laugh" : "talk"; chat = "reply"; }
+            else gesture = beat(["nod", "think", "look"], 800);
           } else if (a.site.startsWith("way:")) {
-            gesture = WAYPOINTS[Number(a.site.split(":")[1])]?.g ?? "look";
+            const oi = Number(a.site.split(":")[1]);
+            gesture = OBJECTS[oi]?.g ?? "look";
+            // 偶尔冒一句物件台词(不是每刻都冒,免得刷屏)
+            if (OBJECTS[oi] && Math.floor(now / 2600) % 3 === 0) say = OBJECTS[oi].say;
           } else if (offDuty) {
             gesture = beat(PARTY, 2300);
           } else if (a.site === "lounge") {
@@ -373,7 +439,7 @@ export function useOfficeSim(inputs: {
           if (p && p.until > now) gesture = p.g;
         }
 
-        out[w.key] = { x: a.x, y: a.y, facing: a.facing, walking, gesture, site: a.site };
+        out[w.key] = { x: a.x, y: a.y, facing: a.facing, walking, gesture, site: a.site, chat, say };
       });
 
       setViewsOut(out);

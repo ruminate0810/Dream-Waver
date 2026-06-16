@@ -267,6 +267,179 @@ summary:focus-visible,
    desk on activation, then loops a role-appropriate action while the real
    tool runs; the status/label is driven by the real task elsewhere. */
 
+/* LPC frame-sheet walk — steps() flips through the 9 walk columns */
+.lpc-frame { background-repeat: no-repeat; }
+.lpc-anim {
+  animation-name: lpc-walk;
+  animation-timing-function: steps(9);
+  animation-iteration-count: infinite;
+}
+@keyframes lpc-walk { to { background-position-x: var(--lpc-shift, -576px); } }
+@media (prefers-reduced-motion: reduce) { .lpc-anim { animation: none; } }
+
+/* ChibiWorker — true frame strip: snap through hand-posed cells with steps()
+   (no tweening) for a crisp, natural cute walk. One cell per pose. */
+.chibi-view { overflow: hidden; position: relative; }
+.chibi-scaler { transform-origin: top left; }
+.chibi-strip { display: flex; will-change: transform; }
+@keyframes chibi-cycle { to { transform: translateX(-100%); } }
+
+/* --- POSED secondary motion (idle / sit / gestures) ----------------------
+   Light CSS animation on classed sub-groups adds 灵动 without touching the
+   frame-based walk. Pivots: head at the neck, arms at the shoulder. */
+.chibi-pose g { transform-box: fill-box; }
+.chibi-head { transform-origin: 50% 100%; }
+.chibi-armL { transform-origin: 90% 10%; }
+.chibi-armR { transform-origin: 10% 10%; }
+.chibi-figure { transform-origin: 50% 100%; }
+
+/* default idle life: gentle breath + a head that mostly rests then glances
+   around (扭头张望) — the silly-cute baseline whenever nothing else plays. */
+.chibi-pose .chibi-figure { animation: chibi-breath 3.4s ease-in-out infinite; }
+.chibi-pose .chibi-head { animation: chibi-glance 6s ease-in-out infinite; }
+@keyframes chibi-breath { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-0.4px); } }
+@keyframes chibi-glance {
+  0%, 46%, 100% { transform: rotate(0deg); }
+  12% { transform: rotate(7deg); }            /* glance one way */
+  30% { transform: rotate(-7deg); }           /* glance the other */
+  62% { transform: rotate(0deg) translateY(0.4px); } /* tiny nod */
+  70% { transform: rotate(0deg) translateY(0); }
+}
+
+/* talk — head waggles like it's chattering; one arm gestures along */
+.chibi-g-talk .chibi-head { animation: chibi-talk 0.5s ease-in-out infinite; }
+.chibi-g-talk .chibi-armR { animation: chibi-gest 0.8s ease-in-out infinite; }
+@keyframes chibi-talk { 0%,100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg) translateY(-0.3px); } }
+@keyframes chibi-gest { 0%,100% { transform: rotate(0deg); } 50% { transform: rotate(-16deg); } }
+
+/* nod — agreeing dip */
+.chibi-g-nod .chibi-head { animation: chibi-nod 0.6s ease-in-out infinite; }
+@keyframes chibi-nod { 0%,100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(1.2px) rotate(3deg); } }
+
+/* point — arm shoots out, head leans toward it */
+.chibi-g-point .chibi-armR { animation: chibi-point 1.1s ease-in-out infinite; }
+.chibi-g-point .chibi-head { animation: chibi-lean 1.1s ease-in-out infinite; }
+@keyframes chibi-point { 0%,100% { transform: rotate(0); } 40%,70% { transform: rotate(-30deg); } }
+@keyframes chibi-lean { 0%,100% { transform: rotate(0); } 40%,70% { transform: rotate(5deg); } }
+
+/* look / magnify / read — slow exaggerated head turns (the silly look-around) */
+.chibi-g-look .chibi-head,
+.chibi-g-magnify .chibi-head,
+.chibi-g-read .chibi-head { animation: chibi-lookabout 2.4s ease-in-out infinite; }
+@keyframes chibi-lookabout { 0%,100% { transform: rotate(11deg); } 50% { transform: rotate(-11deg); } }
+
+/* think / scratch — head tilts, hand comes up to ponder */
+.chibi-g-think .chibi-head,
+.chibi-g-scratch .chibi-head { animation: chibi-tilt 2.2s ease-in-out infinite; }
+.chibi-g-think .chibi-armR,
+.chibi-g-scratch .chibi-armR { animation: chibi-ponder 2.2s ease-in-out infinite; }
+@keyframes chibi-tilt { 0%,100% { transform: rotate(-9deg); } 50% { transform: rotate(-13deg); } }
+@keyframes chibi-ponder { 0%,100% { transform: rotate(-58deg) translateY(-1px); } 50% { transform: rotate(-64deg) translateY(-1px); } }
+
+/* type / write / draw — busy hands tapping + a focused head bob over the desk */
+.chibi-g-type .chibi-armL, .chibi-g-write .chibi-armL, .chibi-g-draw .chibi-armL { animation: chibi-tapA 0.34s ease-in-out infinite; }
+.chibi-g-type .chibi-armR, .chibi-g-write .chibi-armR, .chibi-g-draw .chibi-armR { animation: chibi-tapB 0.34s ease-in-out infinite; }
+.chibi-g-type .chibi-head, .chibi-g-write .chibi-head, .chibi-g-draw .chibi-head { animation: chibi-focus 1.5s ease-in-out infinite; }
+@keyframes chibi-tapA { 0%,100% { transform: translateY(0); } 50% { transform: translateY(1px); } }
+@keyframes chibi-tapB { 0%,100% { transform: translateY(1px); } 50% { transform: translateY(0); } }
+@keyframes chibi-focus { 0%,100% { transform: rotate(2deg); } 50% { transform: rotate(-2deg); } }
+
+/* coffee — sip: hand to mouth, head dips to drink */
+.chibi-g-coffee .chibi-armR { animation: chibi-sip 2.6s ease-in-out infinite; }
+.chibi-g-coffee .chibi-head { animation: chibi-siphead 2.6s ease-in-out infinite; }
+@keyframes chibi-sip { 0%,100% { transform: rotate(0); } 35%,65% { transform: rotate(-38deg); } }
+@keyframes chibi-siphead { 0%,100% { transform: rotate(0); } 35%,65% { transform: rotate(4deg) translateY(0.6px); } }
+
+/* wave — friendly hello (arm out to the side, clear of the head) */
+.chibi-g-wave .chibi-armR { animation: chibi-wave 0.5s ease-in-out infinite; }
+@keyframes chibi-wave { 0%,100% { transform: rotate(-108deg); } 50% { transform: rotate(-132deg); } }
+
+/* cheer / eureka — both arms up, whole body hops with joy */
+.chibi-g-cheer .chibi-figure, .chibi-g-eureka .chibi-figure { animation: chibi-hop 0.5s ease-in-out infinite; }
+.chibi-g-cheer .chibi-armL, .chibi-g-eureka .chibi-armL { animation: chibi-up-l 0.5s ease-in-out infinite; }
+.chibi-g-cheer .chibi-armR, .chibi-g-eureka .chibi-armR { animation: chibi-up-r 0.5s ease-in-out infinite; }
+@keyframes chibi-hop { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes chibi-up-l { 0%,100% { transform: rotate(135deg); } 50% { transform: rotate(150deg); } }
+@keyframes chibi-up-r { 0%,100% { transform: rotate(-135deg); } 50% { transform: rotate(-150deg); } }
+
+/* dance — goofy body sway */
+.chibi-g-dance .chibi-figure { animation: chibi-dance 0.6s ease-in-out infinite; }
+.chibi-g-dance .chibi-armR { animation: chibi-up-r 0.6s ease-in-out infinite; }
+@keyframes chibi-dance { 0%,100% { transform: rotate(-5deg) translateY(0); } 50% { transform: rotate(5deg) translateY(-1.5px); } }
+
+/* doze — head droops, slow sleepy sag */
+.chibi-g-doze .chibi-head { animation: chibi-doze 3.2s ease-in-out infinite; }
+@keyframes chibi-doze { 0%,100% { transform: rotate(14deg) translateY(1px); } 50% { transform: rotate(18deg) translateY(2px); } }
+
+/* stretch — arms up, body stretches tall */
+.chibi-g-stretch .chibi-figure { animation: chibi-stretch 2.8s ease-in-out infinite; }
+.chibi-g-stretch .chibi-armL { animation: chibi-up-l 2.8s ease-in-out infinite; }
+.chibi-g-stretch .chibi-armR { animation: chibi-up-r 2.8s ease-in-out infinite; }
+@keyframes chibi-stretch { 0%,100% { transform: scaleY(1); } 50% { transform: scaleY(1.06) translateY(-1px); } }
+
+/* facepalm — hand to face, head sinks (报错抱头) */
+.chibi-g-facepalm .chibi-armR { animation: chibi-ponder 1.4s ease-in-out infinite; }
+.chibi-g-facepalm .chibi-head { animation: chibi-sink 1.4s ease-in-out infinite; }
+@keyframes chibi-sink { 0%,100% { transform: rotate(8deg) translateY(1px); } 50% { transform: rotate(12deg) translateY(1.6px); } }
+
+/* phone — handset up to the ear, head leans into it (打电话) */
+.chibi-g-phone .chibi-armR { animation: chibi-phone 2.4s ease-in-out infinite; }
+.chibi-g-phone .chibi-head { animation: chibi-phonehead 2.4s ease-in-out infinite; }
+@keyframes chibi-phone { 0%,100% { transform: rotate(-54deg); } 50% { transform: rotate(-60deg); } }
+@keyframes chibi-phonehead { 0%,100% { transform: rotate(6deg); } 50% { transform: rotate(9deg); } }
+
+/* film — camera/clapper up, a little rolling shake (拍摄中) */
+.chibi-g-film .chibi-armR { animation: chibi-film 0.9s ease-in-out infinite; }
+.chibi-g-film .chibi-head { animation: chibi-tilt 2.2s ease-in-out infinite; }
+@keyframes chibi-film { 0%,100% { transform: rotate(-44deg); } 50% { transform: rotate(-38deg) translateY(-0.5px); } }
+
+/* laugh — head tips back, body bounces (哈哈大笑) — for lively conversation */
+.chibi-g-laugh .chibi-figure { animation: chibi-hop 0.4s ease-in-out infinite; }
+.chibi-g-laugh .chibi-head { animation: chibi-laugh 0.4s ease-in-out infinite; }
+.chibi-g-laugh .chibi-armR { animation: chibi-gest 0.4s ease-in-out infinite; }
+@keyframes chibi-laugh { 0%,100% { transform: rotate(-10deg) translateY(-0.4px); } 50% { transform: rotate(-16deg); } }
+
+/* ── office-object gestures (browse/snack/whiteboard/water) ── */
+/* browse — flip through a book on the shelf, head scanning the spines */
+.chibi-g-browse .chibi-head { animation: chibi-lookabout 1.8s ease-in-out infinite; }
+.chibi-g-browse .chibi-armR { animation: chibi-browse 1.4s ease-in-out infinite; }
+@keyframes chibi-browse { 0%,100% { transform: rotate(-14deg); } 50% { transform: rotate(-26deg); } }
+/* snack — nibble: hand to mouth in small bites */
+.chibi-g-snack .chibi-armR { animation: chibi-snack 1.1s ease-in-out infinite; }
+.chibi-g-snack .chibi-head { animation: chibi-nibble 1.1s ease-in-out infinite; }
+@keyframes chibi-snack { 0%,100% { transform: rotate(-20deg); } 45%,60% { transform: rotate(-40deg); } }
+@keyframes chibi-nibble { 0%,100% { transform: rotate(0); } 45%,60% { transform: rotate(3deg) translateY(0.4px); } }
+/* whiteboard — reach up and scribble on the wall, head follows the pen */
+.chibi-g-whiteboard .chibi-armR { animation: chibi-board 1s ease-in-out infinite; }
+.chibi-g-whiteboard .chibi-head { animation: chibi-lean 1.8s ease-in-out infinite; }
+@keyframes chibi-board { 0%,100% { transform: rotate(-46deg) translateX(0); } 50% { transform: rotate(-52deg) translateX(0.6px); } }
+/* water — lean over and tip the can onto the plant */
+.chibi-g-water .chibi-figure { animation: chibi-leanfwd 3s ease-in-out infinite; }
+.chibi-g-water .chibi-armR { animation: chibi-pour 3s ease-in-out infinite; }
+@keyframes chibi-leanfwd { 0%,100% { transform: rotate(0); } 50% { transform: rotate(4deg); } }
+@keyframes chibi-pour { 0%,100% { transform: rotate(18deg); } 50% { transform: rotate(30deg); } }
+
+/* ── persona signature gestures ── */
+/* command (调度员) — chin up, steady authoritative point */
+.chibi-g-command .chibi-armR { animation: chibi-command 1.6s ease-in-out infinite; }
+.chibi-g-command .chibi-head { animation: chibi-chinup 1.6s ease-in-out infinite; }
+@keyframes chibi-command { 0%,100% { transform: rotate(-26deg); } 50% { transform: rotate(-34deg); } }
+@keyframes chibi-chinup { 0%,100% { transform: rotate(-3deg); } 50% { transform: rotate(-6deg) translateY(-0.3px); } }
+/* critique (评审员) — disapproving head-shake + a sharp jab */
+.chibi-g-critique .chibi-head { animation: chibi-shake 0.7s ease-in-out infinite; }
+.chibi-g-critique .chibi-armR { animation: chibi-jab 1.4s ease-in-out infinite; }
+@keyframes chibi-shake { 0%,100% { transform: rotate(7deg); } 50% { transform: rotate(-7deg); } }
+@keyframes chibi-jab { 0%,100% { transform: rotate(-12deg); } 45%,60% { transform: rotate(-30deg); } }
+/* flourish (设计师) — artsy arm sweep + a little sway */
+.chibi-g-flourish .chibi-armR { animation: chibi-sweep 1.4s ease-in-out infinite; }
+.chibi-g-flourish .chibi-figure { animation: chibi-dance 1.4s ease-in-out infinite; }
+@keyframes chibi-sweep { 0%,100% { transform: rotate(-10deg); } 50% { transform: rotate(-44deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .chibi-strip.chibi-anim { animation: none !important; }
+  .chibi-pose .chibi-figure, .chibi-pose .chibi-head, .chibi-pose .chibi-armL, .chibi-pose .chibi-armR { animation: none !important; }
+}
+
 .claw-guy g { transform-box: fill-box; }
 .claw-head { transform-origin: 50% 95%; }
 .claw-armL, .claw-armR { transform-origin: 50% 10%; }   /* shoulder */
