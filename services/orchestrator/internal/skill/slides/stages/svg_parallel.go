@@ -23,13 +23,15 @@ import (
 // triggering transient failures + retries that ate the speed win).
 const svgPerSlideConcurrency = 5
 
-// svgPerSlideAttemptTimeout bounds ONE author attempt. With the author
-// routed to v4-flash (PMQ A1) a rich slide returns in ~15-40s, so 90s is
-// generous headroom. Crucially each ATTEMPT gets its own deadline: the old
-// design shared a single 150s budget across the retry, so a slow first try
-// left no time for the second — retries never actually helped against the
-// timeouts that were degrading most slides to a plain fallback page.
-const svgPerSlideAttemptTimeout = 90 * time.Second
+// svgPerSlideAttemptTimeout bounds ONE author attempt. The author runs on
+// v4-flash (PMQ A1); a typical slide returns in ~15-40s, but a DENSE slide
+// (the spec_lock now pushes substantial, gridded content — multiple cards, a
+// chart, a comparison table) legitimately generates more output and can run
+// 90-130s. The old 90s ceiling was degrading exactly those rich pages to a
+// sparse fallback — the opposite of what we want. 150s gives the dense pages
+// real headroom while still capping a genuinely stuck call. Each ATTEMPT gets
+// its own deadline (so a slow first try still leaves time for the retry).
+const svgPerSlideAttemptTimeout = 150 * time.Second
 
 // svgPerSlideMaxAttempts caps tries per slide before giving up to a clean
 // titled fallback. 2 is enough: flash rarely needs a retry, and a slide
@@ -208,7 +210,7 @@ func authorOneSVG(ctx context.Context, client llm.Client, model, sys, deckCtx st
 		Model:             model,
 		SystemPrompt:      sys,
 		Messages:          []schema.Message{schema.NewUser(user.String())},
-		MaxTokens:         12000,
+		MaxTokens:         16000,
 		EnablePromptCache: true,
 	})
 	if err != nil {
