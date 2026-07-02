@@ -1,0 +1,10 @@
+newport_ai:
+  base_url: "https://api.newportai.com"
+  api_key: "${NEWPORT_AI_API_KEY}"
+  polling_url: "/api/getAsyncResult"
+  poll_interval_seconds: 5
+  max_poll_attempts: 120
+  endpoints:
+    remove_background:
+      path: "/api/async/remove_background"
+      param_key: "url"

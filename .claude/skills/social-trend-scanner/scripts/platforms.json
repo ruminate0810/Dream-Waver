@@ -1,0 +1,319 @@
+{
+  "version": "1.0",
+  "defaults": {
+    "timeout": 10,
+    "max_results": 15,
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:128.0) Gecko/20100101 Firefox/128.0",
+    "concurrency": 4
+  },
+  "platforms": {
+    "youtube": {
+      "name": "YouTube",
+      "enabled": true,
+      "search_url": "https://www.youtube.com/results?search_query={keywords}&sp={sp}",
+      "trending_url": "https://www.youtube.com/feed/trending",
+      "trending_method": "firefox",
+      "params": {
+        "sp": {
+          "24h": "EgIIAQ%3D%3D",
+          "7d": "EgIIAw%3D%3D",
+          "30d": "EgIIBA%3D%3D",
+          "90d": ""
+        }
+      },
+      "scan_methods": ["fast_http", "firefox"],
+      "fast_http": {
+        "method": "curl",
+        "extract_mode": "json_embedded",
+        "json_var": "ytInitialData",
+        "json_regex": "var ytInitialData = ({.*?});</script>"
+      },
+      "firefox": {
+        "wait_ms": 3000,
+        "js_extract": "window.ytInitialData",
+        "consent_dismiss": {
+          "selector": "button:has-text('Reject all')",
+          "wait_after_ms": 2000
+        }
+      },
+      "detection": {
+        "success_indicators": ["videoRenderer", "search_query"],
+        "failure_indicators": ["consent.youtube.com", "accounts.google.com/signin"],
+        "login_wall": ["accounts.google.com/signin"]
+      },
+      "extraction": {
+        "data_path": "contents.twoColumnSearchResultsRenderer.primaryContents.sectionListRenderer.contents[0].itemSectionRenderer.contents",
+        "item_type": "videoRenderer",
+        "fields": {
+          "title": "title.runs[0].text",
+          "video_id": "videoId",
+          "channel": "ownerText.runs[0].text",
+          "views_text": "viewCountText.simpleText",
+          "published_text": "publishedTimeText.simpleText",
+          "duration": "lengthText.simpleText",
+          "description": "detailedMetadataSnippets[0].snippetText.runs[0].text"
+        }
+      },
+      "color": "#ff0000"
+    },
+    "google_trends": {
+      "name": "Google Trends",
+      "enabled": true,
+      "search_url": "https://trends.google.com/trends/explore?q={keywords}&geo={geo}&date={date}",
+      "trending_url": null,
+      "trending_method": "pytrends_trending",
+      "params": {
+        "geo": {
+          "global": "",
+          "us": "US",
+          "cn": "CN",
+          "jp": "JP",
+          "kr": "KR",
+          "eu": ""
+        },
+        "date": {
+          "24h": "now 1-d",
+          "7d": "now 7-d",
+          "30d": "today 1-m",
+          "90d": "today 3-m"
+        }
+      },
+      "scan_methods": ["pytrends"],
+      "pytrends": {
+        "hl": "en-US",
+        "tz": 360,
+        "max_keywords": 5,
+        "data_points": ["interest_over_time", "related_queries", "interest_by_region", "related_topics"]
+      },
+      "detection": {
+        "success_indicators": [],
+        "failure_indicators": ["429", "Too Many Requests"],
+        "login_wall": []
+      },
+      "color": "#4285f4"
+    },
+    "reddit": {
+      "name": "Reddit",
+      "enabled": true,
+      "search_url": "https://www.reddit.com/search/?q={keywords}&sort=relevance&t={time}",
+      "trending_url": null,
+      "trending_method": null,
+      "params": {
+        "time": {
+          "24h": "day",
+          "7d": "week",
+          "30d": "month",
+          "90d": "year"
+        }
+      },
+      "scan_methods": ["fast_http"],
+      "fast_http": {
+        "method": "curl",
+        "url_override": "https://www.reddit.com/search.rss?q={keywords}&sort=relevance&t={time}&limit=15",
+        "extract_mode": "rss",
+        "skip_detection": true
+      },
+      "detection": {
+        "success_indicators": [],
+        "failure_indicators": [],
+        "login_wall": []
+      },
+      "color": "#ff4500"
+    },
+    "twitter": {
+      "name": "X (Twitter)",
+      "enabled": true,
+      "search_url": "https://x.com/search?q={keywords}&src=typed_query&f=top",
+      "trending_url": null,
+      "trending_method": null,
+      "params": {},
+      "scan_methods": ["firefox_with_cookies"],
+      "cookie_domains": [".x.com", ".twitter.com"],
+      "firefox": {
+        "wait_ms": 4000,
+        "js_extract": null
+      },
+      "detection": {
+        "success_indicators": ["tweet", "tweetText", "article"],
+        "failure_indicators": [],
+        "login_wall": ["Sign in to X", "Log in", "/i/flow/login"]
+      },
+      "color": "#1d9bf0"
+    },
+    "hackernews": {
+      "name": "Hacker News",
+      "enabled": true,
+      "search_url": "https://hn.algolia.com/api/v1/search?query={keywords}&tags=story&hitsPerPage=15&numericFilters=created_at_i>{since_ts}",
+      "trending_url": "https://hacker-news.firebaseio.com/v0/topstories.json",
+      "trending_method": "hn_topstories",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {
+        "method": "curl",
+        "extract_mode": "json_api",
+        "skip_detection": true
+      },
+      "detection": {
+        "success_indicators": [],
+        "failure_indicators": [],
+        "login_wall": []
+      },
+      "color": "#ff6600"
+    },
+    "github_trending": {
+      "name": "GitHub Trending",
+      "enabled": true,
+      "search_url": "https://github.com/search?q={keywords}&type=repositories&s=stars&o=desc",
+      "trending_url": "https://github.com/trending",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {
+        "method": "curl",
+        "extract_mode": "html"
+      },
+      "detection": {
+        "success_indicators": ["repo-list", "search-title", "repository"],
+        "failure_indicators": ["rate limit", "abuse detection"],
+        "login_wall": []
+      },
+      "color": "#333333"
+    },
+    "google_news": {
+      "name": "Google News",
+      "enabled": true,
+      "search_url": "https://news.google.com/rss/search?q={keywords}&hl=en-US&gl=US&ceid=US:en",
+      "trending_url": "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {
+        "method": "curl",
+        "extract_mode": "rss",
+        "skip_detection": true
+      },
+      "detection": {
+        "success_indicators": [],
+        "failure_indicators": [],
+        "login_wall": []
+      },
+      "color": "#4285f4"
+    },
+    "linkedin": {
+      "name": "LinkedIn",
+      "enabled": true,
+      "search_url": "https://www.linkedin.com/search/results/content/?keywords={keywords}&sortBy=date_posted",
+      "trending_url": null,
+      "trending_method": null,
+      "params": {},
+      "scan_methods": ["firefox_with_cookies"],
+      "cookie_domains": [".linkedin.com"],
+      "firefox": {
+        "wait_ms": 4000,
+        "js_extract": null
+      },
+      "detection": {
+        "success_indicators": ["feed", "update", "post"],
+        "failure_indicators": [],
+        "login_wall": ["authwall", "Sign in", "Join now"]
+      },
+      "color": "#0a66c2",
+      "industries": ["general"]
+    },
+    "yahoo_finance": {
+      "name": "Yahoo Finance",
+      "enabled": true,
+      "search_url": "https://finance.yahoo.com/rss/search?q={keywords}",
+      "trending_url": "https://finance.yahoo.com/news/rssindex",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#6001d2",
+      "industries": ["finance", "crypto"]
+    },
+    "seekingalpha": {
+      "name": "Seeking Alpha",
+      "enabled": true,
+      "search_url": "https://seekingalpha.com/market_currents.xml",
+      "trending_url": "https://seekingalpha.com/market_currents.xml",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#f58220",
+      "industries": ["finance"]
+    },
+    "cointelegraph": {
+      "name": "CoinTelegraph",
+      "enabled": true,
+      "search_url": "https://cointelegraph.com/rss",
+      "trending_url": "https://cointelegraph.com/rss",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#071a2f",
+      "industries": ["crypto"]
+    },
+    "theverge": {
+      "name": "The Verge",
+      "enabled": true,
+      "search_url": "https://www.theverge.com/rss/index.xml",
+      "trending_url": "https://www.theverge.com/rss/index.xml",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#e5127d",
+      "industries": ["tech"]
+    },
+    "arstechnica": {
+      "name": "Ars Technica",
+      "enabled": true,
+      "search_url": "https://feeds.arstechnica.com/arstechnica/index",
+      "trending_url": "https://feeds.arstechnica.com/arstechnica/index",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#ff4e00",
+      "industries": ["tech"]
+    },
+    "producthunt": {
+      "name": "Product Hunt",
+      "enabled": true,
+      "search_url": "https://www.producthunt.com/feed",
+      "trending_url": "https://www.producthunt.com/feed",
+      "trending_method": "fast_http",
+      "params": {},
+      "scan_methods": ["fast_http"],
+      "fast_http": {"method": "curl", "extract_mode": "rss", "skip_detection": true},
+      "detection": {"success_indicators": [], "failure_indicators": [], "login_wall": []},
+      "color": "#da552f",
+      "industries": ["marketing", "tech"]
+    }
+  },
+  "industry_groups": {
+    "tech": {
+      "platforms": ["youtube", "hackernews", "github_trending", "reddit", "google_news", "google_trends", "theverge", "arstechnica", "producthunt", "web_search"]
+    },
+    "finance": {
+      "platforms": ["youtube", "reddit", "google_news", "google_trends", "yahoo_finance", "seekingalpha", "web_search"]
+    },
+    "crypto": {
+      "platforms": ["youtube", "reddit", "google_news", "google_trends", "cointelegraph", "yahoo_finance", "web_search"]
+    },
+    "marketing": {
+      "platforms": ["youtube", "reddit", "google_news", "google_trends", "producthunt", "web_search"]
+    },
+    "general": {
+      "platforms": "all"
+    }
+  }
+}

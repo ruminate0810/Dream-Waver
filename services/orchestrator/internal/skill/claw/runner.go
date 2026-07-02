@@ -28,6 +28,7 @@ type Runner struct {
 	Pipeline      *slides.Pipeline  // optional; the producer's deck generator
 	Video         VideoGenerator    // optional; the videographer's image-to-video source (nil greys it out)
 	Editor        ImageEditor       // optional; the designer's post-production ops (nil greys edit_image out)
+	KOL           KOLFinder         // optional; the researcher's KOL/influencer finder (nil greys find_kol out)
 
 	// 真·动态改绑 — runtime role↔tool bindings + role enablement (config.go).
 	runnerConfigState

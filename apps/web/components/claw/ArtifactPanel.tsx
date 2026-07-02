@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, Check, FileText, Layers, Film } from "lucide-react";
+import { Copy, Download, Check, FileText, Layers, Film, ChevronLeft, ChevronRight, BookOpen, ScrollText, FileCode2 } from "lucide-react";
 import clsx from "clsx";
+import { renderToStaticMarkup } from "react-dom/server";
+import { AnimatePresence, motion } from "framer-motion";
 
 import { StatusChip } from "@/components/ui/pixel";
 import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck, type ClawVideo } from "@/lib/api";
@@ -49,6 +51,7 @@ export function ArtifactBody({
 }) {
   const stream = useAgentEventStream();
   const [markdown, setMarkdown] = useState<string>("");
+  const [readMode, setReadMode] = useState<"scroll" | "swipe">("scroll");
   const [version, setVersion] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [copied, setCopied] = useState(false);
@@ -132,8 +135,14 @@ export function ArtifactBody({
         </TabButton>
         {active === "report" && hasReport && (
           <span className="ml-auto flex items-center gap-1.5">
+            <IconButton label={readMode === "swipe" ? "切回滚动阅读" : "分页滑读"} onClick={() => setReadMode((m) => (m === "swipe" ? "scroll" : "swipe"))}>
+              {readMode === "swipe" ? <ScrollText size={12} strokeWidth={2} /> : <BookOpen size={12} strokeWidth={2} />}
+            </IconButton>
             <IconButton label="复制" onClick={onCopy}>
               {copied ? <Check size={12} strokeWidth={2.4} /> : <Copy size={12} strokeWidth={2} />}
+            </IconButton>
+            <IconButton label="下载网页版 .html" onClick={() => downloadReportHtml(reportTitle(markdown), markdown)}>
+              <FileCode2 size={12} strokeWidth={2} />
             </IconButton>
             <a
               href={clawArtifactURL(jobId)}
@@ -155,11 +164,15 @@ export function ArtifactBody({
         ) : active === "figures" ? (
           <FiguresGallery figures={figures} />
         ) : hasReport ? (
-          <article className="claw-md px-5 py-4">
-            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
-              {markdown}
-            </ReactMarkdown>
-          </article>
+          readMode === "swipe" ? (
+            <ReportSwipe markdown={markdown} />
+          ) : (
+            <article className="claw-md px-5 py-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                {markdown}
+              </ReactMarkdown>
+            </article>
+          )
         ) : (
           <EmptyState loading={loading} />
         )}
@@ -198,7 +211,14 @@ function TabButton({
   );
 }
 
-function DeckView({ deck }: { deck: ClawDeck }) {
+// DeckView — when the deck carries a preview_id AND that slide session is
+// actually serving page HTML, render a swipeable live preview; otherwise
+// fall back to a clean download card (never the raw endpoint error).
+const SLIDE_W = 1280;
+const SLIDE_H = 720;
+
+// DeckCard — the download fallback, with an optional hint line.
+function DeckCard({ deck, hint }: { deck: ClawDeck; hint?: string }) {
   return (
     <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-4 p-8 text-center">
       <span className="grid h-14 w-14 place-items-center rounded-pixel border-2 border-ink bg-accent-soft text-accent shadow-pixel-sm">
@@ -209,6 +229,7 @@ function DeckView({ deck }: { deck: ClawDeck }) {
         {deck.slide_count ? (
           <p className="mt-1 font-mono text-[12px] text-muted">{deck.slide_count} 页 · PowerPoint (.pptx)</p>
         ) : null}
+        {hint ? <p className="mt-1.5 font-mono text-[11px] text-muted">{hint}</p> : null}
       </div>
       <a
         href={deck.url}
@@ -222,13 +243,328 @@ function DeckView({ deck }: { deck: ClawDeck }) {
   );
 }
 
+function DeckView({ deck }: { deck: ClawDeck }) {
+  const count = deck.slide_count ?? 0;
+  const [page, setPage] = useState(1);
+  const [dir, setDir] = useState(1);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0.5);
+  // null = checking, true = serving HTML, false = unavailable → download card
+  const [previewOk, setPreviewOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!deck.preview_id || count === 0) {
+      setPreviewOk(false);
+      return;
+    }
+    let cancelled = false;
+    setPreviewOk(null);
+    (async () => {
+      try {
+        const r = await fetch(`/api/v1/slides/${deck.preview_id}/page/1.html`);
+        const ct = r.headers.get("content-type") ?? "";
+        if (!cancelled) setPreviewOk(r.ok && ct.includes("html"));
+      } catch {
+        if (!cancelled) setPreviewOk(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [deck.preview_id, count]);
+
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setScale(el.clientWidth / SLIDE_W));
+    ro.observe(el);
+    setScale(el.clientWidth / SLIDE_W);
+    return () => ro.disconnect();
+  }, [deck.preview_id, previewOk]);
+
+  const go = (next: number) => {
+    if (next < 1 || next > count) return;
+    setDir(next > page ? 1 : -1);
+    setPage(next);
+  };
+
+  if (previewOk === false) return <DeckCard deck={deck} hint={deck.preview_id ? "在线预览暂不可用 — 下载 .pptx 查看完整版" : undefined} />;
+  if (previewOk === null) {
+    return (
+      <div className="flex h-full min-h-[220px] items-center justify-center gap-2 font-pixel text-[0.55rem] tracking-wide text-muted">
+        <span className="inline-block h-2 w-2 animate-pixpulse rounded-full bg-accent" />
+        载入预览…
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-full flex-col gap-2 p-4">
+      <div className="flex items-center justify-between">
+        <p className="truncate font-mono text-[12px] font-bold text-ink">{deck.title || "幻灯片 deck"}</p>
+        <a
+          href={deck.url}
+          download
+          className="inline-flex flex-none items-center gap-1.5 rounded-pixel border-2 border-ink bg-surface px-2 py-1 font-mono text-[11px] font-semibold text-ink-2 shadow-pixel-sm transition-colors hover:text-ink"
+        >
+          <Download size={11} strokeWidth={2} />
+          .pptx
+        </a>
+      </div>
+      {/* the slide — drag horizontally to flip */}
+      <div ref={frameRef} className="relative w-full overflow-hidden rounded-pixel border-2 border-ink bg-white shadow-pixel-sm" style={{ height: SLIDE_H * scale }}>
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          <motion.div
+            key={page}
+            custom={dir}
+            initial={{ x: dir * 60, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -dir * 60, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -56) go(page + 1);
+              else if (info.offset.x > 56) go(page - 1);
+            }}
+            className="absolute inset-0 cursor-grab active:cursor-grabbing"
+          >
+            <iframe
+              src={`/api/v1/slides/${deck.preview_id}/page/${page}.html`}
+              title={`slide ${page}`}
+              className="pointer-events-none origin-top-left border-0"
+              style={{ width: SLIDE_W, height: SLIDE_H, transform: `scale(${scale})` }}
+            />
+          </motion.div>
+        </AnimatePresence>
+      </div>
+      {/* pager: arrows + dots */}
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => go(page - 1)}
+          disabled={page <= 1}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="上一页"
+        >
+          <ChevronLeft size={13} strokeWidth={2.4} />
+        </button>
+        <div className="flex items-center gap-1">
+          {Array.from({ length: count }, (_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => go(i + 1)}
+              aria-label={`第 ${i + 1} 页`}
+              className={clsx(
+                "h-[7px] rounded-full transition-all",
+                i + 1 === page ? "w-4 bg-accent" : "w-[7px] bg-ink/20 hover:bg-ink/40",
+              )}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => go(page + 1)}
+          disabled={page >= count}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="下一页"
+        >
+          <ChevronRight size={13} strokeWidth={2.4} />
+        </button>
+        <span className="ml-1 font-mono text-[10px] text-muted">
+          {page}/{count}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ReportSwipe — 分页滑读: the report split by H2 headings into swipeable
+// magazine-style cards. The cover card is everything before the first H2.
+function ReportSwipe({ markdown }: { markdown: string }) {
+  const sections = useMemo(() => {
+    const parts = markdown.split(/\n(?=##\s)/).map((s) => s.trim()).filter(Boolean);
+    return parts.length > 0 ? parts : [markdown];
+  }, [markdown]);
+  const [page, setPage] = useState(0);
+  const [dir, setDir] = useState(1);
+  const go = (n: number) => {
+    if (n < 0 || n >= sections.length) return;
+    setDir(n > page ? 1 : -1);
+    setPage(n);
+  };
+  return (
+    <div className="flex h-full flex-col">
+      <div className="relative min-h-0 flex-1 overflow-hidden">
+        <AnimatePresence initial={false} custom={dir} mode="popLayout">
+          <motion.article
+            key={page}
+            custom={dir}
+            initial={{ x: dir * 80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -dir * 80, opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.18}
+            onDragEnd={(_, info) => {
+              if (info.offset.x < -56) go(page + 1);
+              else if (info.offset.x > 56) go(page - 1);
+            }}
+            className="claw-md absolute inset-0 cursor-grab overflow-y-auto px-5 py-4 active:cursor-grabbing"
+          >
+            <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+              {sections[page]}
+            </ReactMarkdown>
+          </motion.article>
+        </AnimatePresence>
+      </div>
+      <div className="flex flex-none items-center justify-center gap-2 border-t-2 border-line py-1.5">
+        <button
+          type="button"
+          onClick={() => go(page - 1)}
+          disabled={page <= 0}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="上一节"
+        >
+          <ChevronLeft size={13} strokeWidth={2.4} />
+        </button>
+        <div className="flex items-center gap-1">
+          {sections.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => go(i)}
+              aria-label={`第 ${i + 1} 节`}
+              className={clsx(
+                "h-[7px] rounded-full transition-all",
+                i === page ? "w-4 bg-accent" : "w-[7px] bg-ink/20 hover:bg-ink/40",
+              )}
+            />
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => go(page + 1)}
+          disabled={page >= sections.length - 1}
+          className="grid h-6 w-6 place-items-center rounded-pixel border-2 border-ink bg-surface text-ink-2 shadow-pixel-sm disabled:opacity-30"
+          aria-label="下一节"
+        >
+          <ChevronRight size={13} strokeWidth={2.4} />
+        </button>
+        <span className="ml-1 font-mono text-[10px] text-muted">
+          {page + 1}/{sections.length}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// downloadFile force-saves a (possibly cross-origin OSS) asset: a plain
+// <a download> is ignored for cross-origin URLs, so we fetch the blob and
+// download that; if CORS blocks the fetch, fall back to opening in a new tab
+// so the user can still save it manually.
+async function downloadFile(url: string, filename: string) {
+  try {
+    const r = await fetch(url, { mode: "cors" });
+    if (!r.ok) throw new Error(String(r.status));
+    const blob = await r.blob();
+    const obj = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = obj;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(obj), 1000);
+  } catch {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
+// REPORT_CSS — a clean, self-contained document stylesheet for the exported
+// .html so it reads like a published article in any browser, offline.
+const REPORT_CSS = `
+*{box-sizing:border-box}
+body{margin:0;background:#f6f3ec;color:#1a1813;font:16px/1.75 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+main{max-width:760px;margin:0 auto;padding:56px 24px 96px}
+h1{font-size:2em;line-height:1.25;margin:0 0 .5em}
+h2{font-size:1.4em;margin:1.9em 0 .5em;padding-bottom:.25em;border-bottom:2px solid #e3ddcd}
+h3{font-size:1.15em;margin:1.4em 0 .4em}
+p{margin:.75em 0}
+a{color:#5b46e0;text-decoration:none}a:hover{text-decoration:underline}
+ul,ol{padding-left:1.5em}li{margin:.3em 0}
+img{max-width:100%;height:auto;border-radius:8px;margin:1.2em 0;box-shadow:0 2px 12px rgba(0,0,0,.1)}
+table{border-collapse:collapse;width:100%;margin:1.3em 0;font-size:.95em}
+th,td{border:1px solid #d8d0bf;padding:7px 11px;text-align:left}
+th{background:#efe9da}
+code{background:#ece6d6;padding:2px 5px;border-radius:4px;font-size:.9em}
+pre{background:#2b2720;color:#f2ede0;padding:14px 16px;border-radius:10px;overflow:auto}pre code{background:none;padding:0}
+blockquote{margin:1em 0;padding:.3em 1.1em;border-left:3px solid #c9bfa6;color:#5a5443}
+hr{border:none;border-top:1px solid #ddd5c3;margin:2em 0}
+footer{margin-top:64px;padding-top:16px;border-top:1px solid #ddd5c3;color:#8a8170;font-size:.82em}
+`;
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string);
+}
+
+function reportTitle(md: string): string {
+  return (md.match(/^#\s+(.+)$/m)?.[1] || "报告").trim();
+}
+
+// downloadReportHtml renders the markdown to clean semantic HTML (no chat-bubble
+// classes), wraps it with REPORT_CSS into a self-contained doc, and downloads it.
+function downloadReportHtml(title: string, markdown: string) {
+  const body = renderToStaticMarkup(
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>,
+  );
+  const doc = `<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${escapeHtml(title)}</title>
+<style>${REPORT_CSS}</style></head>
+<body><main>${body}<footer>由 Dream-Waver · Claw 团队生成</footer></main></body></html>`;
+  const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
+  const obj = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = obj;
+  a.download = `${title.replace(/[\\/:*?"<>|\n\r]+/g, " ").trim().slice(0, 40) || "报告"}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(obj), 1000);
+}
+
+// figureFilename derives a clean filename from the figure's caption (drops a
+// 海报: prefix, strips illegal chars), falling back to figure-N.
+function figureFilename(caption: string | undefined, i: number): string {
+  const base = (caption ?? "")
+    .replace(/^海报[:：]\s*/, "")
+    .replace(/[\\/:*?"<>|\n\r]+/g, " ")
+    .trim()
+    .slice(0, 40);
+  return `${base || `figure-${i + 1}`}.png`;
+}
+
 function FiguresGallery({ figures }: { figures: ClawFigure[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
       {figures.map((f, i) => (
-        <figure key={i} className="overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+        <figure key={i} className="relative overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={f.url} alt={f.caption ?? `figure ${i + 1}`} className="block w-full" />
+          <button
+            type="button"
+            onClick={() => void downloadFile(f.url, figureFilename(f.caption, i))}
+            title="下载这张图"
+            aria-label="下载这张图"
+            className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-pixel border-2 border-ink bg-surface/95 text-ink-2 shadow-pixel-sm transition-transform hover:-translate-y-0.5 hover:text-ink"
+          >
+            <Download size={14} strokeWidth={2} />
+          </button>
           {f.caption && (
             <figcaption className="border-t-2 border-line px-2.5 py-1.5 font-mono text-[11px] text-ink-2">
               {f.caption}
@@ -260,14 +596,14 @@ function VideoGallery({ videos }: { videos: ClawVideo[] }) {
                 <span className="rounded-[3px] border border-line-2 bg-surface-2 px-1 py-[1px]">{v.resolution}</span>
               )}
               {v.duration ? <span>{v.duration}s</span> : null}
-              <a
-                href={v.url}
-                download={`clip-${i + 1}.mp4`}
+              <button
+                type="button"
+                onClick={() => void downloadFile(v.url, `${(v.caption || `clip-${i + 1}`).replace(/[\\/:*?"<>|\n\r]+/g, " ").trim().slice(0, 40)}.mp4`)}
                 className="grid h-5 w-5 place-items-center rounded-pixel border border-ink/40 text-ink-2 hover:text-ink"
                 aria-label="下载视频"
               >
                 <Download size={11} strokeWidth={2} />
-              </a>
+              </button>
             </span>
           </figcaption>
         </figure>

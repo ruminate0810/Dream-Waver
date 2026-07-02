@@ -12,6 +12,8 @@ import {
 import { ArrowUp, Loader2, User2, Bot } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import clsx from "clsx";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { postClawMessage, type ClawRun } from "@/lib/api";
 import {
@@ -63,6 +65,52 @@ export function ClawChat({
   const inFlightRef = useRef<boolean>(run.status === "running");
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const saidRef = useRef<Set<string>>(new Set());
+
+  // 交付汇报 — the moment the run flips to finished, the coordinator hands
+  // over whatever was actually produced (not always a report!): report /
+  // figures / videos / deck, each mentioned only if it exists.
+  const deliveredRef = useRef(false);
+  useEffect(() => {
+    if (run.status !== "finished" || deliveredRef.current) return;
+    deliveredRef.current = true;
+    const parts: string[] = [];
+    if ((run.artifact_version ?? 0) > 0) parts.push(`报告 v${run.artifact_version}`);
+    if ((run.figures?.length ?? 0) > 0) parts.push(`配图 ${run.figures!.length} 张`);
+    if ((run.videos?.length ?? 0) > 0) parts.push(`短视频 ${run.videos!.length} 段`);
+    if (run.deck) parts.push(`幻灯片 ${run.deck.slide_count ?? "一"} 页`);
+    const text =
+      parts.length > 0
+        ? `🔔 交付!这单的产出:${parts.join("、")} — 都放进作品包了(右侧窗口 / dock 可开)。要继续加工,点下面的「下一步」。`
+        : "🔔 收工!这单没有产出文件 — 结论都在上面的对话里。需要落成报告的话,和我说一声。";
+    setBubbles((prev) => [...prev, { kind: "say", worker: "coordinator", text, id: cryptoRandomId() }]);
+  }, [run.status, run.artifact_version, run.figures, run.videos, run.deck]);
+
+  // 澄清 — instead of a rigid form card, the 调度员 ASKS in the chat: when the
+  // run pauses for clarification, drop a conversational coordinator bubble
+  // with the questions; the user just types the answer in the input below
+  // (which resumes the run). Re-armable if a later turn pauses again.
+  const clarifyShownRef = useRef(false);
+  useEffect(() => {
+    const qs = run.clarification_questions ?? [];
+    if (run.status === "awaiting_input" && qs.length > 0) {
+      if (clarifyShownRef.current) return;
+      clarifyShownRef.current = true;
+      const body = qs.map((q, i) => `${i + 1}. ${q}`).join("\n");
+      const text = `开工前我想先跟你对一下,这样产出更贴合你 👇\n\n${body}\n\n回我一句就行 —— 或者直接说「开干」,我自己来定。`;
+      setBubbles((prev) => {
+        // the run is PAUSED waiting on the user — drop the "正在规划并开工…"
+        // seed + any spinning assistant bubble so it doesn't look like it's
+        // working and asking at the same time.
+        const cleaned = prev.filter((b) => !(b.kind === "assistant" && b.status === "thinking"));
+        return cleaned.some((b) => b.id === "clarify")
+          ? cleaned
+          : [...cleaned, { kind: "say", worker: "coordinator", text, id: "clarify" }];
+      });
+    } else if (run.status !== "awaiting_input") {
+      clarifyShownRef.current = false;
+      setBubbles((prev) => prev.filter((b) => b.id !== "clarify"));
+    }
+  }, [run.status, run.clarification_questions]);
 
   useEffect(() => {
     const handle = (ev: AgentEvent) => {
@@ -211,6 +259,7 @@ export function ClawChat({
   }, [bubbles, run.status]);
 
   const running = sending || run.status === "running";
+  const awaiting = run.status === "awaiting_input";
 
   return (
     <div className="flex h-full flex-col">
@@ -285,7 +334,7 @@ export function ClawChat({
             }}
             disabled={running}
             rows={2}
-            placeholder="追问或继续派活，例如「把价格表改成人民币，并补一段风险提示」"
+            placeholder={awaiting ? "在这儿回答调度员的问题就能开工，或直接说「开干」…" : "追问或继续派活，例如「把价格表改成人民币，并补一段风险提示」"}
             className="flex-1 resize-none bg-transparent font-mono text-[14px] leading-relaxed text-ink placeholder:text-muted focus:outline-none disabled:opacity-60"
           />
           <button
@@ -306,7 +355,21 @@ export function ClawChat({
             )}
           </button>
         </div>
-        <p className="mt-2 font-mono text-[11px] text-muted">Enter 发送 · Shift+Enter 换行</p>
+        {awaiting ? (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <span className="font-mono text-[11px] text-accent">↑ 调度员在等你回话</span>
+            <button
+              type="button"
+              onClick={() => void send("开干,按你的判断直接做。")}
+              disabled={sending}
+              className="rounded-pixel border-2 border-ink bg-surface px-2 py-0.5 font-mono text-[11px] font-semibold text-ink-2 shadow-pixel-sm transition-colors hover:text-ink disabled:opacity-50"
+            >
+              直接开干 →
+            </button>
+          </div>
+        ) : (
+          <p className="mt-2 font-mono text-[11px] text-muted">Enter 发送 · Shift+Enter 换行</p>
+        )}
       </form>
     </div>
   );
@@ -333,7 +396,9 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
         </span>
         <div className="flex-1 pt-0.5">
           <span className="font-mono text-[11px] font-bold text-ink-2">{workerZh(bubble.worker)}</span>
-          <p className="font-mono text-[13.5px] leading-relaxed text-ink">{bubble.text}</p>
+          <div className="font-mono text-[13.5px] leading-relaxed text-ink">
+            <ChatMarkdown text={bubble.text} />
+          </div>
         </div>
       </div>
     );
@@ -379,23 +444,72 @@ function BubbleRow({ bubble }: { bubble: Bubble }) {
   return (
     <div className="flex gap-3">
       <Avatar variant="assistant" />
-      <div className="flex-1 pt-1">
-        <p
+      <div className="min-w-0 flex-1 pt-1">
+        <div
           className={clsx(
             "font-mono text-[14.5px] leading-relaxed",
             bubble.status === "thinking" ? "text-ink-2" : "text-ink",
           )}
         >
-          {bubble.text}
+          <ChatMarkdown text={bubble.text} />
           {bubble.status === "thinking" ? (
             <span className="ml-2 inline-flex items-center">
               <Loader2 size={11} strokeWidth={2} className="animate-spin text-accent" />
             </span>
           ) : null}
-        </p>
+        </div>
         {bubble.tools && bubble.tools.length > 0 ? <ToolStrip calls={bubble.tools} /> : null}
       </div>
     </div>
+  );
+}
+
+// ChatMarkdown — chat-bubble-scale markdown so assistant replies render as
+// formatted text instead of raw `## / ** / -` source. Headings collapse to
+// bold lines (a bubble is no place for an H1), lists stay tight, tables get
+// a thin border. Inherits the bubble's font size.
+function ChatMarkdown({ text }: { text: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="my-1 first:mt-0 last:mb-0">{children}</p>,
+        h1: ({ children }) => <p className="my-1.5 font-bold">{children}</p>,
+        h2: ({ children }) => <p className="my-1.5 font-bold">{children}</p>,
+        h3: ({ children }) => <p className="my-1 font-bold">{children}</p>,
+        ul: ({ children }) => <ul className="my-1 list-disc space-y-0.5 pl-5">{children}</ul>,
+        ol: ({ children }) => <ol className="my-1 list-decimal space-y-0.5 pl-5">{children}</ol>,
+        li: ({ children }) => <li className="leading-snug">{children}</li>,
+        strong: ({ children }) => <strong className="font-bold text-ink">{children}</strong>,
+        a: ({ href, children }) => (
+          <a href={href} target="_blank" rel="noreferrer" className="text-accent underline">
+            {children}
+          </a>
+        ),
+        code: ({ children }) => (
+          <code className="rounded-[3px] border border-line-2 bg-surface-2 px-1 py-px text-[0.92em]">{children}</code>
+        ),
+        pre: ({ children }) => (
+          <pre className="my-1.5 overflow-x-auto rounded-pixel border border-line-2 bg-surface-2 p-2 text-[12px] leading-snug">
+            {children}
+          </pre>
+        ),
+        table: ({ children }) => (
+          <div className="my-1.5 overflow-x-auto">
+            <table className="border-collapse text-[12.5px]">{children}</table>
+          </div>
+        ),
+        th: ({ children }) => <th className="border border-line-2 bg-surface-2 px-2 py-0.5 text-left">{children}</th>,
+        td: ({ children }) => <td className="border border-line-2 px-2 py-0.5">{children}</td>,
+        blockquote: ({ children }) => (
+          <blockquote className="my-1 border-l-2 border-line-2 pl-2 text-ink-2">{children}</blockquote>
+        ),
+        hr: () => <hr className="my-2 border-line-2" />,
+        img: () => null, // images belong in the work package, not chat bubbles
+      }}
+    >
+      {text}
+    </ReactMarkdown>
   );
 }
 
@@ -430,6 +544,8 @@ function seedBubbles(run: ClawRun): Bubble[] {
     });
   } else if (run.status === "error") {
     out.push({ kind: "error", text: run.error || "任务失败", id: "seed-err" });
+  } else if (run.status === "awaiting_input") {
+    // the clarification effect will drop the coordinator's question bubble
   } else {
     out.push({ kind: "assistant", text: "正在规划并开工…", status: "thinking", id: "seed-asst" });
   }

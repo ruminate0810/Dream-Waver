@@ -4,11 +4,8 @@ import { useEffect, useState } from "react";
 import { MessageSquareText, ChevronLeft } from "lucide-react";
 import clsx from "clsx";
 
-import type { ClawRun, ClawTask } from "@/lib/api";
-import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
+import type { ClawRun } from "@/lib/api";
 import { ClawChat } from "./ClawChat";
-import { TaskPlanCard } from "./TaskPlanCard";
-import { ClarificationCard } from "./ClarificationCard";
 import { OFFICE_CONFIG } from "./officeSim";
 
 // ChatDrawer makes the office full-page: the plan checklist + clarification
@@ -78,55 +75,13 @@ export function ChatDrawer({ run, onPendingEdit }: { run: ClawRun; onPendingEdit
           </button>
         </div>
         <div className="flex min-h-0 flex-1 flex-col px-3">
-          {run.status === "awaiting_input" && (run.clarification_questions?.length ?? 0) > 0 && (
-            <ClarificationCard jobId={run.job_id} questions={run.clarification_questions ?? []} onResume={onPendingEdit} />
-          )}
-          <PlanRail run={run} />
+          {/* clarification is now asked conversationally inside ClawChat;
+              the plan checklist floats at the office top-right (OfficePlan) */}
           <div className="min-h-0 flex-1">
             <ClawChat run={run} onPendingEdit={onPendingEdit} />
           </div>
         </div>
       </div>
     </>
-  );
-}
-
-// PlanRail owns the live plan checklist: seeded from the polled run.plan,
-// driven live by claw.plan / claw.task.update events.
-function PlanRail({ run }: { run: ClawRun }) {
-  const stream = useAgentEventStream();
-  const [plan, setPlan] = useState<ClawTask[]>(run.plan ?? []);
-
-  useEffect(() => {
-    if (run.plan && run.plan.length > 0) {
-      setPlan((cur) => (cur.length === 0 ? run.plan! : cur));
-    }
-  }, [run.plan]);
-
-  useEffect(() => {
-    const handle = (ev: AgentEvent) => {
-      if (ev.kind === "claw.plan") {
-        const titles = ev.data.task_titles ?? [];
-        const roles = ev.data.task_roles ?? [];
-        setPlan(titles.map((t, i) => ({ title: t, role: roles[i], status: "pending" as const })));
-      } else if (ev.kind === "claw.task.update") {
-        const idx = ev.data.task_index ?? 0;
-        const status = (ev.data.task_status ?? "pending") as ClawTask["status"];
-        setPlan((prev) => {
-          if (idx < 1 || idx > prev.length) return prev;
-          const next = prev.slice();
-          next[idx - 1] = { ...next[idx - 1], status };
-          return next;
-        });
-      }
-    };
-    return stream.subscribe(handle);
-  }, [stream]);
-
-  if (plan.length === 0) return null;
-  return (
-    <div className="pb-3 pt-2">
-      <TaskPlanCard tasks={plan} />
-    </div>
   );
 }

@@ -4,12 +4,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -225,6 +231,23 @@ func main() {
 	if designBridge != nil {
 		clawEditor = designEditor{bridge: designBridge}
 	}
+	// Designer's image source: prefer the design bridge's NanoBanana (df-ability
+	// keys, same gateway as Seedance) over the legacy orchestrator-side
+	// providers; fall back to the composite searcher when there's no bridge.
+	// Researcher's KOL/influencer finder — official YouTube Data API v3.
+	// nil greys out find_kol; needs a free YOUTUBE_API_KEY.
+	var clawKOL claw.KOLFinder
+	if k := strings.TrimSpace(os.Getenv("YOUTUBE_API_KEY")); k != "" {
+		clawKOL = youtubeKOL{apiKey: k}
+		slog.Info("claw researcher KOL finder: YouTube Data API v3 wired")
+	}
+	clawImages := imgSearcher
+	clawImagesEnabled := cfg.NanoBananaEnabled || cfg.UnsplashAccessKey != ""
+	if designBridge != nil {
+		clawImages = bridgeImages{bridge: designBridge}
+		clawImagesEnabled = true
+		slog.Info("claw designer image source: design bridge (NanoBanana via df-ability)")
+	}
 
 	// ─── Claw — general AI worker (plan → research → markdown report) ───
 	// Third vertical on the shared pipeline: a ToolCallAgent loop reusing
@@ -240,11 +263,11 @@ func main() {
 		Sessions:      clawSessions,
 		TavilyKey:     cfg.TavilyAPIKey,
 		SandboxClient: sandboxClient,
-		// Designer worker's image source. ImagesEnabled is true only when a
-		// real provider is wired (NanoBanana or Unsplash) — otherwise the
-		// composite is just Noop and the designer worker greys out.
-		Images:        imgSearcher,
-		ImagesEnabled: cfg.NanoBananaEnabled || cfg.UnsplashAccessKey != "",
+		// Designer worker's image source. ImagesEnabled is true when a real
+		// provider is wired — the design bridge's NanoBanana when present,
+		// else the legacy NanoBanana/Unsplash composite.
+		Images:        clawImages,
+		ImagesEnabled: clawImagesEnabled,
 		// Producer worker's deck generator — reuses the slides deterministic
 		// pipeline. nil greys out the producer worker.
 		Pipeline: pipeline,
@@ -252,6 +275,8 @@ func main() {
 		Video: clawVideo,
 		// Designer worker's post-production ops (design bridge edit endpoints).
 		Editor: clawEditor,
+		// Researcher worker's KOL finder (YouTube Data API v3). nil greys find_kol.
+		KOL: clawKOL,
 	}
 	// 真·动态改绑 — load persisted role↔tool bindings (file-based so it works
 	// without a database; PUT /claw/roles re-saves it).
@@ -367,6 +392,28 @@ func (s seedanceVideo) ImageToVideo(ctx context.Context, imageURL, prompt, resol
 	return resp.VideoURL, nil
 }
 
+// bridgeImages adapts the design bridge's NanoBanana (Gemini image gen via
+// the df-ability gateway — the same keys as the proven Seedance i2v) into the
+// image.Searcher shape the claw designer's generate_image tool consumes. This
+// makes the designer generate REAL figures wherever the design bridge is up,
+// even when the legacy orchestrator-side NanoBanana/Unsplash path is
+// unconfigured.
+type bridgeImages struct{ bridge *design.Bridge }
+
+func (b bridgeImages) Search(ctx context.Context, query string) (*image.Result, error) {
+	resp, err := b.bridge.NanoBanana(ctx, design.NanoBananaRequest{
+		Prompt: query,
+		Model:  "nano-banana-2",
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil || resp.URL == "" {
+		return nil, nil
+	}
+	return &image.Result{URL: resp.URL}, nil
+}
+
 // designEditor adapts the design bridge's image-edit endpoints into the claw
 // designer's ImageEditor capability (edit_image tool).
 type designEditor struct{ bridge *design.Bridge }
@@ -416,6 +463,150 @@ func (d designEditor) EditImage(ctx context.Context, op, imageURL, prompt string
 		return "", fmt.Errorf("unknown image op %q", op)
 	}
 }
+
+// youtubeKOL adapts the official YouTube Data API v3 into the claw.KOLFinder
+// interface (the researcher's find_kol tool). Ported from the kol-youtube
+// skill: search videos for the query → collect unique channels → batch
+// channels.list for stats + description → extract public emails from the
+// description → theme-score → rank. Stdlib HTTP only; needs a free API key
+// (YOUTUBE_API_KEY). Quota: search.list = 100 units; one call ≈ 100 units.
+type youtubeKOL struct{ apiKey string }
+
+const ytAPI = "https://www.googleapis.com/youtube/v3"
+
+func (y youtubeKOL) get(ctx context.Context, endpoint string, params url.Values, out any) error {
+	params.Set("key", y.apiKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ytAPI+"/"+endpoint+"?"+params.Encode(), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 400))
+		return fmt.Errorf("youtube %s: %d %s", endpoint, resp.StatusCode, string(body))
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func (y youtubeKOL) FindKOL(ctx context.Context, query, theme string, maxResults int) ([]claw.KOLResult, error) {
+	if maxResults <= 0 {
+		maxResults = 25
+	}
+	// 1) search videos for the query → unique channelIds (+ a sample title).
+	var sr struct {
+		Items []struct {
+			Snippet struct {
+				ChannelID string `json:"channelId"`
+				Title     string `json:"title"`
+			} `json:"snippet"`
+		} `json:"items"`
+	}
+	sv := url.Values{"part": {"snippet"}, "q": {query}, "type": {"video"}, "maxResults": {"50"}, "order": {"relevance"}}
+	if err := y.get(ctx, "search", sv, &sr); err != nil {
+		return nil, err
+	}
+	var cids []string
+	sample := map[string]string{}
+	for _, it := range sr.Items {
+		cid := it.Snippet.ChannelID
+		if cid != "" && sample[cid] == "" {
+			if _, seen := sample[cid]; !seen {
+				cids = append(cids, cid)
+			}
+			sample[cid] = it.Snippet.Title
+		}
+	}
+	if len(cids) == 0 {
+		return nil, nil
+	}
+	// 2) batch channels.list (≤50 ids) → stats + description.
+	var chans struct {
+		Items []struct {
+			ID      string `json:"id"`
+			Snippet struct {
+				Title       string `json:"title"`
+				Description string `json:"description"`
+				CustomURL   string `json:"customUrl"`
+			} `json:"snippet"`
+			Statistics struct {
+				SubscriberCount string `json:"subscriberCount"`
+				ViewCount       string `json:"viewCount"`
+				VideoCount      string `json:"videoCount"`
+			} `json:"statistics"`
+			Branding struct {
+				Channel struct {
+					Description string `json:"description"`
+					Keywords    string `json:"keywords"`
+				} `json:"channel"`
+			} `json:"brandingSettings"`
+		} `json:"items"`
+	}
+	keywords := claw.KOLThemeKeywords(theme)
+	var out []claw.KOLResult
+	for i := 0; i < len(cids); i += 50 {
+		end := i + 50
+		if end > len(cids) {
+			end = len(cids)
+		}
+		batch := cids[i:end]
+		var page = chans
+		cv := url.Values{"part": {"snippet,statistics,brandingSettings"}, "id": {strings.Join(batch, ",")}, "maxResults": {"50"}}
+		if err := y.get(ctx, "channels", cv, &page); err != nil {
+			return nil, err
+		}
+		for _, ch := range page.Items {
+			handle := ch.Snippet.CustomURL
+			username := handle
+			urlStr := "https://www.youtube.com/channel/" + ch.ID
+			if handle != "" {
+				urlStr = "https://www.youtube.com/" + handle
+			} else {
+				username = ch.ID
+			}
+			bio := ch.Snippet.Description
+			if bio == "" {
+				bio = ch.Branding.Channel.Description
+			}
+			r := claw.KOLResult{
+				Platform:   "youtube",
+				Username:   username,
+				URL:        urlStr,
+				Nickname:   ch.Snippet.Title,
+				Followers:  ch.Statistics.SubscriberCount,
+				Views:      ch.Statistics.ViewCount,
+				VideoCount: ch.Statistics.VideoCount,
+				Bio:        bio,
+				Emails:     claw.ExtractEmails(ch.Snippet.Description + " " + ch.Branding.Channel.Description),
+			}
+			if len(keywords) > 0 {
+				score, matched := claw.KOLScore(
+					[]string{ch.Snippet.Title, bio, ch.Branding.Channel.Keywords, sample[ch.ID]}, keywords)
+				if score < 1 {
+					continue // drop off-theme accounts
+				}
+				r.Relevance, r.MatchedTerms = score, matched
+			}
+			out = append(out, r)
+		}
+	}
+	// 3) rank: relevance desc, then subscriber count desc.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Relevance != out[j].Relevance {
+			return out[i].Relevance > out[j].Relevance
+		}
+		return atoiSafe(out[i].Followers) > atoiSafe(out[j].Followers)
+	})
+	if len(out) > maxResults {
+		out = out[:maxResults]
+	}
+	return out, nil
+}
+
+func atoiSafe(s string) int { n, _ := strconv.Atoi(strings.TrimSpace(s)); return n }
 
 func pickPrimary(cfg *config.Config) llm.Client {
 	switch cfg.PrimaryProvider {

@@ -66,6 +66,11 @@ type Deck struct {
 	Path       string `json:"path"`
 	Title      string `json:"title,omitempty"`
 	SlideCount int    `json:"slide_count,omitempty"`
+	// PreviewID is the slides-session id the pipeline registered for this
+	// deck — GET /api/v1/slides/{PreviewID}/page/{n}.html serves a live
+	// HTML preview of slide n (1-based). Empty on decks made before this
+	// field existed.
+	PreviewID string `json:"preview_id,omitempty"`
 }
 
 // Video is one generated clip in the work package — produced by the
@@ -190,10 +195,11 @@ func (s *Session) Videos() []Video {
 	return out
 }
 
-// SetDeck records the generated slide deck artifact.
-func (s *Session) SetDeck(path, title string, slideCount int) {
+// SetDeck records the generated slide deck artifact. previewID is the
+// slides-session id registered by the pipeline (live per-page HTML preview).
+func (s *Session) SetDeck(path, title string, slideCount int, previewID string) {
 	s.mu.Lock()
-	s.deck = &Deck{Path: path, Title: title, SlideCount: slideCount}
+	s.deck = &Deck{Path: path, Title: title, SlideCount: slideCount, PreviewID: previewID}
 	s.mu.Unlock()
 }
 

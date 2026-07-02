@@ -1,0 +1,76 @@
+{
+  "title": "四天",
+  "slug": "sidian-example",
+  "target_duration_seconds": 270,
+  "aspect": "16:9",
+  "resolution": "1280x720",
+  "style_lock": "Cinematic 2003 Andalucía: warm ochre olive groves, sun-bleached stone, terracotta earth, pale cobalt skies; 35mm film grain; natural light; shallow depth of field.",
+
+  "vehicle_prompts": {
+    "defender_green": "Three-view reference contact sheet — FRONT / 3-4 / SIDE — of a DUSTY DARK-GREEN 1990s Land Rover Defender 110, mud-spattered lower panels, black snorkel, roof rack with a worn canvas duffel strapped on top. Plain warm neutral studio backdrop, even daylight, full vehicle visible. 16:9 contact sheet."
+  },
+
+  "vehicle_scene_mapping": {
+    "defender_green": ["15","19","20"]
+  },
+
+  "characters": {
+    "elena": "Elena, 42-year-old Castilian woman, fair skin, chestnut-brown hair in a loose low bun with a few strands loose at temples, hazel-green eyes, natural brows, small silver cross necklace, thin wedding band on left ring finger, linen cream blouse tucked into long ochre skirt, worn leather sandals",
+    "robert": "Robert, 62-year-old American photographer, SHOULDER-LENGTH SILVER-WHITE HAIR swept back (long, loose, slightly wavy), thick FULL SILVER-WHITE BEARD, BROAD SQUARE FACE with high flat cheekbones, WIDE SLIGHTLY BULBOUS NOSE, deep-set warm hazel-brown eyes under heavy dark brows, weathered ruddy-tan skin, medium average build, WORN KHAKI PHOTOGRAPHER VEST over faded indigo-blue henley, dark brown corduroy pants, dusty tan hiking boots, old black LEICA M camera on woven multicolor strap"
+  },
+
+  "char_prompts": {
+    "elena": "Three-view reference contact sheet — FRONT VIEW / 3/4 VIEW / SIDE VIEW — of ELENA, a 42-year-old Castilian Spanish woman: fair skin, chestnut-brown hair in a loose low bun, hazel-green eyes, natural dark brows, calm neutral expression. Wardrobe: linen cream blouse tucked into long ochre skirt, worn leather sandals, small silver cross necklace. Plain warm neutral studio backdrop. Even daylight. Full body. Labels 'ELENA' below each view. 16:9 contact sheet.",
+    "robert": "Three-view reference contact sheet — FRONT VIEW / 3/4 VIEW / SIDE VIEW — of ROBERT, a 62-year-old American man, weathered outdoor photographer look. SHOULDER-LENGTH SILVER-WHITE hair swept back (long, NOT short, NOT cropped), THICK FULL SILVER-WHITE BEARD (NOT stubble, NOT clean-shaven), BROAD SQUARE FACE with HIGH FLAT CHEEKBONES, WIDE SLIGHTLY BULBOUS NOSE, DEEP-SET warm hazel-brown eyes under HEAVY DARK EYEBROWS (NOT pale blue eyes), weathered ruddy-tan skin, medium average build. NO GLASSES of any kind. Wardrobe: worn khaki photographer vest over faded INDIGO-BLUE HENLEY, dark brown corduroy pants, dusty tan hiking boots, black LEICA M on WOVEN MULTICOLOR strap. IMPORTANT: NOT resembling any famous actor or celebrity, NOT resembling Richard Gere. Plain warm neutral studio backdrop. Full body. Labels 'ROBERT' below each view. 16:9 contact sheet."
+  },
+
+  "char_scene_mapping": {
+    "elena":  ["02","04","05","17","18","21"],
+    "robert": ["15","16","17","19","20","21"]
+  },
+
+  "scenes": [
+    {
+      "id": "01",
+      "act": "world",
+      "desc": "Andalucía olive grove wide establishing",
+      "duration": 5,
+      "camera": "Locked wide static, eye level.",
+      "character_action": "No characters. Pure landscape.",
+      "mood_beat": "stillness",
+      "transition_out": "cut",
+      "location": "Rolling Andalucía hillside with silver-green olive trees, dusty ochre earth, pale cobalt sky",
+      "image_prompt": "Locked wide static shot of rolling Andalucía hillside filled with evenly spaced silver-green olive trees, terracotta roofs of a small village in the far right third, pale cobalt morning sky. Warm diagonal side-light from the left. No people. 35mm film grain, 16:9, deep focus.",
+      "video_prompt": "Locked camera, wide static landscape. Very subtle 5% drift of olive leaves. A single distant bird crosses top right at 3s. No camera movement."
+    },
+
+    {
+      "id": "15",
+      "act": "day1",
+      "desc": "Robert's car stops beside Elena's",
+      "duration": 4,
+      "camera": "Locked wide static from behind Elena's car.",
+      "character_action": "ROBERT drives a dusty dark-green Land Rover up alongside the stuck cream-white Seat Panda and stops. 0–2s Defender rolls up. 2–3s engine cuts. 3–4s driver door begins to open.",
+      "mood_beat": "help arrives",
+      "transition_out": "cut",
+      "location": "Muddy dirt pull-off between olive groves in rain",
+      "image_prompt": "Locked wide static shot from behind ELENA's cream-white Seat Panda. A dusty dark-green 1990s Land Rover Defender pulls up alongside on the muddy dirt pull-off. Rain on both cars. FOREGROUND: rear of Seat Panda. MIDGROUND: Defender stopping alongside. BACKGROUND: rain-soaked olive grove desaturated steel-green. ELENA stands in mud beside her car at camera-left. Desaturated steel-grey evening light. 35mm grain, 16:9.",
+      "video_prompt": "Locked wide static. 0–2s Defender rolls up slowly in rain and stops. 2–3s engine cuts, headlights stay on. 3–4s driver door begins to open. Rain constant. No camera movement."
+    },
+
+    {
+      "id": "21",
+      "act": "day1",
+      "desc": "Elena's eyes register a scar",
+      "duration": 4,
+      "camera": "Locked tight close-up on Elena's face.",
+      "character_action": "ELENA's gaze flicks down briefly to ROBERT's wrist offscreen-left and registers the scar, then snaps back up. 0–1.5s eyes flick down. 1.5–3s eyes widen, lips part a hair. 3–4s gaze snaps back up, expression recomposes.",
+      "mood_beat": "first crack in the guard",
+      "transition_out": "cut",
+      "location": "Beside her stuck car in rain",
+      "key_frame_ref": "17",
+      "image_prompt": "Locked tight close-up on ELENA's face. Hazel-green eyes caught mid-glance, pupils slightly dilated, her guarded expression momentarily softening. Damp strands of chestnut hair at temple. Out-of-focus orange tow rope + silver hair visible in background bokeh. Desaturated steel light. 35mm grain, 16:9.",
+      "video_prompt": "Locked tight close-up on ELENA. 0–1.5s her eyes flick downward toward his wrist offscreen-left. 1.5–3s her eyes widen almost imperceptibly, lips part a hair. 3–4s gaze snaps back up to his face, she recomposes. No camera movement."
+    }
+  ]
+}

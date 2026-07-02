@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import * as Popover from "@radix-ui/react-popover";
-import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug } from "lucide-react";
+import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug, Check } from "lucide-react";
 import clsx from "clsx";
 
-import { getClawRoles, type ClawRun, type ClawRolesConfig } from "@/lib/api";
+import { getClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
+import { TaskPlanCard } from "./TaskPlanCard";
+import { narrationFor } from "./narrate";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
-import { WorkerSprite } from "./WorkerSprite";
+import { ChibiWorker } from "./ChibiWorker";
 import { PixelWindow } from "./PixelWindow";
 import { ArtifactBody, type WorkTab } from "./ArtifactPanel";
 import { useWorkerStates, type WorkerView } from "./useWorkerStates";
 import { useOfficeSim, OFFICE_CONFIG, STATIONS, MEETING_TABLE, type SimView } from "./officeSim";
+import { SPRITES, DESK_VARIANT, STATION_PROP, ZONES_V12, LOUNGE_V12, WAYPOINTS_V12, MEETING_V12 } from "./officeArt";
 import { useWardrobe, OUTFITS } from "./outfits";
 import { BindingsPanel } from "./BindingsPanel";
 
@@ -39,7 +42,14 @@ const PHASES = PHASE_ORDER.map((p) => ({
   workers: WORKERS.filter((w) => w.phase === p).map((w) => w.key),
 })).filter((p) => p.workers.length > 0);
 
-type Flight = { id: number; from: { x: number; y: number }; to: { x: number; y: number }; delay: number };
+type Flight = {
+  id: number;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  fromKey: string;
+  toKey: string;
+  delay: number;
+};
 let flightSeq = 1;
 
 function flightSources(key: string, status: (k: string) => string): string[] {
@@ -104,16 +114,33 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   // The dock button re-convenes a coordinator-chaired standup.
   const [meetingUntil, setMeetingUntil] = useState(0);
   const [meetingKind, setMeetingKind] = useState<"kickoff" | "review">("kickoff");
+  // 桌面气泡 — agents speak ABOVE their heads in the office (not just in chat):
+  // narrationFor turns events into first-person lines; we show the latest per
+  // worker for ~5.5s. Sim re-renders (~90ms) expire them, no extra timer.
+  const [speech, setSpeech] = useState<Record<string, { text: string; until: number }>>({});
+  const officeSaidRef = useRef<Set<string>>(new Set());
   useEffect(
     () =>
       stream.subscribe((ev: AgentEvent) => {
+        const line = narrationFor(ev, officeSaidRef.current);
+        if (line && line.worker) {
+          setSpeech((prev) => ({ ...prev, [line.worker]: { text: line.text, until: Date.now() + 5500 } }));
+        }
         if (ev.kind === "claw.plan") {
           setMeetingKind("kickoff");
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
         } else if (ev.kind === "claw.debate") {
           // consensus reached — keep the kickoff meeting going a beat longer
+          // and stage the argument: participants trade heated bubbles.
           setMeetingKind("kickoff");
           setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+          try {
+            const d = JSON.parse(ev.data?.claw_debate_json ?? "{}");
+            const roles: string[] = (d.proposals ?? []).map((p: { role: string }) => p.role).filter(Boolean);
+            if (roles.length >= 2) setDebate({ roles, until: Date.now() + 10_000 });
+          } catch {
+            /* malformed debate payload — skip the staging */
+          }
         } else if (ev.data?.agent === "critic" && (ev.kind === "tool.start" || ev.kind === "tool.end")) {
           // critic is reviewing/rewriting → convene (and keep extending) the 评审会
           setMeetingKind("review");
@@ -126,7 +153,64 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   const meetingChair = meetingKind === "review" ? "critic" : WORKERS[0].key;
 
   // the sim drives every body in the room
-  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair });
+  // gesture pulses — short UI-driven gesture overrides (交接击掌 etc.) the
+  // sim reads each tick; cheap one-way channel, no re-renders.
+  const pulses = useRef<Record<string, { g: string; until: number }>>({});
+  // forced visits (锤人): bonker walks to the offender's desk for the window
+  const visits = useRef<Record<string, { host: string; until: number }>>({});
+  // live cat position, written by OfficeCat — lets the room react to the cat
+  const catPos = useRef<{ x: number; y: number; sleeping: boolean } | null>(null);
+  const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses, visits });
+
+  // 锤人 — when a worker's tool errors (facepalm reaction), the 评审员 (or
+  // the 调度员, if the critic is the offender) marches over and bonks them
+  // with a comedy hammer. Cooldown per offender so a flaky tool doesn't turn
+  // the office into a boxing ring.
+  const [bonk, setBonk] = useState<{ host: string; bonker: string; until: number } | null>(null);
+  const bonkCd = useRef<Record<string, number>>({});
+  const triggerBonk = useCallback((host: string) => {
+    const now = Date.now();
+    const bonker = host === "critic" ? "coordinator" : "critic";
+    // long enough to walk across the whole office (lounge → far desk ≈ 11s)
+    const until = now + 14_000;
+    visits.current[bonker] = { host, until };
+    pulses.current[bonker] = { g: "point", until };
+    setBonk({ host, bonker, until });
+    setTimeout(() => setBonk((b) => (b && b.until === until ? null : b)), 14_200);
+  }, []);
+  useEffect(() => {
+    if (offDuty || meeting) return;
+    const now = Date.now();
+    for (const w of WORKERS) {
+      const v = views[w.key];
+      if (!v?.reactionUntil || v.reactionUntil < now || v.reactionGesture !== "facepalm") continue;
+      if ((bonkCd.current[w.key] ?? 0) > now) continue;
+      bonkCd.current[w.key] = now + 30_000;
+      triggerBonk(w.key);
+      break;
+    }
+  }, [views, offDuty, meeting, triggerBonk]);
+
+  // 辩论 — v6.4's real kickoff debate (claw.debate) gets staged visually:
+  // the participants trade 💢/💬 around the meeting table while it lasts.
+  const [debate, setDebate] = useState<{ roles: string[]; until: number } | null>(null);
+
+  // 敲钟 — 纳斯达克 style: the moment the run finishes, the office bell
+  // rings (swing + confetti) and the whole team cheers before heading to
+  // the lounge party.
+  const [bellUntil, setBellUntil] = useState(0);
+  const prevRunStatus = useRef(run.status);
+  useEffect(() => {
+    if (prevRunStatus.current !== "finished" && run.status === "finished") {
+      const until = Date.now() + 7000;
+      setBellUntil(until);
+      WORKERS.forEach((w, i) => {
+        pulses.current[w.key] = { g: "cheer", until: until - i * 200 };
+      });
+    }
+    prevRunStatus.current = run.status;
+  }, [run.status]);
+  const bellRinging = bellUntil > Date.now();
 
   // handoff flights on real start transitions
   const [flights, setFlights] = useState<Flight[]>([]);
@@ -145,7 +229,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
       if (!to) continue;
       flightSources(w.key, (k) => prev[k] ?? "idle").forEach((src, i) => {
         const from = STATIONS[src];
-        if (from) add.push({ id: flightSeq++, from, to, delay: i * 220 });
+        if (from) add.push({ id: flightSeq++, from, to, fromKey: src, toKey: w.key, delay: i * 220 });
       });
     }
     if (add.length > 0) setFlights((f) => [...f, ...add]);
@@ -226,20 +310,31 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   return (
     <div
       ref={sceneRef}
-      className="relative h-full min-h-[420px] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
+      className="relative isolate h-full min-h-[420px] overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel"
     >
       {/* ── the room ───────────────────────────────────────────────── */}
       <div className="absolute inset-0">
         {/* ── wall: warm wallpaper + faint stripe + wainscot + skirting ── */}
         <div
           className="absolute inset-x-0 top-0 h-[30%]"
-          style={{ background: "linear-gradient(180deg,#ddc9a2 0%,#d2bc90 100%)" }}
+          style={{ background: "linear-gradient(180deg, #e3d2ad 0%, #dccaa0 46%, #d2bc90 46.001%, #c9b07f 100%)" }}
         />
         <div
           className="absolute inset-x-0 top-0 h-[30%]"
           style={{
             backgroundImage:
               "repeating-linear-gradient(90deg,rgba(120,92,50,0.09) 0 2px,transparent 2px 18px)",
+          }}
+        />
+        {/* picture-rail line across the wall */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-[30%]"
+          style={{
+            backgroundImage:
+              "linear-gradient(180deg, rgba(120,92,50,0.55) 0 1px, rgba(255,244,214,0.6) 1px 2px, rgba(120,92,50,0.30) 2px 3px, transparent 3px)",
+            backgroundPosition: "0 18%",
+            backgroundSize: "100% 100%",
+            backgroundRepeat: "no-repeat",
           }}
         />
         {/* wainscot paneling band along the foot of the wall */}
@@ -254,10 +349,16 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             boxShadow: "inset 0 2px 0 rgba(255,244,214,0.55)",
           }}
         />
-        {/* skirting board (wall↔floor join) */}
+        {/* skirting board (wall↔floor join) — beveled with highlight */}
         <div
           className="absolute inset-x-0"
-          style={{ top: "30%", height: "6px", transform: "translateY(-6px)", background: "#8a6534" }}
+          style={{
+            top: "30%",
+            height: "7px",
+            transform: "translateY(-7px)",
+            background: "linear-gradient(180deg, #a37b42 0%, #8a6534 40%, #6f4f28 100%)",
+            boxShadow: "inset 0 1px 0 rgba(255,244,214,0.7), 0 1px 1px rgba(40,26,10,0.35)",
+          }}
         />
         {/* ── floor: warm wood planks (staggered seams + grain) ── */}
         <div
@@ -273,22 +374,43 @@ export function ClawOffice({ run }: { run: ClawRun }) {
               "repeating-linear-gradient(90deg,rgba(74,48,18,0.10) 0 2px,transparent 2px 130px)",
           }}
         />
-        {/* cozy area rug under the meeting table */}
+        {/* plank-to-plank color variation — old-wood-floor look */}
         <div
-          className="absolute"
+          className="pointer-events-none absolute inset-x-0 bottom-0 top-[30%]"
           style={{
-            left: `${MEETING_TABLE.x}%`,
-            top: `${MEETING_TABLE.y + 5}%`,
-            transform: "translate(calc(-50% + 118px),-55%)",
-            width: "300px",
-            height: "146px",
-            borderRadius: "8px",
-            background: "radial-gradient(circle at 50% 50%,#b5503f 0%,#a3402f 62%,#8c3526 100%)",
-            border: "4px solid #d98a5a",
-            boxShadow: "inset 0 0 0 8px rgba(217,138,90,0.35)",
-            opacity: 0.9,
+            backgroundImage:
+              "repeating-linear-gradient(90deg, rgba(74,48,18,0.07) 0 130px, rgba(255,242,205,0.05) 130px 260px, transparent 260px 390px, rgba(58,38,14,0.06) 390px 520px)",
           }}
         />
+        {/* sparse wood knots */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 top-[30%]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 18% 22%, rgba(74,48,18,0.34) 0 1.4px, transparent 2.2px)," +
+              "radial-gradient(circle at 62% 58%, rgba(74,48,18,0.30) 0 1.6px, transparent 2.4px)," +
+              "radial-gradient(circle at 84% 34%, rgba(74,48,18,0.26) 0 1.3px, transparent 2.1px)",
+            backgroundSize: "230px 190px, 310px 260px, 270px 220px",
+          }}
+        />
+        {/* zone rugs — soft area rugs that delineate the functional pods
+            (执行工坊 / 稿件区 / 后期棚 / 茶水休息区), the去-AI-味 anchors */}
+        {ZONES_V12.map((z) => (
+          <div
+            key={z.name}
+            className="pointer-events-none absolute"
+            style={{
+              left: `${z.rugX}%`,
+              top: `${z.rugY}%`,
+              width: `${z.rugW}%`,
+              height: `${z.rugH}%`,
+              borderRadius: "10px",
+              background: z.rugColor,
+              opacity: 0.16,
+              boxShadow: `inset 0 0 0 3px ${z.rugColor}, inset 0 0 0 6px rgba(255,244,214,0.12)`,
+            }}
+          />
+        ))}
         {/* ── ambient lighting: golden wash + window beam + vignette ── */}
         <div
           className="pointer-events-none absolute inset-0"
@@ -364,15 +486,7 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             zIndex: Math.round(MEETING_TABLE.y),
           }}
         >
-          <svg width="240" height="64" viewBox="0 0 96 26" className="claw-sprite" shapeRendering="crispEdges">
-            <rect x="2" y="4" width="92" height="12" fill="#a9742b" />
-            <rect x="2" y="3" width="92" height="2" fill="#c4915a" />
-            <rect x="6" y="16" width="4" height="9" fill="#84591c" />
-            <rect x="86" y="16" width="4" height="9" fill="#84591c" />
-            <rect x="22" y="6" width="8" height="5" fill="#fbfaf2" />
-            <rect x="46" y="7" width="9" height="4" fill="#fbfaf2" />
-            <rect x="68" y="6" width="7" height="5" fill="#fbfaf2" />
-          </svg>
+          <Sprite name="meeting-table" style={{ transform: "translateX(-50%)" }} />
           {meeting && (
             <span className="absolute -top-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[4px] border border-ink/40 bg-accent px-1.5 py-[1px] font-mono text-[9.5px] font-bold text-white">
               {meetingKind === "review" ? "评审会 · 复盘改稿" : "例会中 · 对齐分工"}
@@ -395,19 +509,25 @@ export function ClawOffice({ run }: { run: ClawRun }) {
                 className={clsx("absolute bottom-0 left-[62px]", v?.status === "working" && "claw-desk-on")}
                 style={{ transform: "translateY(2px)" }}
               >
-                <svg
-                  width={OFFICE_CONFIG.deskSize}
-                  height={Math.round(OFFICE_CONFIG.deskSize * 0.875)}
-                  viewBox="0 0 32 28"
-                  className="claw-sprite"
-                  shapeRendering="crispEdges"
-                >
-                  <g dangerouslySetInnerHTML={{ __html: def.deskTool }} />
-                  <rect x="1" y="18" width="30" height="3" fill="#a9742b" />
-                  <rect x="1" y="17" width="30" height="1" fill="#c4915a" />
-                  <rect x="3" y="21" width="2" height="6" fill="#84591c" />
-                  <rect x="27" y="21" width="2" height="6" fill="#84591c" />
-                </svg>
+                {(() => {
+                  const dv = DESK_VARIANT[def.key] ?? "desk-a";
+                  const dsp = SPRITES[dv];
+                  return (
+                    <div className="relative" style={{ width: dsp.w, height: dsp.h }}>
+                      <Sprite name={dv} style={{ position: "absolute", inset: 0 }} />
+                      {/* monitor (deskTool) overlaid on the same 32×28 grid */}
+                      <svg
+                        className="claw-sprite absolute inset-0"
+                        width={dsp.w}
+                        height={dsp.h}
+                        viewBox="0 0 32 28"
+                        shapeRendering="crispEdges"
+                      >
+                        <g dangerouslySetInnerHTML={{ __html: def.deskTool }} />
+                      </svg>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="absolute left-[10px] top-[8px] w-[132px]">
                 <div className="inline-flex items-center gap-1.5 rounded-[4px] border border-ink/30 bg-surface/90 px-1.5 py-[1px]">
@@ -451,17 +571,182 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             view={views[def.key]}
             sim={sim[def.key]}
             offDuty={offDuty}
-            onClick={() => setFocus((f) => (f === def.key ? null : def.key))}
+            say={speech[def.key] && speech[def.key].until > Date.now() ? speech[def.key].text : undefined}
+            onClick={(shift) =>
+              shift ? triggerBonk(def.key) : setFocus((f) => (f === def.key ? null : def.key))
+            }
           />
         ))}
 
-        {/* handoff flights */}
+        {/* handoff flights — on landing both ends do a quick 击掌 cheer */}
         {flights.map((f) => (
-          <FlyingDoc key={f.id} flight={f} onDone={(id) => setFlights((fs) => fs.filter((x) => x.id !== id))} />
+          <FlyingDoc
+            key={f.id}
+            flight={f}
+            onDone={(id) => {
+              const until = Date.now() + 1300;
+              pulses.current[f.fromKey] = { g: "cheer", until };
+              pulses.current[f.toKey] = { g: "cheer", until };
+              setFlights((fs) => fs.filter((x) => x.id !== id));
+            }}
+          />
         ))}
 
         {/* the office cat — wanders, naps by the lamp, pettable */}
-        <OfficeCat />
+        <OfficeCat posRef={catPos} />
+
+        {/* 🎉 交付完成 — scene-wide confetti + a centered banner on finish */}
+        {bellRinging && (
+          <div className="pointer-events-none absolute inset-0 z-[90] overflow-hidden">
+            {Array.from({ length: 36 }).map((_, i) => {
+              const c = ["#ffd23e", "#6a55ff", "#3ea96a", "#f0a3a3", "#9ec3f0", "#e3892b"][i % 6];
+              return (
+                <span
+                  key={i}
+                  className="claw-confetti absolute top-[-6%]"
+                  style={{
+                    left: `${(i * 37 + 11) % 100}%`,
+                    width: i % 3 === 0 ? "5px" : "7px",
+                    height: i % 3 === 0 ? "9px" : "7px",
+                    background: c,
+                    animationDelay: `${(i % 9) * 0.18}s`,
+                    animationDuration: `${2.4 + (i % 5) * 0.35}s`,
+                  }}
+                />
+              );
+            })}
+            <div className="claw-celebrate absolute left-1/2 top-[34%] -translate-x-1/2">
+              <div className="rounded-pixel border-2 border-ink bg-accent px-5 py-3 text-center shadow-pixel">
+                <p className="font-pixel text-[0.85rem] tracking-wide text-white">✦ 交付完成!</p>
+                <p className="mt-1 font-mono text-[11px] text-white/90">作品已放进作品包</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 交付钟 — rings 纳斯达克-style when the run finishes (by the meeting table) */}
+        <div className="absolute" style={{ left: `${MEETING_TABLE.x - 17}%`, top: `${MEETING_TABLE.y - 4}%`, zIndex: 77 }}>
+          {bellRinging && (
+            <>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-5 left-1/2 text-[14px]">🎉</span>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-4 left-0 text-[12px]" style={{ animationDelay: "0.5s" }}>
+                ✨
+              </span>
+              <span className="claw-coffee-bub pointer-events-none absolute -top-4 left-[80%] text-[12px]" style={{ animationDelay: "1s" }}>
+                🎊
+              </span>
+            </>
+          )}
+          <svg width="44" height="62" viewBox="0 0 20 28" className="claw-sprite" shapeRendering="crispEdges">
+            {/* stand */}
+            <rect x="9" y="2" width="2" height="4" fill="#4a3417" />
+            <rect x="4" y="24" width="12" height="2" fill="#84591c" />
+            <rect x="8" y="20" width="4" height="4" fill="#6a4a23" />
+            {/* the bell (swings while ringing) */}
+            <g className={bellRinging ? "claw-bell-ring" : undefined}>
+              <rect x="8" y="6" width="4" height="2" fill="#e3b23a" />
+              <rect x="6" y="8" width="8" height="6" fill="#ffd23e" />
+              <rect x="5" y="14" width="10" height="2" fill="#e3a13a" />
+              <rect x="9" y="16" width="2" height="2" fill="#84591c" />
+              <rect x="7" y="9" width="2" height="3" fill="#ffe79a" />
+            </g>
+          </svg>
+        </div>
+
+        {/* 咖啡偶遇碰杯 — two workers at the coffee waypoint clink */}
+        {(() => {
+          const at = defs.filter((d) => {
+            const s = sim[d.key];
+            return s && !s.walking && s.site === "way:0";
+          });
+          if (at.length < 2) return null;
+          const a = sim[at[0].key];
+          const b = sim[at[1].key];
+          return (
+            <span
+              className="claw-emote claw-emote-show absolute z-[60] text-[15px]"
+              style={{ left: `${(a.x + b.x) / 2 + 1.5}%`, top: `${Math.min(a.y, b.y) - 8}%` }}
+            >
+              🥂
+            </span>
+          );
+        })()}
+
+        {/* 锤人 — the bonker swings the hammer once they stop walking;
+              the offender only sees stars when actually within range */}
+        {bonk &&
+          bonk.until > Date.now() &&
+          (() => {
+            const bk = sim[bonk.bonker];
+            const hs = sim[bonk.host];
+            if (!bk || !hs) return null;
+            const arrived = bk.site === `visit:${bonk.host}` && !bk.walking;
+            if (!arrived) return null;
+            const near = Math.abs(bk.x - hs.x) + Math.abs(bk.y - hs.y) < 14;
+            if (!near) {
+              // marched to their desk and they're not there — 扑了个空
+              return (
+                <span className="pointer-events-none absolute z-[70] text-[13px]" style={{ left: `${bk.x + 1}%`, top: `${bk.y - 10}%` }}>
+                  💢❓
+                </span>
+              );
+            }
+            return (
+              <>
+                <span
+                  className="claw-hammer pointer-events-none absolute z-[70] text-[18px]"
+                  style={{ left: `${bk.x + (bk.facing === 1 ? 3 : -3)}%`, top: `${bk.y - 8}%` }}
+                >
+                  🔨
+                </span>
+                <span className="pointer-events-none absolute z-[70] text-[12px]" style={{ left: `${bk.x - 2}%`, top: `${bk.y - 10}%` }}>
+                  💢
+                </span>
+                <span className="pointer-events-none absolute z-[70] text-[12px]" style={{ left: `${hs.x + 1}%`, top: `${hs.y - 8}%` }}>
+                  💫
+                </span>
+              </>
+            );
+          })()}
+
+        {/* 辩论 — participants trade heated bubbles around the table */}
+        {debate &&
+          debate.until > Date.now() &&
+          meeting &&
+          debate.roles.map((r, i) => {
+            const s = sim[r];
+            if (!s) return null;
+            const hot = (Math.floor(Date.now() / 1300) + i) % 2 === 0;
+            return (
+              <span
+                key={`db-${r}`}
+                className="pointer-events-none absolute z-[70] text-[13px]"
+                style={{ left: `${s.x + 1}%`, top: `${s.y - 9}%` }}
+              >
+                {hot ? "💢" : "💬"}
+              </span>
+            );
+          })}
+
+        {/* 猫来串门 — a worker near the cat gets a little ❤️ */}
+        {catPos.current &&
+          (() => {
+            const c = catPos.current!;
+            const near = defs.find((d) => {
+              const s = sim[d.key];
+              return s && !s.walking && Math.abs(s.x - c.x) + Math.abs(s.y - c.y) < 8;
+            });
+            if (!near) return null;
+            const s = sim[near.key];
+            return (
+              <span
+                className="pointer-events-none absolute z-[60] text-[11px]"
+                style={{ left: `${s.x + 2}%`, top: `${s.y - 8}%` }}
+              >
+                ❤️
+              </span>
+            );
+          })()}
 
         {/* coffee break: a ☕ floats over every head */}
         {coffee &&
@@ -494,20 +779,27 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             {light === "day" ? "☀ 白天" : light === "dusk" ? "🌇 黄昏" : "🌙 夜晚"}
           </button>
         </div>
-        {(coffee || offDuty || meeting || lastActivity) && (
+        {(bellRinging || coffee || offDuty || meeting || lastActivity || (bonk && bonk.until > Date.now())) && (
           <div className="absolute bottom-2 left-3 z-40 max-w-[48%] truncate rounded-[4px] border border-ink/25 bg-surface/90 px-2 py-[3px] font-mono text-[10px] text-ink-2">
-            {coffee
+            {bellRinging
+              ? "🔔 敲钟!任务交付 — 全员庆祝!"
+              : coffee
               ? "☕ 咖啡时间!全员回血中 — 谢谢老板"
-              : meeting
-                ? meetingKind === "review"
-                  ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
-                  : "▶ 开工例会 — 调度员对齐分工中"
-                : offDuty
-                  ? "✓ 收工!全员下班 — 作品包在 dock"
-                  : lastActivity}
+              : bonk && bonk.until > Date.now()
+                ? `🔨 ${WORKERS.find((w) => w.key === bonk.bonker)?.zh}抄起小锤去找${WORKERS.find((w) => w.key === bonk.host)?.zh}「谈谈」`
+                : debate && debate.until > Date.now() && meeting
+                  ? "💢 例会激辩中 — 各执一词,调度员正在拍板"
+                  : meeting
+                    ? meetingKind === "review"
+                      ? "▶ 评审会 — 评审员复盘改稿,撰稿员修订中"
+                      : "▶ 开工例会 — 调度员对齐分工中"
+                    : offDuty
+                      ? "✓ 收工!全员下班 — 作品包在 dock"
+                      : lastActivity}
           </div>
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
+        <OfficePlan run={run} />
       </div>
 
       {/* ── stats / wardrobe / bindings popover (Radix, anchored to the
@@ -544,6 +836,21 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             >
               <X size={10} strokeWidth={2.4} />
             </button>
+          </div>
+          {/* 人设卡 — title / motto / trait chips */}
+          <div className="mb-2 rounded-[5px] border border-ink/20 bg-paper px-2 py-1.5">
+            <p className="font-mono text-[10px] font-bold" style={{ color: focusedDef.shirt }}>
+              {focusedDef.persona.title}
+            </p>
+            <p className="mt-0.5 font-mono text-[10px] leading-snug text-ink-2">「{focusedDef.persona.motto}」</p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {focusedDef.persona.traits.map((t) => (
+                <span key={t} className="rounded-[3px] border border-ink/25 bg-surface px-1 py-px font-mono text-[9px] text-ink-2">
+                  {t}
+                </span>
+              ))}
+            </div>
+            <p className="mt-1 font-mono text-[9px] text-muted">癖好:{focusedDef.persona.quirk}</p>
           </div>
           <dl className="space-y-1 font-mono text-[11px] text-ink-2">
             <div className="flex justify-between">
@@ -750,18 +1057,56 @@ export function ClawOffice({ run }: { run: ClawRun }) {
 // OfficeWorker is now purely presentational: the sim hands position/facing/
 // walking/gesture; this renders the sprite (with outer facing-flip wrapper —
 // NOT on .claw-rig, which gestures animate), shadow, emote, and the poke.
+// 串门对话台词 — 做成真·一问一答:访客发问/提议(ask),主人回应(reply),
+// 临走道别(bye)。按 (角色 + 1.6s 时间窗) 确定性取词,一个「回合」里稳定不闪。
+const CHAT_ASK = [
+  "在忙啥呢?",
+  "你看这样行不?",
+  "这块能搭把手不?",
+  "进度到哪啦?",
+  "有空同步下不?",
+  "刚冒个新点子!",
+  "帮我瞅一眼?",
+  "卡了个问题…",
+  "咖啡要不要续?",
+  "这事儿归谁啊?",
+];
+const CHAT_REPLY = [
+  "嗯嗯有道理!",
+  "这块归我!",
+  "马上就好~",
+  "哈哈确实",
+  "收到收到",
+  "我看看哈",
+  "稳的,放心!",
+  "对对对!",
+  "好嘞没问题",
+  "让我想想…",
+];
+const CHAT_BYE = ["回头聊!", "加油加油!", "来,击个掌!", "我先回工位啦", "干得漂亮!", "散会散会~"];
+function pickChatLine(key: string, kind: "ask" | "reply" | "bye"): string {
+  const pool = kind === "bye" ? CHAT_BYE : kind === "reply" ? CHAT_REPLY : CHAT_ASK;
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h + key.charCodeAt(i)) % 997;
+  return pool[(h + Math.floor(Date.now() / 1600)) % pool.length];
+}
+
 function OfficeWorker({
   def,
   view,
   sim,
   offDuty,
   onClick,
+  say,
 }: {
   def: WorkerDef;
   view?: WorkerView;
   sim?: SimView;
   offDuty: boolean;
-  onClick: () => void;
+  /** the worker's current spoken line, shown as a speech bubble over the head. */
+  say?: string;
+  /** shift=true → 老板的小锤 (boss discipline easter egg). */
+  onClick: (shift: boolean) => void;
 }) {
   const status = view?.status ?? "idle";
   const [pokedUntil, setPokedUntil] = useState(0);
@@ -772,16 +1117,34 @@ function OfficeWorker({
     return () => clearTimeout(t);
   }, [pokedUntil, poked]);
 
+  // 口头禅 — every so often a standing worker blurts their persona motto
+  const [mottoShow, setMottoShow] = useState(false);
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (Math.random() < 0.08) {
+        setMottoShow(true);
+        setTimeout(() => setMottoShow(false), 3000);
+      }
+    }, 7000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!sim) return null;
   const gesture = poked && !sim.walking ? "wave" : sim.gesture;
-  const emoKey = !sim.walking && gesture ? ACT[gesture]?.emo : undefined;
+  // bubble priority: real narration > 串门闲聊台词. emote glyph is the fallback.
+  const narration = !sim.walking ? say : undefined;
+  const chatLine = !sim.walking && !narration && sim.chat ? pickChatLine(def.key, sim.chat) : undefined;
+  // 物件交互台词(接咖啡/翻书…)排在真叙述与串门之后
+  const bubbleText = narration ?? chatLine ?? (!sim.walking ? sim.say : undefined);
+  const emoKey = !sim.walking && !bubbleText && gesture ? ACT[gesture]?.emo : undefined;
+  const motto = mottoShow && !sim.walking && !poked && !bubbleText;
 
   return (
     <button
       type="button"
-      onClick={() => {
-        setPokedUntil(Date.now());
-        onClick();
+      onClick={(e) => {
+        if (!e.shiftKey) setPokedUntil(Date.now());
+        onClick(e.shiftKey);
       }}
       className="absolute cursor-pointer border-0 bg-transparent p-0"
       style={{
@@ -793,22 +1156,38 @@ function OfficeWorker({
       }}
       aria-label={`${def.zh} · ${status}`}
     >
-      {emoKey && (
+      {bubbleText ? (
+        <div className="claw-emote claw-emote-show absolute bottom-full left-1/2 z-20 mb-1.5 w-[150px] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface px-2 py-1 text-left font-mono text-[10px] leading-snug text-ink shadow-pixel-sm">
+          {bubbleText}
+          <span className="absolute -bottom-[6px] left-1/2 h-0 w-0 -translate-x-1/2 border-x-[5px] border-t-[6px] border-x-transparent border-t-ink" />
+        </div>
+      ) : motto ? (
+        <div className="claw-emote claw-emote-show absolute -top-7 left-1/2 z-10 flex items-center justify-center whitespace-nowrap rounded-[5px] border-2 border-ink bg-surface px-1.5 py-0.5 font-mono text-[9px] font-bold text-ink shadow-pixel-sm">
+          {def.persona.motto}
+        </div>
+      ) : emoKey ? (
         <div
           key={gesture}
           className="claw-emote claw-emote-show absolute -top-6 left-1/2 z-10 flex h-5 min-w-[18px] items-center justify-center rounded-[5px] border-2 border-ink bg-surface px-1 font-mono text-[10px] font-extrabold text-ink shadow-pixel-sm"
         >
           {EMO[emoKey]}
         </div>
-      )}
+      ) : null}
       <span className="absolute -bottom-[3px] left-1/2 h-[5px] w-[36px] -translate-x-1/2 rounded-[50%] bg-ink/15" />
-      <span className="block" style={{ transform: `scaleX(${sim.facing})` }}>
-        <WorkerSprite
+      {/* v16 — cute chibi rendered as a true frame strip (hand-posed walk/idle/
+          sit cells snapped with steps()). Natural motion, keeps the chibi
+          charm. facing flips horizontally; sit when working at the desk. */}
+      <span
+        className="block"
+        style={{ filter: status === "idle" && !offDuty && !poked ? "grayscale(0.6) opacity(0.6)" : "none" }}
+      >
+        <ChibiWorker
           def={def}
-          gesture={gesture}
-          walking={sim.walking}
-          grey={status === "idle" && !offDuty && !poked}
-          size={OFFICE_CONFIG.spriteSize}
+          facing={sim.facing}
+          // 在自己工位上(没走动)就坐下来干活 —— 不管在忙/待命/做完
+          state={sim.walking ? "walk" : sim.site === "desk" ? "sit" : "idle"}
+          gesture={sim.walking ? undefined : gesture}
+          size={OFFICE_CONFIG.spriteSize + 8}
         />
       </span>
     </button>
@@ -847,6 +1226,101 @@ function FlyingDoc({ flight, onDone }: { flight: Flight; onDone: (id: number) =>
           <rect x="2" y="5.6" width="3" height="0.8" fill="#c9c3b5" />
         </svg>
       </div>
+    </div>
+  );
+}
+
+// OfficePlan — the live sub-task checklist, floated at the office top-right
+// (moved out of the chat drawer). Seeded from the polled run.plan, driven
+// live by claw.plan / claw.task.update; collapsible so it never crowds the
+// scene.
+function OfficePlan({ run }: { run: ClawRun }) {
+  const stream = useAgentEventStream();
+  const [plan, setPlan] = useState<ClawTask[]>(run.plan ?? []);
+  const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    if (run.plan && run.plan.length > 0) setPlan((cur) => (cur.length === 0 ? run.plan! : cur));
+  }, [run.plan]);
+
+  useEffect(() => {
+    const handle = (ev: AgentEvent) => {
+      if (ev.kind === "claw.plan") {
+        const titles = ev.data.task_titles ?? [];
+        const roles = ev.data.task_roles ?? [];
+        setPlan(titles.map((t, i) => ({ title: t, role: roles[i], status: "pending" as const })));
+        setOpen(true);
+      } else if (ev.kind === "claw.task.update") {
+        const idx = ev.data.task_index ?? 0;
+        const status = (ev.data.task_status ?? "pending") as ClawTask["status"];
+        setPlan((prev) => {
+          if (idx < 1 || idx > prev.length) return prev;
+          const next = prev.slice();
+          next[idx - 1] = { ...next[idx - 1], status };
+          return next;
+        });
+      }
+    };
+    return stream.subscribe(handle);
+  }, [stream]);
+
+  if (plan.length === 0) return null;
+  const done = plan.filter((t) => t.status === "done" || t.status === "skipped").length;
+
+  return (
+    <div className="absolute right-3 top-11 z-[98] w-[clamp(210px,24vw,270px)]">
+      {open ? (
+        <div className="overflow-hidden rounded-pixel border-2 border-ink bg-paper/95 shadow-pixel-sm backdrop-blur-[1px]">
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center justify-between border-b-2 border-ink bg-surface-2 px-2 py-1"
+            aria-label="收起任务清单"
+          >
+            <span className="font-pixel text-[0.5rem] tracking-wide text-accent">✦ 任务清单</span>
+            <span className="flex items-center gap-1 font-mono text-[10px] tabular-nums text-muted">
+              {done}/{plan.length}
+              <ChevronRight size={11} strokeWidth={2.4} className="rotate-[-90deg]" />
+            </span>
+          </button>
+          <ol className="max-h-[42vh] divide-y divide-line overflow-y-auto">
+            {plan.map((t, i) => (
+              <li key={i} className="flex items-start gap-2 px-2.5 py-1.5">
+                <span
+                  className={clsx(
+                    "mt-[1px] grid h-[14px] w-[14px] flex-none place-items-center rounded-[3px] border-2 border-ink text-white",
+                    t.status === "done" && "bg-grass",
+                    t.status === "doing" && "animate-pixpulse bg-accent",
+                    t.status === "pending" && "bg-surface",
+                    t.status === "skipped" && "bg-surface-2",
+                  )}
+                >
+                  {t.status === "done" && <Check size={9} strokeWidth={3} />}
+                  {t.status === "doing" && <span className="h-[5px] w-[5px] rounded-full bg-white" />}
+                </span>
+                <span
+                  className={clsx(
+                    "font-mono text-[11px] leading-snug",
+                    t.status === "doing" ? "font-semibold text-ink" : t.status === "skipped" ? "text-muted line-through" : t.status === "pending" ? "text-ink-2" : "text-ink",
+                  )}
+                >
+                  {t.title}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="ml-auto flex items-center gap-1.5 rounded-pixel border-2 border-ink bg-paper/95 px-2 py-1 shadow-pixel-sm"
+        >
+          <span className="font-pixel text-[0.5rem] tracking-wide text-accent">✦ 任务</span>
+          <span className="font-mono text-[10px] tabular-nums text-muted">{done}/{plan.length}</span>
+          <ChevronLeft size={11} strokeWidth={2.4} className="rotate-[-90deg]" />
+        </button>
+      )}
     </div>
   );
 }
@@ -907,7 +1381,20 @@ function DockButton({
   );
 }
 
-// Decor — windows, whiteboard, clock, coffee machine (lounge), plant.
+// Sprite — renders a named v12 pixel asset (officeArt.SPRITES) at its native
+// size (× optional scale). The SVG strings already carry class + crispEdges;
+// we inject width/height so the browser rasterises at the intended pixel size.
+function Sprite({ name, scale = 1, className, style }: { name: string; scale?: number; className?: string; style?: React.CSSProperties }) {
+  const s = SPRITES[name];
+  if (!s) return null;
+  const w = Math.round(s.w * scale);
+  const h = Math.round(s.h * scale);
+  const html = s.svg.replace("<svg ", `<svg width="${w}" height="${h}" `);
+  return <span className={className} style={{ display: "inline-block", lineHeight: 0, ...style }} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// Decor v12 — props placed by the去-AI-味 layout (officeArt). Wall fixtures
+// hang on the upper band; floor props stand (bottom-anchored, z by depth).
 function Decor({
   light = "day",
   onCoffee,
@@ -915,128 +1402,75 @@ function Decor({
   light?: "day" | "dusk" | "night";
   onCoffee?: () => void;
 }) {
-  // lamp/sconce glow grows as the room darkens
   const glow = light === "night" ? 0.6 : light === "dusk" ? 0.32 : 0.12;
+  const zOf = (t: string) => Math.round(parseFloat(t));
+
+  // wall fixtures (top band, top-anchored)
+  const WALL: { n: string; l: string; t: string }[] = [
+    { n: "window", l: "4%", t: "3%" },
+    { n: "corkboard", l: "26%", t: "5%" },
+    { n: "whiteboard", l: "44%", t: "2%" },
+    { n: "clock", l: "90%", t: "4%" },
+    { n: "plant-hang", l: "80%", t: "2%" },
+  ];
+  // floor props (bottom-anchored at their y), placed near their owning zone
+  const FLOOR: { n: string; l: string; t: string; scale?: number }[] = [
+    // 茶水休息区 (bottom-left)
+    { n: "fridge", l: "15%", t: "84%" },
+    { n: "snack-shelf", l: "1%", t: "72%" },
+    { n: "beanbag", l: "9%", t: "97%" },
+    // plants
+    { n: "plant-big", l: "26%", t: "76%" },
+    { n: "plant-mid", l: "95%", t: "60%" },
+    // 后期棚 + 执行工坊 back wall
+    { n: "bookshelf", l: "34%", t: "31%" },
+    // flavor props beside their desk (only those with real sprites)
+    { n: "server-rack", l: "28%", t: "47%" },
+    { n: "easel", l: "3%", t: "62%" },
+    { n: "tripod-light", l: "93%", t: "73%" },
+    { n: "paper-stack", l: "54%", t: "59%" },
+  ];
+
   return (
     <>
-      <svg className="absolute left-[8%] top-[4%] claw-sprite" width="84" height="62" viewBox="0 0 37 28" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="37" height="28" fill="#16140f" />
-        <rect x="2" y="2" width="15" height="11" fill="#bfe3f2" />
-        <rect x="20" y="2" width="15" height="11" fill="#bfe3f2" />
-        <rect x="2" y="15" width="15" height="11" fill="#cfeaf6" />
-        <rect x="20" y="15" width="15" height="11" fill="#cfeaf6" />
-        <rect x="5" y="4" width="6" height="2" fill="#fff" />
-        <rect x="24" y="7" width="7" height="2" fill="#fff" />
-      </svg>
-      <svg className="absolute left-[40%] top-[6%] claw-sprite" width="132" height="56" viewBox="0 0 60 26" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="60" height="26" fill="#16140f" />
-        <rect x="1" y="1" width="58" height="24" fill="#fbfaf2" />
-        <rect x="5" y="5" width="28" height="2" fill="#6a55ff" />
-        <rect x="5" y="10" width="40" height="1.6" fill="#c9c3b5" />
-        <rect x="5" y="14" width="34" height="1.6" fill="#c9c3b5" />
-        <rect x="5" y="18" width="38" height="1.6" fill="#c9c3b5" />
-        <rect x="46" y="14" width="9" height="6" fill="#3ea96a" />
-      </svg>
-      <svg className="absolute right-[5%] top-[5%] claw-sprite" width="38" height="38" viewBox="0 0 17 17" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="17" height="17" fill="#16140f" />
-        <rect x="1.5" y="1.5" width="14" height="14" fill="#fbfaf2" />
-        <rect x="8" y="4" width="1.4" height="5" fill="#16140f" />
-        <rect x="8" y="8" width="4" height="1.4" fill="#b5371e" />
-      </svg>
-      {/* coffee machine (lounge) — click to treat the whole team ☕ */}
+      {WALL.map((p) => (
+        <Sprite key={p.n} name={p.n} className="absolute" style={{ left: p.l, top: p.t }} />
+      ))}
+
+      {/* wall sconces with a glow that grows after dark */}
+      {[{ l: "19%" }, { l: "73%" }].map((s, i) => (
+        <div key={`sconce-${i}`} className="absolute" style={{ left: s.l, top: "16%" }}>
+          <div
+            className="pointer-events-none absolute rounded-full"
+            style={{ left: "-28px", top: "-24px", width: "74px", height: "74px", background: `radial-gradient(circle,rgba(255,206,120,${glow}) 0%,transparent 70%)` }}
+          />
+          <Sprite name="sconce" className="relative" />
+        </div>
+      ))}
+
+      {FLOOR.map((p) => (
+        <Sprite
+          key={p.n}
+          name={p.n}
+          scale={p.scale}
+          className="absolute"
+          style={{ left: p.l, top: p.t, transform: "translateY(-100%)", zIndex: zOf(p.t) }}
+        />
+      ))}
+
+      {/* coffee machine — clickable, steaming, by the lounge */}
       <div
         className="absolute cursor-pointer transition-transform hover:scale-105"
-        style={{ left: "1%", top: "92%", transform: "translateY(-100%)" }}
+        style={{ left: "1%", top: "84%", transform: "translateY(-100%)", zIndex: 84 }}
         onClick={onCoffee}
         title="请大家喝咖啡 ☕"
       >
         <span className="claw-steam absolute left-[16px] top-[6px] h-[7px] w-[3px] rounded-full bg-white/70" />
         <span className="claw-steam absolute left-[23px] top-[9px] h-[6px] w-[3px] rounded-full bg-white/60" style={{ animationDelay: "0.8s" }} />
         <span className="claw-steam absolute left-[29px] top-[7px] h-[5px] w-[2px] rounded-full bg-white/50" style={{ animationDelay: "1.5s" }} />
-        <svg className="claw-sprite" width="52" height="66" viewBox="0 0 23 29" shapeRendering="crispEdges">
-          <rect x="2" y="4" width="14" height="20" fill="#403a30" />
-          <rect x="3" y="5" width="12" height="7" fill="#16140f" />
-          <rect x="4" y="6" width="4" height="2" fill="#74e6a0" />
-          <rect x="6" y="14" width="6" height="4" fill="#16140f" />
-          <rect x="7" y="18" width="4" height="1" fill="#e3a13a" />
-          <rect x="0" y="24" width="20" height="2" fill="#84591c" />
-          <rect x="1" y="26" width="2" height="3" fill="#84591c" />
-          <rect x="17" y="26" width="2" height="3" fill="#84591c" />
-        </svg>
+        <Sprite name="coffee-machine" />
       </div>
-      {/* plant */}
-      <svg className="absolute claw-sprite" style={{ right: "1.5%", top: "74%", transform: "translateY(-100%)" }} width="46" height="64" viewBox="0 0 20 28" shapeRendering="crispEdges">
-        <rect x="7" y="2" width="6" height="6" fill="#3ea96a" />
-        <rect x="4" y="6" width="6" height="6" fill="#4fbf7c" />
-        <rect x="10" y="7" width="6" height="6" fill="#2f8f58" />
-        <rect x="8" y="13" width="4" height="5" fill="#6a4a23" />
-        <rect x="5" y="18" width="10" height="8" fill="#b5371e" />
-        <rect x="5" y="18" width="10" height="2" fill="#d8654a" />
-      </svg>
-      {/* framed pictures on the bare wall */}
-      <svg className="absolute left-[27%] top-[8%] claw-sprite" width="42" height="34" viewBox="0 0 19 15" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="19" height="15" fill="#7a5a2e" />
-        <rect x="1.5" y="1.5" width="16" height="12" fill="#fbfaf2" />
-        <rect x="3" y="3" width="6" height="5" fill="#8fb8e0" />
-        <rect x="11" y="3" width="3" height="3" fill="#e3b23a" />
-        <rect x="3" y="10" width="13" height="2.5" fill="#4fa36a" />
-      </svg>
-      <svg className="absolute left-[72%] top-[7%] claw-sprite" width="40" height="40" viewBox="0 0 18 18" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="18" height="18" fill="#7a5a2e" />
-        <rect x="1.5" y="1.5" width="15" height="15" fill="#fbfaf2" />
-        <rect x="3" y="4" width="12" height="2" fill="#b5503f" />
-        <rect x="3" y="8" width="9" height="2" fill="#c98a3a" />
-        <rect x="3" y="12" width="11" height="2" fill="#6a8fcf" />
-      </svg>
-      {/* wall sconces with a glow that grows after dark */}
-      {["21%", "83%"].map((lx, i) => (
-        <div key={`sconce-${i}`} className="absolute" style={{ left: lx, top: "16%" }}>
-          <div
-            className="pointer-events-none absolute rounded-full"
-            style={{
-              left: "-30px",
-              top: "-26px",
-              width: "78px",
-              height: "78px",
-              background: `radial-gradient(circle,rgba(255,206,120,${glow}) 0%,transparent 70%)`,
-            }}
-          />
-          <svg className="claw-sprite relative" width="20" height="26" viewBox="0 0 9 12" shapeRendering="crispEdges">
-            <rect x="3" y="6" width="3" height="5" fill="#4a3417" />
-            <rect x="1" y="2" width="7" height="5" fill="#ffd874" />
-            <rect x="2" y="1" width="5" height="2" fill="#ffe7a6" />
-          </svg>
-        </div>
-      ))}
-      {/* floor lamp (left-mid) with a warm glow */}
-      <div className="absolute" style={{ left: "2.5%", top: "52%" }}>
-        <div
-          className="pointer-events-none absolute rounded-full"
-          style={{
-            left: "-26px",
-            top: "-30px",
-            width: "96px",
-            height: "96px",
-            background: `radial-gradient(circle,rgba(255,214,130,${glow + 0.12}) 0%,transparent 70%)`,
-          }}
-        />
-        <svg className="claw-sprite relative" width="30" height="78" viewBox="0 0 13 34" shapeRendering="crispEdges">
-          <rect x="2" y="1" width="9" height="2" fill="#4a3417" />
-          <rect x="3" y="2" width="7" height="5" fill="#ffd874" />
-          <rect x="2" y="2" width="9" height="2" fill="#ffe7a6" />
-          <rect x="6" y="7" width="1" height="23" fill="#6a4a23" />
-          <rect x="3" y="30" width="7" height="2" fill="#4a3417" />
-        </svg>
-      </div>
-      {/* small potted plant near the lounge */}
-      <svg className="absolute claw-sprite" style={{ left: "9%", top: "94%", transform: "translateY(-100%)" }} width="40" height="54" viewBox="0 0 18 24" shapeRendering="crispEdges">
-        <rect x="6" y="2" width="5" height="6" fill="#4fbf7c" />
-        <rect x="3" y="6" width="6" height="6" fill="#3ea96a" />
-        <rect x="9" y="7" width="6" height="6" fill="#2f8f58" />
-        <rect x="6" y="13" width="5" height="4" fill="#6a4a23" />
-        <rect x="4" y="17" width="9" height="6" fill="#c98a3a" />
-        <rect x="4" y="17" width="9" height="2" fill="#e0a85a" />
-      </svg>
+
       {/* string lights swooping along the top of the wall */}
       <div
         className="pointer-events-none absolute inset-x-[3%] top-[1.2%] h-[10px]"
@@ -1063,33 +1497,6 @@ function Decor({
           })}
         </div>
       </div>
-      {/* bookshelf against the wall (right side) */}
-      <svg className="absolute claw-sprite" style={{ right: "11%", top: "30.5%", transform: "translateY(-100%)" }} width="84" height="100" viewBox="0 0 36 43" shapeRendering="crispEdges">
-        <rect x="0" y="0" width="36" height="43" fill="#6a4a23" />
-        <rect x="2" y="2" width="32" height="11" fill="#4a3417" />
-        <rect x="2" y="15" width="32" height="11" fill="#4a3417" />
-        <rect x="2" y="28" width="32" height="11" fill="#4a3417" />
-        {/* spines, shelf 1 */}
-        <rect x="4" y="4" width="3" height="9" fill="#b5503f" />
-        <rect x="8" y="5" width="3" height="8" fill="#3e7fa3" />
-        <rect x="12" y="4" width="4" height="9" fill="#e3b23a" />
-        <rect x="17" y="6" width="3" height="7" fill="#4fa36a" />
-        <rect x="21" y="4" width="3" height="9" fill="#8a5fc9" />
-        <rect x="25" y="5" width="4" height="8" fill="#c97a3a" />
-        {/* spines, shelf 2 */}
-        <rect x="4" y="18" width="4" height="8" fill="#4fa36a" />
-        <rect x="9" y="17" width="3" height="9" fill="#e3b23a" />
-        <rect x="13" y="19" width="3" height="7" fill="#b5503f" />
-        <rect x="17" y="17" width="4" height="9" fill="#3e7fa3" />
-        <rect x="22" y="18" width="3" height="8" fill="#c97a3a" />
-        <rect x="26" y="17" width="3" height="9" fill="#8a5fc9" />
-        {/* shelf 3: books + a tiny plant */}
-        <rect x="4" y="31" width="3" height="8" fill="#3e7fa3" />
-        <rect x="8" y="30" width="4" height="9" fill="#b5503f" />
-        <rect x="13" y="32" width="3" height="7" fill="#e3b23a" />
-        <rect x="24" y="33" width="6" height="3" fill="#4fbf7c" />
-        <rect x="25" y="36" width="4" height="3" fill="#c98a3a" />
-      </svg>
     </>
   );
 }
@@ -1099,9 +1506,16 @@ function Decor({
 // the floor lamp, and pops hearts when petted. Purely cosmetic — runs on its
 // own timer, independent of the work sim.
 const CAT_NAP = { x: 7, y: 60 }; // beside the floor lamp
-function OfficeCat() {
+function OfficeCat({
+  posRef,
+}: {
+  posRef?: React.MutableRefObject<{ x: number; y: number; sleeping: boolean } | null>;
+}) {
   const [pos, setPos] = useState({ x: 70, y: 72 });
   const [mode, setMode] = useState<"wander" | "sleep">("wander");
+  useEffect(() => {
+    if (posRef) posRef.current = { x: pos.x, y: pos.y, sleeping: mode === "sleep" };
+  }, [pos, mode, posRef]);
   const [dir, setDir] = useState(1); // 1 → facing right
   const [hearts, setHearts] = useState<number[]>([]);
   const heartSeq = useRef(0);
