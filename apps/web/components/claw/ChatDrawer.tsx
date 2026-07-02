@@ -12,7 +12,16 @@ import { OFFICE_CONFIG } from "./officeSim";
 // card + process chat live in a summonable left drawer that slides OVER the
 // office. A slim edge tab toggles it; it force-opens when the run pauses for
 // clarification (the user must see the questions); open state persists.
-export function ChatDrawer({ run, onPendingEdit }: { run: ClawRun; onPendingEdit: () => void }) {
+export function ChatDrawer({
+  run,
+  onPendingEdit,
+  registerAsk,
+}: {
+  run: ClawRun;
+  onPendingEdit: () => void;
+  /** Receives a dispatcher that sends a message AND slides the drawer open. */
+  registerAsk?: (fn: (text: string) => void) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [booted, setBooted] = useState(false);
 
@@ -78,7 +87,19 @@ export function ChatDrawer({ run, onPendingEdit }: { run: ClawRun; onPendingEdit
           {/* clarification is now asked conversationally inside ClawChat;
               the plan checklist floats at the office top-right (OfficePlan) */}
           <div className="min-h-0 flex-1">
-            <ClawChat run={run} onPendingEdit={onPendingEdit} />
+            <ClawChat
+              run={run}
+              onPendingEdit={onPendingEdit}
+              registerSend={
+                registerAsk
+                  ? (fn) =>
+                      registerAsk((text) => {
+                        fn(text);
+                        toggle(true); // the user should see their spatial ask land as a turn
+                      })
+                  : undefined
+              }
+            />
           </div>
         </div>
       </div>

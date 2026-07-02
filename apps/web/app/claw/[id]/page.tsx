@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
@@ -23,6 +23,9 @@ export default function ClawPage() {
   const sessionId = search.get("session") ?? "";
   const [run, setRun] = useState<ClawRun | null>(null);
   const [pollTick, setPollTick] = useState(0);
+  // 空间可操作化 — the office dispatches follow-up messages (拖图派活/敲桌
+  // 追问) through the chat's send(); the drawer registers it here.
+  const askRef = useRef<((text: string) => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,8 +78,14 @@ export default function ClawPage() {
         {run ? (
           <AgentSessionProvider sessionId={sessionId || run.session_id}>
             <div className="relative h-full">
-              <ClawOffice run={run} />
-              <ChatDrawer run={run} onPendingEdit={onPendingEdit} />
+              <ClawOffice run={run} onAsk={(text) => askRef.current?.(text)} />
+              <ChatDrawer
+                run={run}
+                onPendingEdit={onPendingEdit}
+                registerAsk={(fn) => {
+                  askRef.current = fn;
+                }}
+              />
             </div>
           </AgentSessionProvider>
         ) : (

@@ -64,12 +64,43 @@ function flightSources(key: string, status: (k: string) => string): string[] {
   return [];
 }
 
-export function ClawOffice({ run }: { run: ClawRun }) {
+export function ClawOffice({
+  run,
+  onAsk,
+}: {
+  run: ClawRun;
+  /** Dispatch a follow-up message through the chat (拖图派活/空间指派). */
+  onAsk?: (text: string) => void;
+}) {
   const stream = useAgentEventStream();
   const { views, lastActivity } = useWorkerStates(run.plan ?? []);
   const { defs: wardrobeDefs, outfitOf, setOutfit } = useWardrobe();
   const [focus, setFocus] = useState<string | null>(null);
   const [light, setLight] = useState<"day" | "dusk" | "night">("day");
+
+  // ── 空间可操作化 — drag a figure/report from the work package onto a
+  // worker to hand them the job (drops become real follow-up turns via
+  // onAsk). dragKind tracks the payload type while a drag is in flight so
+  // valid recipients glow; native DnD events bubble up to window.
+  const [dragKind, setDragKind] = useState<"figure" | "report" | null>(null);
+  useEffect(() => {
+    const onStart = (e: DragEvent) => {
+      const t = e.dataTransfer?.types ?? [];
+      if (t.includes("application/x-claw-figure")) setDragKind("figure");
+      else if (t.includes("application/x-claw-report")) setDragKind("report");
+    };
+    const onEnd = () => setDragKind(null);
+    window.addEventListener("dragstart", onStart);
+    window.addEventListener("dragend", onEnd);
+    window.addEventListener("drop", onEnd);
+    return () => {
+      window.removeEventListener("dragstart", onStart);
+      window.removeEventListener("dragend", onEnd);
+      window.removeEventListener("drop", onEnd);
+    };
+  }, []);
+  // the designer offers two edits — a drop opens a tiny pick menu at the desk
+  const [dropMenu, setDropMenu] = useState<{ index: number; x: number; y: number } | null>(null);
   // 请喝咖啡 — clicking the machine floats a ☕ over everyone (45s cooldown)
   const [coffee, setCoffee] = useState(false);
   const coffeeCd = useRef(0);
@@ -161,6 +192,48 @@ export function ClawOffice({ run }: { run: ClawRun }) {
   // live cat position, written by OfficeCat — lets the room react to the cat
   const catPos = useRef<{ x: number; y: number; sleeping: boolean } | null>(null);
   const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses, visits });
+
+  // which payload each worker accepts (only on finished runs — drops become
+  // follow-up turns, and the chips-era gate applies: figures/report must exist)
+  const dropSpec = useCallback(
+    (key: string): "figure" | "report" | null => {
+      if (run.status !== "finished" || !onAsk || disabledSet.has(key)) return null;
+      if ((key === "designer" || key === "videographer") && (run.figures?.length ?? 0) > 0) return "figure";
+      if (key === "producer" && (run.artifact_version ?? 0) > 0) return "report";
+      return null;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [run.status, run.figures?.length, run.artifact_version, onAsk, rolesCfg],
+  );
+
+  // a drop = the worker acknowledges in place + the ask goes out as a turn
+  const spatialAsk = useCallback(
+    (worker: string, ack: string, text: string) => {
+      setSpeech((prev) => ({ ...prev, [worker]: { text: ack, until: Date.now() + 6000 } }));
+      pulses.current[worker] = { g: "cheer", until: Date.now() + 1600 };
+      onAsk?.(text);
+    },
+    [onAsk],
+  );
+
+  const onDropPayload = useCallback(
+    (key: string, kind: "figure" | "report", index: number) => {
+      const n = index + 1;
+      if (key === "videographer" && kind === "figure") {
+        spatialAsk(
+          key,
+          `上三脚架!第 ${n} 张图这就开拍。`,
+          `让视频师把第 ${n} 张配图做成一段 720p、5 秒的短视频,加点运镜和光影动态。`,
+        );
+      } else if (key === "producer" && kind === "report") {
+        spatialAsk(key, "报告收到,今晚必须出片!", "把这份报告做成一份幻灯片 deck。");
+      } else if (key === "designer" && kind === "figure") {
+        const s = sim[key];
+        setDropMenu({ index, x: s?.x ?? 50, y: s?.y ?? 50 });
+      }
+    },
+    [sim, spatialAsk],
+  );
 
   // 锤人 — when a worker's tool errors (facepalm reaction), the 评审员 (or
   // the 调度员, if the critic is the offender) marches over and bonks them
@@ -556,7 +629,12 @@ export function ClawOffice({ run }: { run: ClawRun }) {
                       ? v.detail || "工作中"
                       : v?.status === "done"
                         ? `✓ ×${v.calls} · ${fmtDuration(v.totalMs)}`
-                        : ""}
+                        : // SA L3 — an idle-but-assigned worker's plate shows
+                          // what they'll pick up next (first pending todo)
+                          (() => {
+                            const nx = todos?.find((t) => t.status === "pending");
+                            return nx ? `▷ 接下来:${nx.title}` : "";
+                          })()}
                 </div>
               </div>
             </div>
@@ -572,11 +650,62 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             sim={sim[def.key]}
             offDuty={offDuty}
             say={speech[def.key] && speech[def.key].until > Date.now() ? speech[def.key].text : undefined}
+            acceptKind={dropSpec(def.key)}
+            dragKind={dragKind}
+            onDropPayload={(kind, index) => onDropPayload(def.key, kind, index)}
             onClick={(shift) =>
               shift ? triggerBonk(def.key) : setFocus((f) => (f === def.key ? null : def.key))
             }
           />
         ))}
+
+        {/* 拖图给设计师 — 精修方式二选一(高清化/抠图),点外面取消 */}
+        {dropMenu && (
+          <div
+            className="claw-popover absolute z-[110] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface p-1.5 shadow-pixel"
+            style={{ left: `${dropMenu.x}%`, top: `${Math.max(dropMenu.y - 16, 4)}%` }}
+          >
+            <p className="mb-1 px-1 font-mono text-[9.5px] font-bold text-muted">第 {dropMenu.index + 1} 张图 · 怎么修?</p>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                className="rounded-pixel border-2 border-ink bg-paper px-2 py-1 font-mono text-[10px] text-ink shadow-pixel-sm hover:-translate-y-0.5"
+                onClick={() => {
+                  spatialAsk(
+                    "designer",
+                    "这张交给我,高清直出 ✦",
+                    `让设计师把第 ${dropMenu.index + 1} 张配图高清化(enhance),让细节更清晰。`,
+                  );
+                  setDropMenu(null);
+                }}
+              >
+                高清化
+              </button>
+              <button
+                type="button"
+                className="rounded-pixel border-2 border-ink bg-paper px-2 py-1 font-mono text-[10px] text-ink shadow-pixel-sm hover:-translate-y-0.5"
+                onClick={() => {
+                  spatialAsk(
+                    "designer",
+                    "抠图去背景,主体给你留干净。",
+                    `让设计师把第 ${dropMenu.index + 1} 张配图抠图(remove_bg),留下透明背景的主体。`,
+                  );
+                  setDropMenu(null);
+                }}
+              >
+                抠图去背景
+              </button>
+              <button
+                type="button"
+                aria-label="取消"
+                className="grid w-6 place-items-center rounded-pixel border border-ink/40 font-mono text-[10px] text-ink-2 hover:text-ink"
+                onClick={() => setDropMenu(null)}
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* handoff flights — on landing both ends do a quick 击掌 cheer */}
         {flights.map((f) => (
@@ -871,6 +1000,27 @@ export function ClawOffice({ run }: { run: ClawRun }) {
             </div>
           </dl>
 
+          {/* 拍拍肩 — the worker answers in place, over their head */}
+          <button
+            type="button"
+            className="mt-2 w-full rounded-pixel border-2 border-ink bg-paper px-2 py-1 font-mono text-[10.5px] font-bold text-ink shadow-pixel-sm transition-transform hover:-translate-y-0.5"
+            onClick={() => {
+              const text = progressLine(
+                focusedView,
+                focusedTodos,
+                disabledSet.has(focusedDef.key),
+              );
+              setSpeech((prev) => ({
+                ...prev,
+                [focusedDef.key]: { text, until: Date.now() + 6500 },
+              }));
+              pulses.current[focusedDef.key] = { g: "talk", until: Date.now() + 2600 };
+              setFocus(null); // step back so the answer bubble is visible
+            }}
+          >
+            拍拍肩 · 问进度
+          </button>
+
           {focusedTodos.length > 0 && (
             <div className="mt-2 border-t-2 border-line pt-1.5">
               <p className="mb-1 font-mono text-[10px] font-bold tracking-wide text-muted">待办清单</p>
@@ -1091,6 +1241,29 @@ function pickChatLine(key: string, kind: "ask" | "reply" | "bye"): string {
   return pool[(h + Math.floor(Date.now() / 1600)) % pool.length];
 }
 
+// progressLine — the in-character answer to 拍拍肩·问进度, synthesized from
+// the worker's LIVE view + role-tagged todos (no LLM, no fabrication: every
+// number/title comes from real events, per the faithfulness rule).
+function progressLine(
+  view: WorkerView | undefined,
+  todos: { title: string; status: string }[],
+  disabled: boolean,
+): string {
+  if (disabled) return "我这轮被停用了,活都在别人手上。";
+  const pending = todos.filter((t) => t.status === "pending");
+  const doing = todos.find((t) => t.status === "doing");
+  if (view?.status === "working") {
+    const what = view.detail || doing?.title || "";
+    return `正忙着${what ? `「${what.slice(0, 16)}」` : "手头的活"},已出工 ×${view.calls}${
+      pending.length ? `;后面还排着 ${pending.length} 件` : ""
+    }。`;
+  }
+  if (view?.status === "done")
+    return `我这边收工了 — 出工 ×${view.calls},用时 ${fmtDuration(view.totalMs)}。成果在作品包里。`;
+  if (pending.length) return `还没轮到我 — 排着 ${pending.length} 件,先是「${pending[0].title.slice(0, 18)}」。`;
+  return "我在待命,这轮还没派到我的活。";
+}
+
 function OfficeWorker({
   def,
   view,
@@ -1098,6 +1271,9 @@ function OfficeWorker({
   offDuty,
   onClick,
   say,
+  acceptKind,
+  dragKind,
+  onDropPayload,
 }: {
   def: WorkerDef;
   view?: WorkerView;
@@ -1107,8 +1283,15 @@ function OfficeWorker({
   say?: string;
   /** shift=true → 老板的小锤 (boss discipline easter egg). */
   onClick: (shift: boolean) => void;
+  /** which drag payload this worker takes right now (null = not a target). */
+  acceptKind?: "figure" | "report" | null;
+  /** the payload kind currently being dragged anywhere on the page. */
+  dragKind?: "figure" | "report" | null;
+  onDropPayload?: (kind: "figure" | "report", index: number) => void;
 }) {
   const status = view?.status ?? "idle";
+  const droppable = !!acceptKind && dragKind === acceptKind;
+  const [dropHover, setDropHover] = useState(false);
   const [pokedUntil, setPokedUntil] = useState(0);
   const poked = pokedUntil > 0;
   useEffect(() => {
@@ -1146,16 +1329,45 @@ function OfficeWorker({
         if (!e.shiftKey) setPokedUntil(Date.now());
         onClick(e.shiftKey);
       }}
+      onDragOver={(e) => {
+        if (!droppable) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        setDropHover(true);
+      }}
+      onDragLeave={() => setDropHover(false)}
+      onDrop={(e) => {
+        setDropHover(false);
+        if (!droppable || !acceptKind) return;
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          const raw = e.dataTransfer.getData(`application/x-claw-${acceptKind}`);
+          const payload = raw ? (JSON.parse(raw) as { index?: number }) : {};
+          onDropPayload?.(acceptKind, payload.index ?? 0);
+        } catch {
+          onDropPayload?.(acceptKind, 0);
+        }
+      }}
       className="absolute cursor-pointer border-0 bg-transparent p-0"
       style={{
         left: `${sim.x}%`,
         top: `${sim.y}%`,
         transform: "translateY(-100%)",
         transition: "left 0.12s linear, top 0.12s linear",
-        zIndex: Math.round(sim.y) + 1,
+        zIndex: droppable ? 95 : Math.round(sim.y) + 1,
       }}
       aria-label={`${def.zh} · ${status}`}
     >
+      {/* drop affordance — valid recipients glow while a payload is in flight */}
+      {droppable && (
+        <span
+          className={clsx(
+            "pointer-events-none absolute -inset-1.5 z-0 rounded-pixel border-2 border-dashed",
+            dropHover ? "animate-pixpulse border-accent bg-accent/15" : "border-accent/60 bg-accent/5",
+          )}
+        />
+      )}
       {bubbleText ? (
         <div className="claw-emote claw-emote-show absolute bottom-full left-1/2 z-20 mb-1.5 w-[150px] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface px-2 py-1 text-left font-mono text-[10px] leading-snug text-ink shadow-pixel-sm">
           {bubbleText}
@@ -1326,22 +1538,39 @@ function OfficePlan({ run }: { run: ClawRun }) {
 }
 
 function PhaseStrip({ views, finished }: { views: Record<string, WorkerView>; finished: boolean }) {
+  const states = PHASES.map((ph) => {
+    const sts = ph.workers.map((k) => views[k]?.status ?? "idle");
+    const working = sts.includes("working");
+    const touched = ph.workers.some((k) => (views[k]?.calls ?? 0) > 0 || views[k]?.status === "done");
+    const done = !working && (finished ? touched : touched && sts.every((s) => s !== "working"));
+    return { working, done };
+  });
+  // SA L3 — project the NEXT stage: the first untouched phase after the last
+  // active/finished one gets a ▷ marker so "what happens next" is ambient.
+  const lastActive = states.reduce((acc, s, i) => (s.working || s.done ? i : acc), -1);
+  const nextIdx = finished ? -1 : states.findIndex((s, i) => i > lastActive && !s.working && !s.done);
   return (
     <div className="absolute right-3 top-2 z-40 flex items-center gap-1 rounded-[5px] border border-ink/25 bg-surface/90 px-1.5 py-1">
       {PHASES.map((ph, i) => {
-        const sts = ph.workers.map((k) => views[k]?.status ?? "idle");
-        const working = sts.includes("working");
-        const touched = ph.workers.some((k) => (views[k]?.calls ?? 0) > 0 || views[k]?.status === "done");
-        const done = !working && (finished ? touched : touched && sts.every((s) => s !== "working"));
+        const { working, done } = states[i];
+        const next = i === nextIdx;
         return (
           <span key={ph.zh} className="flex items-center gap-1">
             {i > 0 && <span className="font-mono text-[9px] text-line-2">▸</span>}
             <span
+              title={next ? "接下来" : undefined}
               className={clsx(
                 "rounded-[3px] px-1.5 py-[1px] font-mono text-[9.5px] font-bold leading-none",
-                working ? "animate-pixpulse bg-accent text-white" : done ? "bg-grass/15 text-grass" : "text-muted",
+                working
+                  ? "animate-pixpulse bg-accent text-white"
+                  : done
+                    ? "bg-grass/15 text-grass"
+                    : next
+                      ? "border border-dashed border-accent/60 text-accent"
+                      : "text-muted",
               )}
             >
+              {next && "▷ "}
               {ph.zh}
               {done && " ✓"}
             </span>

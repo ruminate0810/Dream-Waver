@@ -135,6 +135,17 @@ export function ArtifactBody({
         </TabButton>
         {active === "report" && hasReport && (
           <span className="ml-auto flex items-center gap-1.5">
+            <span
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("application/x-claw-report", JSON.stringify({ version }));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+              title="拖到办公室的制片身上 → 做成 PPT"
+              className="grid h-6 cursor-grab place-items-center rounded-pixel border-2 border-dashed border-ink/50 bg-surface px-1.5 font-mono text-[9px] font-bold text-ink-2 shadow-pixel-sm hover:text-ink active:cursor-grabbing"
+            >
+              拖给制片
+            </span>
             <IconButton label={readMode === "swipe" ? "切回滚动阅读" : "分页滑读"} onClick={() => setReadMode((m) => (m === "swipe" ? "scroll" : "swipe"))}>
               {readMode === "swipe" ? <ScrollText size={12} strokeWidth={2} /> : <BookOpen size={12} strokeWidth={2} />}
             </IconButton>
@@ -553,7 +564,16 @@ function FiguresGallery({ figures }: { figures: ClawFigure[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
       {figures.map((f, i) => (
-        <figure key={i} className="relative overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+        <figure
+          key={i}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData("application/x-claw-figure", JSON.stringify({ index: i, caption: f.caption ?? "" }));
+            e.dataTransfer.effectAllowed = "copy";
+          }}
+          title="拖到办公室的设计师(精修)或视频师(成片)身上"
+          className="relative cursor-grab overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm active:cursor-grabbing"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={f.url} alt={f.caption ?? `figure ${i + 1}`} className="block w-full" />
           <button

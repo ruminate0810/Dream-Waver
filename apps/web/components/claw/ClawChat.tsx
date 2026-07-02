@@ -53,10 +53,13 @@ type Bubble =
 export function ClawChat({
   run,
   onPendingEdit,
+  registerSend,
 }: {
   run: ClawRun;
   /** Fired after a follow-up POST succeeds so the page restarts polling. */
   onPendingEdit?: () => void;
+  /** Hands our send() to the parent so the office can dispatch messages. */
+  registerSend?: (fn: (text: string) => void) => void;
 }) {
   const stream = useAgentEventStream();
   const [bubbles, setBubbles] = useState<Bubble[]>(() => seedBubbles(run));
@@ -249,6 +252,12 @@ export function ClawChat({
     },
     [draft, send],
   );
+
+  // let the office dispatch messages through the same send path (拖图派活/
+  // 敲桌追问): the parent registers our send so spatial gestures become turns.
+  useEffect(() => {
+    registerSend?.((text) => void send(text));
+  }, [registerSend, send]);
 
   const status = useMemo(() => {
     const tail = bubbles[bubbles.length - 1];
