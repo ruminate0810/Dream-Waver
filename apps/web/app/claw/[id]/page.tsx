@@ -4,11 +4,12 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
-import { getClawRun, type ClawRun } from "@/lib/api";
-import { AgentSessionProvider } from "@/components/chat/transport";
+import { getClawRun, getSessionLog, type ClawRun, type SessionLogEvent } from "@/lib/api";
+import { AgentSessionProvider, StaticStreamProvider } from "@/components/chat/transport";
 import { ClawOffice } from "@/components/claw/ClawOffice";
 import { ChecklistView, LogView } from "@/components/claw/AltViews";
 import { ChatDrawer } from "@/components/claw/ChatDrawer";
+import { ReplayBar, useReplay } from "@/components/claw/Replay";
 import { StatusChip, type PixelStatus } from "@/components/ui/pixel";
 
 // v22b 三视图 — office / checklist / log render the SAME stream+run;
@@ -47,6 +48,19 @@ export default function ClawPage() {
       localStorage.setItem("claw-view-v1", v);
     } catch {
       /* no persistence */
+    }
+  };
+
+  // v24 时光机 — replay a finished run's persisted journal through the same
+  // stream contract; null = live mode.
+  const [replayEvents, setReplayEvents] = useState<SessionLogEvent[] | null>(null);
+  const enterReplay = async () => {
+    if (!run) return;
+    try {
+      const events = await getSessionLog(sessionId || run.session_id);
+      setReplayEvents(events);
+    } catch {
+      setReplayEvents([]); // endpoint down → empty timeline, exit is one click
     }
   };
 
@@ -108,13 +122,34 @@ export default function ClawPage() {
                 </button>
               ))}
             </div>
+            {/* v24 时光机 — finished runs can be re-enacted from the journal */}
+            {run?.status === "finished" &&
+              (replayEvents === null ? (
+                <button
+                  type="button"
+                  onClick={() => void enterReplay()}
+                  className="rounded-pixel border-2 border-ink bg-surface px-2 py-1 font-mono text-[10px] font-bold text-ink-2 shadow-pixel-sm hover:text-ink"
+                >
+                  ⏪ 回放
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setReplayEvents(null)}
+                  className="rounded-pixel border-2 border-ink bg-accent px-2 py-1 font-mono text-[10px] font-bold text-white shadow-pixel-sm"
+                >
+                  退出回放
+                </button>
+              ))}
             <ClawStatusChip status={run?.status} />
           </div>
         </div>
       </header>
 
       <div className="relative z-10 min-h-0 flex-1 p-2 md:p-3">
-        {run ? (
+        {run && replayEvents !== null ? (
+          <ReplayStage run={run} events={replayEvents} />
+        ) : run ? (
           <AgentSessionProvider sessionId={sessionId || run.session_id}>
             <div className="relative h-full">
               {view === "office" ? (
@@ -141,6 +176,45 @@ export default function ClawPage() {
         )}
       </div>
     </main>
+  );
+}
+
+// ReplayStage (v24) — the office re-enacted from the persisted journal. The
+// run copy starts "running" with an empty plan so the events themselves
+// rebuild the world; the office can't tell this from a live stream.
+function ReplayStage({ run, events }: { run: ClawRun; events: SessionLogEvent[] }) {
+  const replay = useReplay(events);
+  const replayRun: ClawRun = {
+    ...run,
+    status: "running",
+    plan: [],
+    artifact_version: 0,
+    figures: [],
+    videos: [],
+    deck: undefined,
+  };
+  // auto-start once on entry
+  const started = useRef(false);
+  useEffect(() => {
+    if (!started.current && events.length > 0) {
+      started.current = true;
+      replay.play();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events.length]);
+
+  return (
+    <StaticStreamProvider stream={replay.stream}>
+      <div className="relative h-full">
+        <ClawOffice key={replay.generation} run={replayRun} />
+        <ReplayBar replay={replay} />
+        {events.length === 0 && (
+          <div className="absolute left-1/2 top-1/3 -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface px-4 py-3 font-mono text-[12px] text-ink-2 shadow-pixel">
+            这单没有留下事件日志(匿名运行或无持久化后端)。
+          </div>
+        )}
+      </div>
+    </StaticStreamProvider>
   );
 }
 

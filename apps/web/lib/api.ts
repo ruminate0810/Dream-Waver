@@ -671,6 +671,25 @@ export type ClawRolesConfig = {
   tool_wired: Record<string, boolean>;
 };
 
+/** v24 时光机 — one persisted session event (chat_events row) as served by
+ *  GET /sessions/{id}/log. `at` is the wall-clock timestamp used to pace
+ *  replay; `data` mirrors the live WS frame payload. */
+export type SessionLogEvent = {
+  seq: number;
+  session_id: string;
+  kind: string;
+  at: string;
+  data: Record<string, unknown>;
+};
+
+/** Fetch the persisted event journal for a session (empty array when the
+ *  backend runs without a durable store). */
+export async function getSessionLog(sessionId: string, limit = 2000): Promise<SessionLogEvent[]> {
+  const res = await fetch(`/api/v1/sessions/${sessionId}/log?limit=${limit}`);
+  const body = await unwrap<{ events: SessionLogEvent[] }>(res);
+  return body.events ?? [];
+}
+
 /** v23 名词皆可动 — reassign one PENDING plan row to another enabled role
  *  (between runs only; 409 while executing, 422 on invalid row/role). */
 export async function patchClawPlan(jobId: string, taskIndex: number, role: string): Promise<void> {
