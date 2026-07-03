@@ -9,6 +9,7 @@ import clsx from "clsx";
 import { getClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
 import { TaskPlanCard } from "./TaskPlanCard";
 import { narrationFor } from "./narrate";
+import { directivesFor } from "./sceneGrammar";
 import { fmtDuration } from "@/components/chat/ToolProgress";
 import { useAgentEventStream, type AgentEvent } from "@/components/chat/transport";
 import { ACT, EMO, TOOL_ACTION, WORKERS, type WorkerDef, type WorkerPhase } from "./workers";
@@ -150,6 +151,11 @@ export function ClawOffice({
   // worker for ~5.5s. Sim re-renders (~90ms) expire them, no extra timer.
   const [speech, setSpeech] = useState<Record<string, { text: string; until: number }>>({});
   const officeSaidRef = useRef<Set<string>>(new Set());
+  // v21 — scene staging is interpreted from SCENE_GRAMMAR (the semantic-
+  // binding table as data). Once the stream shows a first-class claw.phase
+  // event, meetings key off REAL stage boundaries; the old inference rules
+  // (plan arrival / critic tool activity) only serve pre-v21 streams.
+  const phaseAwareRef = useRef(false);
   useEffect(
     () =>
       stream.subscribe((ev: AgentEvent) => {
@@ -157,25 +163,28 @@ export function ClawOffice({
         if (line && line.worker) {
           setSpeech((prev) => ({ ...prev, [line.worker]: { text: line.text, until: Date.now() + 5500 } }));
         }
-        if (ev.kind === "claw.plan") {
-          setMeetingKind("kickoff");
-          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
-        } else if (ev.kind === "claw.debate") {
-          // consensus reached — keep the kickoff meeting going a beat longer
-          // and stage the argument: participants trade heated bubbles.
-          setMeetingKind("kickoff");
-          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
-          try {
-            const d = JSON.parse(ev.data?.claw_debate_json ?? "{}");
-            const roles: string[] = (d.proposals ?? []).map((p: { role: string }) => p.role).filter(Boolean);
-            if (roles.length >= 2) setDebate({ roles, until: Date.now() + 10_000 });
-          } catch {
-            /* malformed debate payload — skip the staging */
+        if (ev.kind === "claw.phase") phaseAwareRef.current = true;
+        for (const d of directivesFor(ev, phaseAwareRef.current)) {
+          if (d.type === "meeting") {
+            const now = Date.now();
+            if (d.op === "close") {
+              // grace window so walk-outs read as walking, not teleporting
+              setMeetingUntil((prev) => Math.min(prev, now + OFFICE_CONFIG.meetingGraceMs));
+            } else {
+              setMeetingKind(d.kind);
+              setMeetingUntil(now + OFFICE_CONFIG.meetingMs);
+            }
+          } else if (d.type === "debate") {
+            try {
+              const dd = JSON.parse(ev.data?.claw_debate_json ?? "{}");
+              const roles: string[] = (dd.proposals ?? []).map((p: { role: string }) => p.role).filter(Boolean);
+              if (roles.length >= 2) setDebate({ roles, until: Date.now() + 10_000 });
+            } catch {
+              /* malformed debate payload — skip the staging */
+            }
           }
-        } else if (ev.data?.agent === "critic" && (ev.kind === "tool.start" || ev.kind === "tool.end")) {
-          // critic is reviewing/rewriting → convene (and keep extending) the 评审会
-          setMeetingKind("review");
-          setMeetingUntil(Date.now() + OFFICE_CONFIG.meetingMs);
+          // "celebrate" is staged from the run-status flip below (the bell
+          // effect) — declared in the grammar, executed by that effect.
         }
       }),
     [stream],

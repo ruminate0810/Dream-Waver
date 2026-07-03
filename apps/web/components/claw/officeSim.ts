@@ -26,6 +26,9 @@ export const OFFICE_CONFIG = {
   pauseChance: 0.006, // mid-walk "stop and look around"
   pauseTicks: 7,
   meetingMs: 15000, // walk-in (~5s from the far lounge) + a real discussion
+  // v21: when a claw.phase end closes a meeting, the room is released after
+  // this grace so departures read as walking out, not teleporting.
+  meetingGraceMs: 4500,
   stroll: {
     idleMin: 16000,
     idleVar: 18000,

@@ -33,7 +33,10 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	// ambiguous: pause with 1-2 questions. Follow-ups + post-clarification
 	// resumes skip it. Advisory — triage failure just proceeds.
 	if !isFollowup && !skipClarify {
-		if qs := r.triageClarify(ctx, goal); len(qs) > 0 {
+		endClarify := r.phaseSpan(ctx, "clarify")
+		qs := r.triageClarify(ctx, goal)
+		endClarify()
+		if len(qs) > 0 {
 			sess.SetClarifyPending(qs)
 			r.emit(ctx, event.NewClawClarify(qs))
 			return nil // pause; the route layer flips status → awaiting_input
@@ -41,9 +44,11 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	}
 
 	// ── Phase 1 — coordinator plans + assigns roles ──────────────────────
+	endPlan := r.phaseSpan(ctx, "plan")
 	tasks := r.planWithRoles(ctx, sess, goal, isFollowup)
 	titles, roles := sess.SetPlanTasks(tasks)
 	r.emit(ctx, event.NewClawPlan(titles, roles))
+	endPlan()
 
 	// ── Phase 1.5 — kickoff debate (真·多 agent 协商) ────────────────────
 	// The assigned execution roles each propose an angle; the coordinator
@@ -55,10 +60,14 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	}
 
 	// ── Phase 2 — concurrent execution (researcher / engineer / designer) ─
+	endExec := r.phaseSpan(ctx, "exec")
 	findings := r.runExecutionPhase(ctx, sess, goal)
+	endExec()
 
 	// ── Phase 3 — writer assembles the report ────────────────────────────
+	endWrite := r.phaseSpan(ctx, "write")
 	writerErr := r.runWriter(ctx, sess, goal, findings, isFollowup)
+	endWrite()
 
 	// ── Phase 3.5 — 评审员 reviews the report against a rubric + revises
 	//    once (report v1 → v2). Autonomous quality gate; soft-fail keeps v1.
@@ -98,6 +107,15 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 		}
 	}
 	return nil
+}
+
+// phaseSpan opens a pipeline stage as a first-class claw.phase event (v21)
+// and returns the matching end emitter. Callers either bracket a block
+// (end := r.phaseSpan(...); ...; end()) or defer it for whole-function
+// phases. Skipped phases must simply never call this — no event, no scene.
+func (r *Runner) phaseSpan(ctx context.Context, phase string) func() {
+	r.emit(ctx, event.NewClawPhase(phase, "start"))
+	return func() { r.emit(ctx, event.NewClawPhase(phase, "end")) }
 }
 
 // ── Phase 0: adaptive clarification triage ───────────────────────────────
@@ -344,6 +362,7 @@ func (r *Runner) runDebate(ctx context.Context, sess *Session, goal string) {
 	if len(roles) < 2 {
 		return // a debate needs at least two voices
 	}
+	defer r.phaseSpan(ctx, "debate")() // only a REAL debate opens the phase
 	dctx, cancel := context.WithTimeout(ctx, debateTimeout)
 	defer cancel()
 
@@ -579,6 +598,7 @@ func (r *Runner) runCritic(ctx context.Context, sess *Session, goal string, find
 	if version == 0 || strings.TrimSpace(report) == "" {
 		return // nothing to review
 	}
+	defer r.phaseSpan(ctx, "review")() // the 评审会 scene keys off THIS, not critic tool activity
 	roleDef, _ := RoleByKey(RoleCritic)
 	_, _ = r.runSubAgent(ctx, roleDef, sess, r.buildCriticMsg(goal, sess, report, findings))
 }
@@ -629,6 +649,7 @@ func (r *Runner) runProducer(ctx context.Context, sess *Session, goal string) {
 		}
 		return
 	}
+	defer r.phaseSpan(ctx, "produce")()
 	for _, i := range idxs {
 		if sess.UpdateTask(i, TaskDoing) {
 			r.emit(ctx, event.NewClawTaskUpdate(i, TaskDoing))
@@ -670,6 +691,7 @@ func (r *Runner) runVideographer(ctx context.Context, sess *Session, goal string
 		}
 		return
 	}
+	defer r.phaseSpan(ctx, "video")()
 	for _, i := range idxs {
 		if sess.UpdateTask(i, TaskDoing) {
 			r.emit(ctx, event.NewClawTaskUpdate(i, TaskDoing))

@@ -105,6 +105,12 @@ const (
 	// is a JSON string (ClawDebateJSON) — same skill-decoupling trick as the
 	// games/wizard payloads.
 	KindClawDebate Kind = "claw.debate"
+	// KindClawPhase marks pipeline stages opening and closing as first-class
+	// events (v21): phase = clarify|plan|debate|exec|write|review|produce|video,
+	// status = "start" | "end". The office stages scenes (meetings, review) from
+	// THESE instead of inferring them from per-agent tool activity — inference
+	// stays only as a fallback for old runs/replays that predate this event.
+	KindClawPhase Kind = "claw.phase"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -198,6 +204,11 @@ type EventData struct {
 	ArtifactBytes   int      `json:"artifact_bytes,omitempty"`
 	ArtifactKind    string   `json:"artifact_kind,omitempty"` // v2: "report" | "figure" | "deck"
 
+	// ClawPhase/ClawPhaseStatus populate KindClawPhase (v21): which pipeline
+	// stage is opening/closing. Kept as two plain strings (not JSON) — the
+	// scene grammar matches on them directly.
+	ClawPhase       string `json:"claw_phase,omitempty"`        // clarify|plan|debate|exec|write|review|produce|video
+	ClawPhaseStatus string `json:"claw_phase_status,omitempty"` // "start" | "end"
 	// ClawDebateJSON carries the kickoff协商 payload (KindClawDebate): a
 	// JSON-marshalled {proposals:[{role,text}],agreed}. String-marshalled to
 	// keep the event package free of skill imports (same as GamePlanJSON).
@@ -459,6 +470,14 @@ func NewClawClarify(questions []string) Event {
 // {proposals:[{role,text}],agreed} object (built by the skill layer).
 func NewClawDebate(payloadJSON string) Event {
 	return Event{Kind: KindClawDebate, Data: EventData{ClawDebateJSON: payloadJSON}}
+}
+
+// NewClawPhase marks a pipeline stage boundary (v21). phase is one of
+// clarify|plan|debate|exec|write|review|produce|video; status is
+// "start" | "end". Every phase the coordinator actually enters emits a
+// start/end pair — skipped phases emit nothing.
+func NewClawPhase(phase, status string) Event {
+	return Event{Kind: KindClawPhase, Data: EventData{ClawPhase: phase, ClawPhaseStatus: status}}
 }
 
 // NewClawArtifactUpdated notifies that a new artifact version exists.

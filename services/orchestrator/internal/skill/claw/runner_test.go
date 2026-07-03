@@ -222,6 +222,54 @@ func TestCoordinatorWorkPackage(t *testing.T) {
 	}
 }
 
+// TestPhaseEvents (v21) asserts pipeline stages emit first-class claw.phase
+// start/end pairs in order, and that SKIPPED phases stay silent — the office
+// stages scenes from these instead of inferring them from tool activity.
+func TestPhaseEvents(t *testing.T) {
+	plan := `{"tasks":[{"title":"为报告配图","role":"designer"},{"title":"撰写报告","role":"writer"}]}`
+	fr := &fakeRouter{planJSON: plan, steps: map[string]int{}}
+	em := &recordingEmitter{}
+	r := &Runner{
+		Router:        fr,
+		Emitter:       em,
+		Sessions:      NewSessionStore(),
+		Images:        fakeImages{},
+		ImagesEnabled: true,
+	}
+	ctx := event.WithSessionID(context.Background(), "sess-ph")
+	if err := r.Run(ctx, "job-ph", "做一份带图的对比报告"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	em.mu.Lock()
+	var got []string
+	for _, ev := range em.events {
+		if ev.Kind == event.KindClawPhase {
+			got = append(got, ev.Data.ClawPhase+":"+ev.Data.ClawPhaseStatus)
+		}
+	}
+	em.mu.Unlock()
+
+	// Single-exec-role plan → debate (needs ≥2 voices) and produce/video
+	// (unplanned) must NOT open. Critic reviews the writer's report → review
+	// opens. Clarify runs (fresh goal, triage advisory-fails on fake JSON).
+	want := []string{
+		"clarify:start", "clarify:end",
+		"plan:start", "plan:end",
+		"exec:start", "exec:end",
+		"write:start", "write:end",
+		"review:start", "review:end",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("phase events = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("phase[%d] = %q, want %q (all: %v)", i, got[i], want[i], got)
+		}
+	}
+}
+
 // TestVideographerWorkPackage drives a designer→writer→videographer plan and
 // asserts the v7 image-to-video path: the designer makes a figure, the
 // videographer animates it into a work-package video, and the artifact event +

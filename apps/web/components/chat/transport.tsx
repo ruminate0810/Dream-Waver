@@ -64,7 +64,10 @@ export type EventKind =
   | "claw.task.update"
   | "claw.artifact.updated"
   // v6.4 — kickoff debate (协商): proposals + reconciled consensus
-  | "claw.debate";
+  | "claw.debate"
+  // v21 — first-class pipeline stage boundaries; the office stages
+  // meetings/scenes from these (see components/claw/sceneGrammar.ts)
+  | "claw.phase";
 
 export type Tokens = {
   input: number;
@@ -141,6 +144,9 @@ export type EventData = {
 
   // v6.4 — claw.debate payload: JSON {proposals:[{role,text}],agreed}.
   claw_debate_json?: string;
+  // v21 — claw.phase payload: which pipeline stage is opening/closing.
+  claw_phase?: string; // clarify|plan|debate|exec|write|review|produce|video
+  claw_phase_status?: string; // "start" | "end"
 };
 
 // ─── Sprint O.5 — games plan typed envelope ──────────────────────────
