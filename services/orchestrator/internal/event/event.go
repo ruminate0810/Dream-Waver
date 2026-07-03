@@ -111,6 +111,14 @@ const (
 	// THESE instead of inferring them from per-agent tool activity — inference
 	// stays only as a fallback for old runs/replays that predate this event.
 	KindClawPhase Kind = "claw.phase"
+	// KindClawIssue (v22 诚实语法) surfaces quality caveats the run itself
+	// knows about, so the office can give bad news the same stage weight as
+	// good news: report_revised (critic's rewrite changed N blocks),
+	// guard_backfill (N checklist rows force-closed by the post-run guard),
+	// clarify_fallback (the triage judgement failed and the run proceeded on
+	// its own reading of the goal). Tool errors/skips already ride tool.end
+	// and claw.task.update — no duplication here.
+	KindClawIssue Kind = "claw.issue"
 )
 
 // EventData is a single flat shape that holds every field any Kind needs.
@@ -209,6 +217,11 @@ type EventData struct {
 	// scene grammar matches on them directly.
 	ClawPhase       string `json:"claw_phase,omitempty"`        // clarify|plan|debate|exec|write|review|produce|video
 	ClawPhaseStatus string `json:"claw_phase_status,omitempty"` // "start" | "end"
+	// ClawIssueKind/ClawIssueCount populate KindClawIssue (v22):
+	// report_revised | guard_backfill | clarify_fallback, with a count where
+	// meaningful (revised blocks / backfilled rows).
+	ClawIssueKind  string `json:"claw_issue_kind,omitempty"`
+	ClawIssueCount int    `json:"claw_issue_count,omitempty"`
 	// ClawDebateJSON carries the kickoff协商 payload (KindClawDebate): a
 	// JSON-marshalled {proposals:[{role,text}],agreed}. String-marshalled to
 	// keep the event package free of skill imports (same as GamePlanJSON).
@@ -478,6 +491,14 @@ func NewClawDebate(payloadJSON string) Event {
 // start/end pair — skipped phases emit nothing.
 func NewClawPhase(phase, status string) Event {
 	return Event{Kind: KindClawPhase, Data: EventData{ClawPhase: phase, ClawPhaseStatus: status}}
+}
+
+// NewClawIssue surfaces a quality caveat the run knows about (v22 诚实语法):
+// kind = report_revised | guard_backfill | clarify_fallback. The office
+// pins these to the incident board and downgrades the delivery ceremony —
+// the bell is only rung for a clean run.
+func NewClawIssue(kind string, count int) Event {
+	return Event{Kind: KindClawIssue, Data: EventData{ClawIssueKind: kind, ClawIssueCount: count}}
 }
 
 // NewClawArtifactUpdated notifies that a new artifact version exists.

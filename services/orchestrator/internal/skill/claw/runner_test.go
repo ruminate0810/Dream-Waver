@@ -270,6 +270,34 @@ func TestPhaseEvents(t *testing.T) {
 	}
 }
 
+// TestReportRevisedIssue (v22 质检章) — a v2+ write_document call must emit
+// claw.issue report_revised with the changed-block count; v1 must not.
+func TestReportRevisedIssue(t *testing.T) {
+	sess := &Session{}
+	em := &recordingEmitter{}
+	wd := &WriteDocument{Session: sess, Emitter: em}
+	pad := strings.Repeat("填充内容,凑够最小字节数。", 20)
+	v1 := `{"markdown":"# 报告\n\n## 结论\n\n甲方案更好\n\n## 依据\n\n` + pad + `"}`
+	v2 := `{"markdown":"# 报告\n\n## 结论\n\n乙方案更好\n\n## 依据\n\n` + pad + `"}`
+
+	if _, err := wd.Execute(context.Background(), json.RawMessage(v1)); err != nil {
+		t.Fatalf("v1: %v", err)
+	}
+	if _, ok := em.firstOf(event.KindClawIssue); ok {
+		t.Fatal("v1 must not emit a revision issue")
+	}
+	if _, err := wd.Execute(context.Background(), json.RawMessage(v2)); err != nil {
+		t.Fatalf("v2: %v", err)
+	}
+	iss, ok := em.firstOf(event.KindClawIssue)
+	if !ok || iss.Data.ClawIssueKind != "report_revised" {
+		t.Fatalf("expected report_revised issue, got %+v", iss.Data)
+	}
+	if iss.Data.ClawIssueCount != 1 { // only the 结论 block changed
+		t.Fatalf("changed blocks = %d, want 1", iss.Data.ClawIssueCount)
+	}
+}
+
 // TestVideographerWorkPackage drives a designer→writer→videographer plan and
 // asserts the v7 image-to-video path: the designer makes a figure, the
 // videographer animates it into a work-package video, and the artifact event +

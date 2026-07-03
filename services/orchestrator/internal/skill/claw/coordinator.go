@@ -34,8 +34,13 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	// resumes skip it. Advisory — triage failure just proceeds.
 	if !isFollowup && !skipClarify {
 		endClarify := r.phaseSpan(ctx, "clarify")
-		qs := r.triageClarify(ctx, goal)
+		qs, fellBack := r.triageClarify(ctx, goal)
 		endClarify()
+		if fellBack {
+			// v22 弃权可视 — the triage judgement itself failed and we're
+			// proceeding on our own reading of the goal. Say so, out loud.
+			r.emit(ctx, event.NewClawIssue("clarify_fallback", 1))
+		}
 		if len(qs) > 0 {
 			sess.SetClarifyPending(qs)
 			r.emit(ctx, event.NewClawClarify(qs))
@@ -100,11 +105,18 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 		r.emit(ctx, event.NewError("claw.no_artifact", err))
 		return err
 	}
-	// Any checklist row left pending/doing → mark done so the UI doesn't strand.
+	// Any checklist row left pending/doing → mark done so the UI doesn't
+	// strand — but count the backfills and own up to them (v22): rows the
+	// guard closed are not rows the team finished.
+	backfilled := 0
 	for _, idx := range sess.PendingTasks() {
 		if sess.UpdateTask(idx, TaskDone) {
 			r.emit(ctx, event.NewClawTaskUpdate(idx, TaskDone))
+			backfilled++
 		}
+	}
+	if backfilled > 0 {
+		r.emit(ctx, event.NewClawIssue("guard_backfill", backfilled))
 	}
 	return nil
 }
@@ -121,11 +133,12 @@ func (r *Runner) phaseSpan(ctx context.Context, phase string) func() {
 // ── Phase 0: adaptive clarification triage ───────────────────────────────
 
 // triageClarify makes one cheap worker-tier call to decide whether the goal
-// is clear enough to start, or needs 1-2 clarifying questions. Returns nil
-// (proceed) when clear, on any parse/LLM error (advisory degradation), or
-// when no questions are produced. Keeps the "one-line → done" magic by only
-// asking when the answer would actually change the output.
-func (r *Runner) triageClarify(ctx context.Context, goal string) []string {
+// is clear enough to start, or needs 1-2 clarifying questions. Returns
+// (nil, false) when clear, (questions, false) when ambiguous, and
+// (nil, true) when the judgement itself failed (LLM/parse error) and we
+// proceed on our own reading — the caller surfaces that as a claw.issue
+// (v22 弃权可视) instead of silently pretending the goal was judged clear.
+func (r *Runner) triageClarify(ctx context.Context, goal string) ([]string, bool) {
 	sys := "你在帮一个会「联网调研 → 写报告(可配图、可出 PPT)」的 AI 团队判断:用户这个目标是否已经足够清楚、可以直接开工。\n" +
 		"清楚就回 {\"clear\":true}。\n" +
 		"模糊(缺受众、深度/篇幅、范围边界,或关键约束)就回 {\"clear\":false,\"questions\":[\"…\"]},最多 2 个最关键的中文问题,每个简短。\n" +
@@ -138,15 +151,18 @@ func (r *Runner) triageClarify(ctx context.Context, goal string) []string {
 		Temperature:  0.1,
 	})
 	if err != nil {
-		return nil
+		return nil, true // judgement failed — proceed, but own up to it
 	}
 	var p struct {
 		Clear     bool     `json:"clear"`
 		Questions []string `json:"questions"`
 	}
 	raw := extractJSON(resp.Content)
-	if raw == "" || json.Unmarshal([]byte(raw), &p) != nil || p.Clear {
-		return nil
+	if raw == "" || json.Unmarshal([]byte(raw), &p) != nil {
+		return nil, true // unparseable judgement — same deal
+	}
+	if p.Clear {
+		return nil, false
 	}
 	var out []string
 	for _, q := range p.Questions {
@@ -157,7 +173,7 @@ func (r *Runner) triageClarify(ctx context.Context, goal string) []string {
 			break
 		}
 	}
-	return out
+	return out, false
 }
 
 // ── Phase 1: planning ────────────────────────────────────────────────────

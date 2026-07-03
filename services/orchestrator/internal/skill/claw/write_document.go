@@ -61,11 +61,37 @@ func (t *WriteDocument) Execute(ctx context.Context, args json.RawMessage) (sche
 	}
 
 	t.Session.SetTitle(strings.TrimSpace(p.Title))
-	version, bytes := t.Session.SetArtifact(md)
+	version, bytes, prev := t.Session.SetArtifact(md)
 	if t.Emitter != nil {
 		t.Emitter.Emit(ctx, event.NewClawArtifactUpdated("report", version, bytes))
+		// v22 质检章 — a revision (v2+) reports how many blocks it actually
+		// changed, so the review isn't a rubber stamp on the office wall.
+		// 0 changed blocks is meaningful too: the frontend stamps 绿章.
+		if version >= 2 {
+			t.Emitter.Emit(ctx, event.NewClawIssue("report_revised", changedBlocks(prev, md)))
+		}
 	}
 	return schema.ToolResult{Output: fmt.Sprintf(
 		"Report saved as v%d (%d bytes). If every sub-task is done, call terminate now.",
 		version, bytes)}, nil
+}
+
+// changedBlocks counts markdown blocks (blank-line separated) present in the
+// new report but not in the old — a cheap, deterministic revision size. Not
+// a real diff (moves count as changes), which is fine: the stamp is a
+// magnitude signal, not an audit.
+func changedBlocks(oldMD, newMD string) int {
+	seen := map[string]bool{}
+	for _, b := range strings.Split(oldMD, "\n\n") {
+		if b = strings.TrimSpace(b); b != "" {
+			seen[b] = true
+		}
+	}
+	n := 0
+	for _, b := range strings.Split(newMD, "\n\n") {
+		if b = strings.TrimSpace(b); b != "" && !seen[b] {
+			n++
+		}
+	}
+	return n
 }

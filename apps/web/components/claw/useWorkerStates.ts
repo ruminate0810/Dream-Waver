@@ -17,6 +17,9 @@ export type WorkerView = {
   status: WorkerStatus;
   detail?: string; // live task detail (query / sub-task / …)
   gesture?: string; // current tool's signature action
+  /** v22 诚实语法 — tool failures this run (rework proxy). Drives the ↻×n
+   *  desk badge; derived purely from tool.end error events. */
+  errors?: number;
   calls: number;
   totalMs: number;
   // 结果反应 — a transient gesture played in REACTION to a real outcome
@@ -37,6 +40,7 @@ type Acc = {
   detail: Record<string, string>;
   calls: Record<string, number>;
   totalMs: Record<string, number>;
+  errors: Record<string, number>; // v22: tool.end failures per worker
   reactions: Record<string, { g: string; until: number }>;
   lastActivity: string; // ticker line: "工程师 · 执行 python 代码"
 };
@@ -50,6 +54,7 @@ function emptyAcc(): Acc {
     detail: {},
     calls: {},
     totalMs: {},
+    errors: {},
     reactions: {},
     lastActivity: "",
   };
@@ -96,8 +101,10 @@ function reduce(acc: Acc, ev: AgentEvent): Acc {
       if (running[key].size === 0) delete currentTool[key];
       // 结果反应: error → facepalm; meaningful success → eureka.
       const reactions = { ...acc.reactions };
+      const errors = { ...acc.errors };
       if (d.error) {
         reactions[key] = { g: "facepalm", until: Date.now() + 2400 };
+        errors[key] = (errors[key] ?? 0) + 1;
       } else if (d.tool_name && CHEER_TOOLS.has(d.tool_name)) {
         reactions[key] = { g: "eureka", until: Date.now() + 1700 };
       }
@@ -106,6 +113,7 @@ function reduce(acc: Acc, ev: AgentEvent): Acc {
         running,
         currentTool,
         reactions,
+        errors,
         calls: { ...acc.calls, [key]: (acc.calls[key] ?? 0) + 1 },
         totalMs: { ...acc.totalMs, [key]: (acc.totalMs[key] ?? 0) + (d.duration_ms ?? 0) },
       };
@@ -160,6 +168,7 @@ export function useWorkerStates(plan: ClawTask[]): {
         gesture: tool ? TOOL_ACTION[tool] : undefined,
         calls: acc.calls[def.key] ?? 0,
         totalMs: acc.totalMs[def.key] ?? 0,
+        errors: acc.errors[def.key] ?? 0,
         reactionGesture: reaction?.g,
         reactionUntil: reaction?.until,
       };

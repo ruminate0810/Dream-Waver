@@ -34,6 +34,7 @@ export function ArtifactBody({
   deck = null,
   tab,
   onTabChange,
+  revisionStamp = null,
 }: {
   jobId: string;
   /** Version known at page load (from getClawRun); seeds the guard so we
@@ -48,6 +49,10 @@ export function ArtifactBody({
   /** Controlled active tab (the office dock drives this). */
   tab: WorkTab;
   onTabChange: (t: WorkTab) => void;
+  /** v22 质检章 — blocks changed by the latest revision (claw.issue
+   *  report_revised). null = no revision seen; 0 = 绿章 (review passed
+   *  clean); n>0 = 红章 (review changed n blocks). */
+  revisionStamp?: number | null;
 }) {
   const stream = useAgentEventStream();
   const [markdown, setMarkdown] = useState<string>("");
@@ -135,6 +140,20 @@ export function ArtifactBody({
         </TabButton>
         {active === "report" && hasReport && (
           <span className="ml-auto flex items-center gap-1.5">
+            {/* v22 质检章 — the review is not a rubber stamp: say what it changed */}
+            {revisionStamp !== null && (
+              <span
+                title={revisionStamp > 0 ? `评审改稿 ${revisionStamp} 处后定稿` : "评审通过,零修改"}
+                className="rounded-[4px] border-2 px-1.5 py-[2px] font-mono text-[9px] font-bold leading-none"
+                style={
+                  revisionStamp > 0
+                    ? { borderColor: "#b23a3a", color: "#b23a3a", transform: "rotate(-4deg)" }
+                    : { borderColor: "#3ea96a", color: "#3ea96a", transform: "rotate(-4deg)" }
+                }
+              >
+                {revisionStamp > 0 ? `改 ${revisionStamp} 处` : "评审通过"}
+              </span>
+            )}
             <span
               draggable
               onDragStart={(e) => {

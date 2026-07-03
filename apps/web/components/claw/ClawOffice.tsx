@@ -151,6 +151,18 @@ export function ClawOffice({
   // worker for ~5.5s. Sim re-renders (~90ms) expire them, no extra timer.
   const [speech, setSpeech] = useState<Record<string, { text: string; until: number }>>({});
   const officeSaidRef = useRef<Set<string>>(new Set());
+  // v22 诚实语法 — the incident board. Every quality caveat the run owns up
+  // to (tool failures, skipped rows, revision size, guard backfills, clarify
+  // fallback) gets pinned; a clean board is the ONLY way to earn the bell.
+  type Incident = { id: number; ts: number; text: string; worker?: string };
+  const [issues, setIssues] = useState<Incident[]>([]);
+  const issueSeq = useRef(1);
+  // 质检章 — latest revision size (null until a v2+ lands; 0 = 绿章通过)
+  const [revisionStamp, setRevisionStamp] = useState<number | null>(null);
+  const pinIncident = useCallback((text: string, worker?: string) => {
+    setIssues((prev) => [...prev, { id: issueSeq.current++, ts: Date.now(), text, worker }]);
+  }, []);
+
   // v21 — scene staging is interpreted from SCENE_GRAMMAR (the semantic-
   // binding table as data). Once the stream shows a first-class claw.phase
   // event, meetings key off REAL stage boundaries; the old inference rules
@@ -164,6 +176,31 @@ export function ClawOffice({
           setSpeech((prev) => ({ ...prev, [line.worker]: { text: line.text, until: Date.now() + 5500 } }));
         }
         if (ev.kind === "claw.phase") phaseAwareRef.current = true;
+        // v22 — collect incidents (bad news gets equal stage weight)
+        if (ev.kind === "tool.end" && ev.data?.error) {
+          const zh = WORKERS.find((w) => w.key === ev.data.agent)?.zh ?? ev.data.agent ?? "某工位";
+          pinIncident(`${zh} · ${ev.data.tool_name ?? "工具"} 失败`, ev.data.agent);
+        } else if (ev.kind === "claw.task.update" && ev.data?.task_status === "skipped") {
+          pinIncident(`任务 #${ev.data.task_index} 被跳过(角色停用或工具未接线)`);
+        } else if (ev.kind === "claw.issue") {
+          const n = ev.data?.claw_issue_count ?? 0;
+          switch (ev.data?.claw_issue_kind) {
+            case "report_revised":
+              setRevisionStamp(n);
+              if (n > 0) pinIncident(`评审改稿 ${n} 处(v2)`, "critic");
+              break;
+            case "guard_backfill":
+              pinIncident(`${n} 项任务由收尾守卫补记完成`, "coordinator");
+              break;
+            case "clarify_fallback":
+              pinIncident("澄清判断失败,按字面理解开工", "coordinator");
+              setSpeech((prev) => ({
+                ...prev,
+                coordinator: { text: "没太看懂这单,先按我的理解干了。", until: Date.now() + 6000 },
+              }));
+              break;
+          }
+        }
         for (const d of directivesFor(ev, phaseAwareRef.current)) {
           if (d.type === "meeting") {
             const now = Date.now();
@@ -277,20 +314,32 @@ export function ClawOffice({
   // the participants trade 💢/💬 around the meeting table while it lasts.
   const [debate, setDebate] = useState<{ roles: string[]; until: number } | null>(null);
 
-  // 敲钟 — 纳斯达克 style: the moment the run finishes, the office bell
-  // rings (swing + confetti) and the whole team cheers before heading to
-  // the lounge party.
+  // 敲钟 — 纳斯达克 style, but TIERED (v22 诚实语法): the bell + confetti +
+  // all-hands cheer are reserved for a CLEAN run (empty incident board). A
+  // delivery with caveats still ends the day (off-duty party follows), but
+  // nobody rings the bell — the coordinator says plainly what was 凑合.
   const [bellUntil, setBellUntil] = useState(0);
   const prevRunStatus = useRef(run.status);
   useEffect(() => {
     if (prevRunStatus.current !== "finished" && run.status === "finished") {
-      const until = Date.now() + 7000;
-      setBellUntil(until);
-      WORKERS.forEach((w, i) => {
-        pulses.current[w.key] = { g: "cheer", until: until - i * 200 };
-      });
+      if (issues.length === 0) {
+        const until = Date.now() + 7000;
+        setBellUntil(until);
+        WORKERS.forEach((w, i) => {
+          pulses.current[w.key] = { g: "cheer", until: until - i * 200 };
+        });
+      } else {
+        setSpeech((prev) => ({
+          ...prev,
+          coordinator: {
+            text: `交付了,但这单有 ${issues.length} 处凑合 — 详情在事故板。`,
+            until: Date.now() + 7000,
+          },
+        }));
+      }
     }
     prevRunStatus.current = run.status;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [run.status]);
   const bellRinging = bellUntil > Date.now();
 
@@ -625,6 +674,16 @@ export function ClawOffice({
                       {todos.filter((t) => t.status === "done").length}/{todos.length}
                     </span>
                   )}
+                  {/* v22 返工徽标 — tool failures this run, in plain sight */}
+                  {(v?.errors ?? 0) > 0 && (
+                    <span
+                      title={`本单已失败 ${v?.errors} 次(重试中)`}
+                      className="font-mono text-[9px] font-bold leading-none"
+                      style={{ color: "#c96f1f" }}
+                    >
+                      ↻×{v?.errors}
+                    </span>
+                  )}
                 </div>
                 <div
                   className={clsx(
@@ -938,6 +997,7 @@ export function ClawOffice({
         )}
         <PhaseStrip views={views} finished={run.status === "finished"} />
         <OfficePlan run={run} />
+        <IncidentBoard issues={issues} />
       </div>
 
       {/* ── stats / wardrobe / bindings popover (Radix, anchored to the
@@ -1206,6 +1266,7 @@ export function ClawOffice({
             deck={run.deck ?? null}
             tab={tab}
             onTabChange={setTab}
+            revisionStamp={revisionStamp}
           />
         </PixelWindow>
       )}
@@ -1447,6 +1508,41 @@ function FlyingDoc({ flight, onDone }: { flight: Flight; onDone: (id: number) =>
           <rect x="2" y="5.6" width="3" height="0.8" fill="#c9c3b5" />
         </svg>
       </div>
+    </div>
+  );
+}
+
+// IncidentBoard (v22 诚实语法) — the wall where the run's own bad news gets
+// pinned: tool failures, skipped rows, revision size, guard backfills,
+// clarify fallback. Renders nothing on a clean run; a non-empty board also
+// downgrades the delivery ceremony (no bell). Collapsed to a count chip,
+// expands to the note list.
+function IncidentBoard({ issues }: { issues: { id: number; ts: number; text: string }[] }) {
+  const [open, setOpen] = useState(false);
+  if (issues.length === 0) return null;
+  return (
+    <div className="absolute left-3 top-11 z-40">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1 rounded-[5px] border border-ink/40 bg-surface/95 px-1.5 py-1 font-mono text-[9.5px] font-bold shadow-pixel-sm"
+        style={{ color: "#c96f1f" }}
+        aria-label="事故板"
+      >
+        ⚠ 事故板 {issues.length}
+      </button>
+      {open && (
+        <ul className="mt-1 w-[240px] space-y-1 rounded-pixel border-2 border-ink bg-surface p-2 shadow-pixel">
+          {issues.map((i) => (
+            <li key={i.id} className="flex items-start gap-1.5 font-mono text-[10px] leading-snug text-ink">
+              <span className="mt-[1px] flex-none" style={{ color: "#c96f1f" }}>
+                ▪
+              </span>
+              <span>{i.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

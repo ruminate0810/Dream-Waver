@@ -228,15 +228,16 @@ func (s *Session) UpdateTask(index1based int, status string) bool {
 }
 
 // SetArtifact stores a new markdown report and bumps the version. Returns
-// the new version + byte length so the tool can emit
-// claw.artifact.updated. Version is monotonic under the lock so concurrent
-// writes can't reorder.
-func (s *Session) SetArtifact(markdown string) (version, bytes int) {
+// the new version + byte length (for claw.artifact.updated) plus the PRIOR
+// markdown so the caller can diff a revision (v22 质检章). Version is
+// monotonic under the lock so concurrent writes can't reorder.
+func (s *Session) SetArtifact(markdown string) (version, bytes int, prev string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	prev = s.artifact
 	s.artifact = markdown
 	s.artifactVersion++
-	return s.artifactVersion, len(markdown)
+	return s.artifactVersion, len(markdown), prev
 }
 
 // SetBrief records the clarification answers (受众/深度/篇幅/格式) so the

@@ -67,7 +67,11 @@ export type EventKind =
   | "claw.debate"
   // v21 — first-class pipeline stage boundaries; the office stages
   // meetings/scenes from these (see components/claw/sceneGrammar.ts)
-  | "claw.phase";
+  | "claw.phase"
+  // v22 诚实语法 — quality caveats the run owns up to (revision size,
+  // guard backfills, clarify fallback); drives the incident board +
+  // celebration tiering
+  | "claw.issue";
 
 export type Tokens = {
   input: number;
@@ -147,6 +151,9 @@ export type EventData = {
   // v21 — claw.phase payload: which pipeline stage is opening/closing.
   claw_phase?: string; // clarify|plan|debate|exec|write|review|produce|video
   claw_phase_status?: string; // "start" | "end"
+  // v22 — claw.issue payload: quality caveat kind + count.
+  claw_issue_kind?: string; // report_revised | guard_backfill | clarify_fallback
+  claw_issue_count?: number;
 };
 
 // ─── Sprint O.5 — games plan typed envelope ──────────────────────────
@@ -217,6 +224,19 @@ export type AgentEventStream = {
 };
 
 const StreamCtx = createContext<AgentEventStream | null>(null);
+
+/** Mounts a caller-supplied stream over the same context every consumer
+ *  reads — consumers can't tell live from replayed. This is the seam the
+ *  v24 时光机 (and offline verification) plug into. */
+export function StaticStreamProvider({
+  stream,
+  children,
+}: {
+  stream: AgentEventStream;
+  children: React.ReactNode;
+}) {
+  return <StreamCtx.Provider value={stream}>{children}</StreamCtx.Provider>;
+}
 
 /**
  * Hook every event consumer calls. Returns the shared stream — call
