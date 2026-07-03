@@ -9,13 +9,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AnimatePresence, motion } from "framer-motion";
 
 import { StatusChip } from "@/components/ui/pixel";
-import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck, type ClawVideo } from "@/lib/api";
+import { fetchClawArtifact, clawArtifactURL, type ClawFigure, type ClawDeck, type ClawGame, type ClawVideo } from "@/lib/api";
 import {
   useAgentEventStream,
   type AgentEvent,
 } from "@/components/chat/transport";
 
-export type WorkTab = "report" | "figures" | "video" | "deck";
+export type WorkTab = "report" | "figures" | "video" | "deck" | "game";
 
 // ArtifactBody renders the Claw work package (report / figures / deck tabs)
 // FRAMELESS — it lives inside the office's PixelWindow (the OS-window
@@ -32,6 +32,7 @@ export function ArtifactBody({
   figures = [],
   videos = [],
   deck = null,
+  games = [],
   tab,
   onTabChange,
   revisionStamp = null,
@@ -46,6 +47,8 @@ export function ArtifactBody({
   videos?: ClawVideo[];
   /** Work-package slide deck (from getClawRun polling). */
   deck?: ClawDeck | null;
+  /** Playable mini-games (from getClawRun polling, V26 批二). */
+  games?: ClawGame[];
   /** Controlled active tab (the office dock drives this). */
   tab: WorkTab;
   onTabChange: (t: WorkTab) => void;
@@ -120,7 +123,9 @@ export function ArtifactBody({
         ? "video"
         : tab === "deck" && deck
           ? "deck"
-          : "report";
+          : tab === "game" && games.length > 0
+            ? "game"
+            : "report";
 
   return (
     <div className="flex h-full flex-col bg-paper/60">
@@ -137,6 +142,9 @@ export function ArtifactBody({
         </TabButton>
         <TabButton active={active === "deck"} onClick={() => onTabChange("deck")} disabled={!deck}>
           Deck
+        </TabButton>
+        <TabButton active={active === "game"} onClick={() => onTabChange("game")} disabled={games.length === 0}>
+          游戏{games.length > 0 ? ` · ${games.length}` : ""}
         </TabButton>
         {active === "report" && hasReport && (
           <span className="ml-auto flex items-center gap-1.5">
@@ -189,6 +197,8 @@ export function ArtifactBody({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {active === "deck" && deck ? (
           <DeckView deck={deck} />
+        ) : active === "game" ? (
+          <GameGallery games={games} />
         ) : active === "video" ? (
           <VideoGallery videos={videos} />
         ) : active === "figures" ? (
@@ -609,6 +619,40 @@ function FiguresGallery({ figures }: { figures: ClawFigure[] }) {
               {f.caption}
             </figcaption>
           )}
+        </figure>
+      ))}
+    </div>
+  );
+}
+
+// GameGallery (V26 批二) — playable mini-games embedded live: the iframe
+// serves the self-contained HTML straight from the games vertical's /play
+// endpoint, plus a new-tab link for full-size play.
+function GameGallery({ games }: { games: ClawGame[] }) {
+  return (
+    <div className="grid grid-cols-1 gap-4 p-4">
+      {games.map((g, i) => (
+        <figure key={i} className="overflow-hidden rounded-pixel border-2 border-ink bg-surface shadow-pixel-sm">
+          <iframe
+            src={g.play_url}
+            title={g.title || `game ${i + 1}`}
+            className="block h-[420px] w-full bg-ink"
+            sandbox="allow-scripts allow-same-origin"
+          />
+          <figcaption className="flex items-center justify-between gap-2 border-t-2 border-line px-2.5 py-1.5">
+            <span className="min-w-0 truncate font-mono text-[11px] text-ink-2">
+              <span className="font-bold text-ink">{g.title || `小游戏 #${i + 1}`}</span>
+              {g.description ? ` · ${g.description}` : ""}
+            </span>
+            <a
+              href={g.play_url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex-none rounded-pixel border-2 border-ink bg-paper px-2 py-0.5 font-mono text-[10px] font-bold text-ink shadow-pixel-sm hover:-translate-y-0.5"
+            >
+              ► 全屏玩
+            </a>
+          </figcaption>
         </figure>
       ))}
     </div>

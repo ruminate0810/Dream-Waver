@@ -30,7 +30,7 @@ export type WorkerView = {
 };
 
 // tools whose success is worth a little celebration (not every tool.end)
-const CHEER_TOOLS = new Set(["code_execute", "generate_image", "edit_image", "generate_poster", "generate_storybook", "write_document", "generate_deck", "generate_video"]);
+const CHEER_TOOLS = new Set(["code_execute", "generate_image", "edit_image", "generate_poster", "generate_storybook", "generate_variants", "write_document", "generate_deck", "generate_game", "generate_video"]);
 
 type Acc = {
   roleByIndex: Record<number, string>;

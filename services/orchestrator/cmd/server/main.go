@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -236,6 +237,12 @@ func main() {
 	if designBridge != nil {
 		clawVariants = designVariants{bridge: designBridge}
 	}
+	// Producer's playable-game maker (V26 批二) — the claw tool runs the
+	// games pipeline under a fresh jobID; the game lands in the games
+	// session store (=> /api/v1/games/{id}/play serves it immediately) and
+	// a full game_jobs row (incl. HTML snapshot) is persisted best-effort
+	// so it survives restarts like a route-created game.
+	clawGame := clawGameMaker{pipeline: gamePipeline, sessions: gameSessions, jobs: dataStore.GameJobs}
 	// Designer's image source: prefer the design bridge's NanoBanana (df-ability
 	// keys, same gateway as Seedance) over the legacy orchestrator-side
 	// providers; fall back to the composite searcher when there's no bridge.
@@ -282,6 +289,8 @@ func main() {
 		Editor: clawEditor,
 		// Designer worker's multi-take generator (design bridge variants).
 		Variants: clawVariants,
+		// Producer worker's playable-game maker (games vertical pipeline).
+		Game: clawGame,
 		// Researcher worker's KOL finder (YouTube Data API v3). nil greys find_kol.
 		KOL: clawKOL,
 	}
@@ -419,6 +428,59 @@ func (b bridgeImages) Search(ctx context.Context, query string) (*image.Result, 
 		return nil, nil
 	}
 	return &image.Result{URL: resp.URL}, nil
+}
+
+// clawGameMaker adapts the games vertical's Pipeline into the claw
+// producer's GameMaker capability (generate_game tool, V26 批二). Run puts
+// the session into the shared games session store, so the standard
+// GET /api/v1/games/{id}/play route serves the HTML with zero extra
+// plumbing; a full game_jobs row (memory + files + revisions snapshot)
+// is persisted best-effort so the game survives restarts.
+type clawGameMaker struct {
+	pipeline *games.Pipeline
+	sessions *games.SessionStore
+	jobs     store.GameJobs // may be nil (no DB)
+}
+
+func (g clawGameMaker) MakeGame(ctx context.Context, prompt, genre string) (string, string, string, error) {
+	jobID := uuid.NewString()
+	in := games.Input{Prompt: prompt, Genre: genre}
+	out, err := g.pipeline.Run(ctx, jobID, in)
+	if err != nil {
+		return "", "", "", err
+	}
+	playURL := "/api/v1/games/" + jobID + "/play"
+
+	// Best-effort persistence — anonymous runs (no workspace) stay
+	// in-memory, same posture as route-created games.
+	wsID := tool.WorkspaceID(ctx)
+	if g.jobs != nil && wsID != uuid.Nil {
+		if sess, ok := g.sessions.Get(jobID); ok {
+			memory, files, revisions, bytes := sess.SnapshotForPersist()
+			now := time.Now()
+			inputJSON, _ := json.Marshal(in)
+			row := &store.GameJob{
+				ID:          uuid.MustParse(jobID),
+				WorkspaceID: wsID,
+				Status:      "finished",
+				Input:       inputJSON,
+				Title:       out.Title,
+				Bytes:       bytes,
+				PlayURL:     playURL,
+				Files:       files,
+				Revisions:   revisions,
+				Memory:      memory,
+				StartedAt:   now,
+				FinishedAt:  &now,
+			}
+			pctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := g.jobs.Put(pctx, row); err != nil {
+				slog.Warn("claw game_jobs.Put failed; game will not survive restart", "job", jobID, "err", err)
+			}
+			cancel()
+		}
+	}
+	return playURL, out.Title, out.Description, nil
 }
 
 // designVariants adapts the design bridge's GenerateVariants into the claw

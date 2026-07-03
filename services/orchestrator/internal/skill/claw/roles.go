@@ -121,9 +121,11 @@ var allRoles = []Role{
 		Key:         RoleProducer,
 		DisplayName: "制片",
 		ModelTier:   "planner",
-		ToolNames:   []string{"generate_deck"},
+		ToolNames:   []string{"generate_deck", "generate_game"},
 		MaxSteps:    4,
-		SystemPrompt: "你是制片。把已完成的报告用 generate_deck 转成一份幻灯片 deck(传报告主题与要点)。" +
+		SystemPrompt: "你是制片,团队的成品交付担当。按任务选对工具:\n" +
+			"- 幻灯片/PPT/deck:generate_deck(传报告主题与要点)。\n" +
+			"- 可玩的小游戏:generate_game(传玩法描述,只调一次,慢且计费)。\n" +
 			"完成后 terminate。",
 	},
 	{

@@ -3,6 +3,7 @@ package claw
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -267,6 +268,44 @@ func TestPhaseEvents(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("phase[%d] = %q, want %q (all: %v)", i, got[i], want[i], got)
 		}
+	}
+}
+
+// fakeGameMaker satisfies GameMaker for the V26 批二 tool test.
+type fakeGameMaker struct{ fail bool }
+
+func (f fakeGameMaker) MakeGame(_ context.Context, prompt, _ string) (string, string, string, error) {
+	if f.fail {
+		return "", "", "", errors.New("pipeline down")
+	}
+	return "/api/v1/games/test-id/play", "贪吃蛇 Plus", "吃一个加速 10% 的贪吃蛇: " + prompt[:0], nil
+}
+
+// TestGenerateGameTool (V26 批二) — a game lands in the work package with a
+// play URL and emits claw.artifact.updated kind=game; failures surface as
+// tool errors (not panics).
+func TestGenerateGameTool(t *testing.T) {
+	sess := &Session{}
+	em := &recordingEmitter{}
+	tool := &GenerateGame{Game: fakeGameMaker{}, Session: sess, Emitter: em}
+
+	res, err := tool.Execute(context.Background(), json.RawMessage(`{"prompt":"贪吃蛇,但每吃一个食物速度加10%"}`))
+	if err != nil || res.Error != "" {
+		t.Fatalf("execute: err=%v toolErr=%q", err, res.Error)
+	}
+	games := sess.Games()
+	if len(games) != 1 || games[0].PlayURL == "" || games[0].Title != "贪吃蛇 Plus" {
+		t.Fatalf("game not landed: %+v", games)
+	}
+	ev, ok := em.firstOf(event.KindClawArtifactUpdated)
+	if !ok || ev.Data.ArtifactKind != "game" || ev.Data.ArtifactVersion != 1 {
+		t.Fatalf("artifact event wrong: %+v", ev.Data)
+	}
+
+	bad := &GenerateGame{Game: fakeGameMaker{fail: true}, Session: sess, Emitter: em}
+	res, _ = bad.Execute(context.Background(), json.RawMessage(`{"prompt":"打砖块"}`))
+	if res.Error == "" {
+		t.Fatal("pipeline failure must surface as a tool error")
 	}
 }
 

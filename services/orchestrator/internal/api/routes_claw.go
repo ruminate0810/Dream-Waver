@@ -204,6 +204,14 @@ type clawVideoView struct {
 	Duration   int    `json:"duration,omitempty"`
 }
 
+// clawGameView is one playable mini-game reference in the work package
+// (V26 批二): the HTML lives with the games vertical, served at PlayURL.
+type clawGameView struct {
+	PlayURL     string `json:"play_url"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 type clawJobView struct {
 	JobID           string           `json:"job_id"`
 	SessionID       string           `json:"session_id"`
@@ -216,6 +224,7 @@ type clawJobView struct {
 	Figures         []clawFigureView `json:"figures,omitempty"`
 	Videos          []clawVideoView  `json:"videos,omitempty"`
 	Deck            *clawDeckView    `json:"deck,omitempty"`
+	Games           []clawGameView   `json:"games,omitempty"`
 	ClarificationQuestions []string  `json:"clarification_questions,omitempty"`
 	Error           string           `json:"error,omitempty"`
 	StartedAt       string           `json:"started_at"`
@@ -270,6 +279,9 @@ func (h *handlers) GetClaw(w http.ResponseWriter, r *http.Request) {
 				URL:        "/api/v1/claw/" + job.ID + "/deck",
 				PreviewID:  d.PreviewID,
 			}
+		}
+		for _, g := range sess.Games() {
+			v.Games = append(v.Games, clawGameView{PlayURL: g.PlayURL, Title: g.Title, Description: g.Description})
 		}
 		if _, version := sess.Artifact(); version > 0 {
 			v.ArtifactVersion = version
@@ -627,8 +639,8 @@ func (h *handlers) persistTerminalClawRun(wsID uuid.UUID, job clawJob) {
 	// clawJob only tracks metadata.
 	if h.deps.ClawSessions != nil {
 		if sess, ok := h.deps.ClawSessions.Get(job.ID); ok {
-			memory, plan, figures, videos, deck, artifact, version := sess.SnapshotForPersist()
-			row.Memory, row.Plan, row.Figures, row.Videos, row.Deck, row.Artifact, row.ArtifactVersion = memory, plan, figures, videos, deck, artifact, version
+			memory, plan, figures, videos, deck, games, artifact, version := sess.SnapshotForPersist()
+			row.Memory, row.Plan, row.Figures, row.Videos, row.Deck, row.Games, row.Artifact, row.ArtifactVersion = memory, plan, figures, videos, deck, games, artifact, version
 			if row.Title == "" {
 				row.Title = strings.TrimSpace(sess.Title)
 			}

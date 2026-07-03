@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Rnd } from "react-rnd";
 import * as Popover from "@radix-ui/react-popover";
-import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug, Check } from "lucide-react";
+import { FileText, Image as ImageIcon, Film, Gamepad2, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug, Check } from "lucide-react";
 import clsx from "clsx";
 
 import { getClawRoles, patchClawPlan, putClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
@@ -1401,6 +1401,13 @@ export function ClawOffice({
           onClick={() => openTab("deck")}
         />
         <DockButton
+          icon={<Gamepad2 size={13} strokeWidth={2} />}
+          label={`游戏${(run.games?.length ?? 0) > 0 ? ` ${run.games!.length}` : ""}`}
+          disabled={(run.games?.length ?? 0) === 0}
+          active={winOpen && tab === "game"}
+          onClick={() => openTab("game")}
+        />
+        <DockButton
           icon={<Users size={13} strokeWidth={2} />}
           label="例会"
           active={meeting}
@@ -1439,6 +1446,7 @@ export function ClawOffice({
             figures={run.figures ?? []}
             videos={run.videos ?? []}
             deck={run.deck ?? null}
+            games={run.games ?? []}
             tab={tab}
             onTabChange={setTab}
             revisionStamp={revisionStamp}

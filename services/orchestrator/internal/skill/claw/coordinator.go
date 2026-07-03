@@ -96,7 +96,8 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	// The deliverable need not be a report — accept any artifact (report /
 	// figures / videos / deck) so pure-visual runs don't false-alarm.
 	_, version := sess.Artifact()
-	hasArtifact := version > 0 || len(sess.Figures()) > 0 || len(sess.Videos()) > 0 || sess.DeckArtifact() != nil
+	hasArtifact := version > 0 || len(sess.Figures()) > 0 || len(sess.Videos()) > 0 ||
+		sess.DeckArtifact() != nil || len(sess.Games()) > 0
 	if !hasArtifact {
 		err := fmt.Errorf("团队完成但没有任何产出")
 		if writerErr != nil {
@@ -247,7 +248,16 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	}
 	b.WriteString("- writer:撰写最终 Markdown 报告\n")
 	if avail[RoleProducer] {
-		b.WriteString("- producer:把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck 时才用)\n")
+		caps := []string{}
+		if r.toolWired("generate_deck") {
+			caps = append(caps, "把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck)")
+		}
+		if r.toolWired("generate_game") {
+			caps = append(caps, "把玩法描述做成可玩的 HTML 小游戏(仅当用户明确要游戏)")
+		}
+		if len(caps) > 0 {
+			fmt.Fprintf(&b, "- producer:%s\n", strings.Join(caps, ";"))
+		}
 	}
 	if avail[RoleVideographer] {
 		b.WriteString("- videographer:把某张配图做成几秒短视频(image-to-video,仅当用户明确要视频/短片/动起来时才用)\n")
@@ -257,7 +267,8 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	b.WriteString("- 但如果用户只要纯视觉/媒体产出本身——海报、绘本、配图、短视频、PPT——并不需要文字报告,就不要 writer 子任务,让最终交付就是那个作品。拿不准时才加 writer。\n")
 	b.WriteString("- 子任务要派给「持有相应能力工具」的角色(见上),不要派给没有该工具的角色。\n")
 	if avail[RoleProducer] {
-		b.WriteString("- 用户要幻灯片/PPT/deck 时,加一个 producer 子任务(它需要报告,所以这种情况要保留 writer);否则不要加。\n")
+		b.WriteString("- 用户要幻灯片/PPT/deck 时,加一个 producer 子任务(它需要报告,所以这种情况要保留 writer);" +
+			"用户要小游戏时,加一个 producer 子任务(标题里写明是游戏;纯游戏请求不需要 writer);否则不要加 producer。\n")
 	}
 	if avail[RoleVideographer] {
 		b.WriteString("- 用户要视频/短片/把图动起来时,加一个 videographer 子任务(放在配图任务之后);否则不要加。\n")
@@ -350,7 +361,10 @@ func parsePlan(content string, avail map[string]bool) []Task {
 			break
 		}
 	}
-	includeWriter := llmWantedWriter || analytical || producer != nil || len(exec) == 0
+	// A producer only forces the writer when its deliverable NEEDS a report
+	// (decks do); a pure game brief ships without one (V26 批二).
+	producerNeedsWriter := producer != nil && !strings.Contains(producer.Title, "游戏")
+	includeWriter := llmWantedWriter || analytical || producerNeedsWriter || len(exec) == 0
 
 	// execution tasks → (optional) writer → (optional) producer → (optional) videographer.
 	out := exec
@@ -693,15 +707,25 @@ func (r *Runner) runProducer(ctx context.Context, sess *Session, goal string) {
 	}
 	roleDef, _ := RoleByKey(RoleProducer)
 	report, _ := sess.Artifact()
+	// V26 批二 — the producer makes deliverables, not just decks: build the
+	// message from its ASSIGNED task rows and let the role prompt pick the
+	// tool (deck → generate_deck, 游戏 → generate_game).
 	var b strings.Builder
-	fmt.Fprintf(&b, "把已完成的报告做成一份幻灯片 deck(调用 generate_deck)。\n主题:%s\n", goal)
+	b.WriteString("你的任务:\n")
+	plan := sess.PlanSnapshot()
+	for _, i := range idxs {
+		if i-1 >= 0 && i-1 < len(plan) {
+			fmt.Fprintf(&b, "- %s\n", plan[i-1].Title)
+		}
+	}
+	fmt.Fprintf(&b, "主题:%s\n", goal)
 	if t := strings.TrimSpace(sess.Title); t != "" {
 		fmt.Fprintf(&b, "标题:%s\n", t)
 	}
 	if rep := strings.TrimSpace(report); rep != "" {
-		fmt.Fprintf(&b, "报告要点(节选):\n%s\n", truncateClaw(rep, 800))
+		fmt.Fprintf(&b, "报告要点(节选,做 deck 时用):\n%s\n", truncateClaw(rep, 800))
 	}
-	b.WriteString("\n生成后 terminate。")
+	b.WriteString("\n按任务选对工具,生成后 terminate。")
 	_, _ = r.runSubAgent(ctx, roleDef, sess, b.String())
 	for _, i := range idxs {
 		if sess.UpdateTask(i, TaskDone) {

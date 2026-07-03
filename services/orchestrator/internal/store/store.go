@@ -180,6 +180,7 @@ type ClawRun struct {
 	Figures         json.RawMessage // []claw.Figure snapshot (work-package images)
 	Videos          json.RawMessage // []claw.Video snapshot (work-package clips, i2v)
 	Deck            json.RawMessage // claw.Deck snapshot (work-package slide deck)
+	Games           json.RawMessage // []claw.Game snapshot (playable mini-games, V26 批二)
 	Memory          json.RawMessage // []schema.Message snapshot
 	Error           string
 	StartedAt       time.Time

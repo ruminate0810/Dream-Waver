@@ -102,6 +102,7 @@ type Session struct {
 	figures         []Figure // generated images (work-package figures)
 	videos          []Video  // generated clips (work-package videos, i2v)
 	deck            *Deck    // generated slide deck (work-package, optional)
+	games           []Game   // playable mini-games (work-package, V26 批二)
 	brief           string   // clarification answers (受众/深度/篇幅/格式), fed to writer + critic
 	debate          string   // kickoff-debate agreed approach (协商共识), fed to writer + critic
 
@@ -185,6 +186,35 @@ func (s *Session) AddVideo(v Video) int {
 	defer s.mu.Unlock()
 	s.videos = append(s.videos, v)
 	return len(s.videos)
+}
+
+// Game is one playable mini-game in the work package (V26 批二). The HTML
+// itself lives in the games vertical (its session store + game_jobs row);
+// claw keeps the reference so the run's 作品包 can embed/play it.
+type Game struct {
+	// PlayURL serves the raw self-contained game HTML (games vertical's
+	// GET /api/v1/games/{id}/play).
+	PlayURL     string `json:"play_url"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+// AddGame appends a generated game and returns the new count (used as the
+// artifact "version" in the claw.artifact.updated notification).
+func (s *Session) AddGame(g Game) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.games = append(s.games, g)
+	return len(s.games)
+}
+
+// Games returns a copy of the work-package games.
+func (s *Session) Games() []Game {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Game, len(s.games))
+	copy(out, s.games)
+	return out
 }
 
 // Videos returns a copy of the work-package videos.
@@ -399,7 +429,7 @@ func (s *Session) SetHistory(h []schema.Message) {
 // layer writes to store.ClawRuns: memory (history), plan, artifact, and
 // version. Best-effort marshaling — a failure yields a nil blob and the
 // store's coalesce keeps the prior column value.
-func (s *Session) SnapshotForPersist() (memory, plan, figures, videos, deck json.RawMessage, artifact string, version int) {
+func (s *Session) SnapshotForPersist() (memory, plan, figures, videos, deck, games json.RawMessage, artifact string, version int) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if len(s.History) > 0 {
@@ -417,7 +447,10 @@ func (s *Session) SnapshotForPersist() (memory, plan, figures, videos, deck json
 	if s.deck != nil {
 		deck, _ = json.Marshal(s.deck)
 	}
-	return memory, plan, figures, videos, deck, s.artifact, s.artifactVersion
+	if len(s.games) > 0 {
+		games, _ = json.Marshal(s.games)
+	}
+	return memory, plan, figures, videos, deck, games, s.artifact, s.artifactVersion
 }
 
 // ─── SessionStore ───────────────────────────────────────────────────────
@@ -500,6 +533,9 @@ func (s *SessionStore) GetOrLoad(ctx context.Context, workspaceID uuid.UUID, job
 	}
 	if len(row.Videos) > 0 {
 		_ = json.Unmarshal(row.Videos, &sess.videos)
+	}
+	if len(row.Games) > 0 {
+		_ = json.Unmarshal(row.Games, &sess.games)
 	}
 	if len(row.Deck) > 0 {
 		var d Deck

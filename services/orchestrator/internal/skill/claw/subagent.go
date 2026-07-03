@@ -99,6 +99,10 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if r.Variants != nil {
 				out = append(out, &GenerateVariantsTool{Variants: r.Variants, Session: sess, Emitter: r.Emitter})
 			}
+		case "generate_game":
+			if r.Game != nil {
+				out = append(out, &GenerateGame{Game: r.Game, Session: sess, Emitter: r.Emitter})
+			}
 		case "write_document":
 			out = append(out, &WriteDocument{Session: sess, Emitter: r.Emitter})
 		case "generate_deck":

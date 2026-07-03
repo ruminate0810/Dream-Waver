@@ -20,9 +20,9 @@ func (s *pgxClawRuns) Put(ctx context.Context, r *ClawRun) error {
 		insert into claw_runs
 		  (id, workspace_id, session_id, created_by, status,
 		   prompt, title, plan, artifact, artifact_version,
-		   figures, videos, deck, memory, error, started_at, finished_at)
+		   figures, videos, deck, games, memory, error, started_at, finished_at)
 		values ($1,$2,$3,nullif($4,'00000000-0000-0000-0000-000000000000'::uuid),
-		        $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		        $5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		on conflict (id) do update set
 		  status           = excluded.status,
 		  prompt           = excluded.prompt,
@@ -33,6 +33,7 @@ func (s *pgxClawRuns) Put(ctx context.Context, r *ClawRun) error {
 		  figures          = excluded.figures,
 		  videos           = excluded.videos,
 		  deck             = excluded.deck,
+		  games            = excluded.games,
 		  memory           = excluded.memory,
 		  error            = excluded.error,
 		  finished_at      = excluded.finished_at
@@ -40,7 +41,7 @@ func (s *pgxClawRuns) Put(ctx context.Context, r *ClawRun) error {
 		r.ID, r.WorkspaceID, r.SessionID, r.CreatedBy,
 		r.Status, nullableText(r.Prompt), nullableText(r.Title),
 		nullableJSON(r.Plan), nullableText(r.Artifact), r.ArtifactVersion,
-		nullableJSON(r.Figures), nullableJSON(r.Videos), nullableJSON(r.Deck), nullableJSON(r.Memory), nullableText(r.Error),
+		nullableJSON(r.Figures), nullableJSON(r.Videos), nullableJSON(r.Deck), nullableJSON(r.Games), nullableJSON(r.Memory), nullableText(r.Error),
 		r.StartedAt, r.FinishedAt,
 	)
 	return err
@@ -51,18 +52,18 @@ const clawRunSelect = `
 	       coalesce(created_by, '00000000-0000-0000-0000-000000000000'::uuid),
 	       status, coalesce(prompt, ''), coalesce(title, ''),
 	       plan, coalesce(artifact, ''), coalesce(artifact_version, 0),
-	       figures, videos, deck, memory, coalesce(error, ''), started_at, finished_at
+	       figures, videos, deck, games, memory, coalesce(error, ''), started_at, finished_at
 	from claw_runs
 `
 
 func scanClawRun(row scanner) (*ClawRun, error) {
 	r := &ClawRun{}
-	var plan, figures, videos, deck, memory *json.RawMessage
+	var plan, figures, videos, deck, games, memory *json.RawMessage
 	err := row.Scan(
 		&r.ID, &r.WorkspaceID, &r.SessionID, &r.CreatedBy,
 		&r.Status, &r.Prompt, &r.Title,
 		&plan, &r.Artifact, &r.ArtifactVersion,
-		&figures, &videos, &deck, &memory, &r.Error, &r.StartedAt, &r.FinishedAt,
+		&figures, &videos, &deck, &games, &memory, &r.Error, &r.StartedAt, &r.FinishedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -81,6 +82,9 @@ func scanClawRun(row scanner) (*ClawRun, error) {
 	}
 	if deck != nil {
 		r.Deck = *deck
+	}
+	if games != nil {
+		r.Games = *games
 	}
 	if memory != nil {
 		r.Memory = *memory
@@ -186,6 +190,7 @@ func (m *memClawRuns) Put(_ context.Context, r *ClawRun) error {
 	stored.Figures = copyJSON(r.Figures)
 	stored.Videos = copyJSON(r.Videos)
 	stored.Deck = copyJSON(r.Deck)
+	stored.Games = copyJSON(r.Games)
 	stored.Memory = copyJSON(r.Memory)
 	m.rows[r.ID] = &stored
 	return nil

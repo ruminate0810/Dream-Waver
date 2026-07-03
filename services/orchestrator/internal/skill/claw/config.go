@@ -203,6 +203,8 @@ func (r *Runner) toolWired(name string) bool {
 		return r.Editor != nil
 	case "generate_variants":
 		return r.Variants != nil
+	case "generate_game":
+		return r.Game != nil
 	case "find_kol":
 		return r.KOL != nil
 	default: // plan_tasks / update_task / write_document — always available

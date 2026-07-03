@@ -24,6 +24,7 @@ const INTRO: Record<string, (detail: string) => string> = {
   generate_variants: () => "方向没定?我出几版不同的,你挑。",
   write_document: () => "材料齐了,我开写 — 这稿起码润八遍。",
   generate_deck: () => "报告给我,今晚必须出片!幻灯片这就排。",
+  generate_game: () => "玩法我看懂了 — 关卡、手感、胜负,一次出可玩版。",
   generate_video: () => "上三脚架!我把这张图推、拉、摇、移起来。",
 };
 
@@ -36,6 +37,7 @@ const DONE: Record<string, string> = {
   generate_storybook: "绘本画好了,一页页连得上 ✦",
   generate_variants: "几个方案都摆出来了,挑一个 ✦",
   generate_deck: "片出了!档期保住了 ✓",
+  generate_game: "游戏能玩了!手感我调过 ►",
   generate_video: "成片!这条最稳 ►",
 };
 
@@ -152,6 +154,9 @@ export function nextSteps(run: ClawRun): NextStep[] {
   out.push({ label: "做成绘本", text: "让设计师把核心内容改编成一本 4 页的插画绘本,画风温暖统一。" });
   if (!run.deck) {
     out.push({ label: "做成 PPT", text: "把这份报告做成一份幻灯片 deck。" });
+  }
+  if ((run.games?.length ?? 0) === 0) {
+    out.push({ label: "做成小游戏", text: "把这个主题做成一个可玩的 HTML 小游戏,玩法简单上手、有一个小反转。" });
   }
   out.push({ label: "换成人民币", text: "把报告里的金额/价格换算成人民币,保留原币种备注。" });
   return out;

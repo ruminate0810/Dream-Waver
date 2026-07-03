@@ -79,6 +79,7 @@ export const TOOL_ACTION: Record<string, string> = {
   generate_variants: "draw",
   write_document: "write",
   generate_deck: "point",
+  generate_game: "type",
   generate_video: "film",
 };
 
@@ -273,7 +274,7 @@ export const WORKERS: WorkerDef[] = [
       quirk: "每分钟看一次表",
       traits: ["执行 闪电", "排期 帝王", "催稿 专业"],
     },
-    tools: ["generate_deck"],
+    tools: ["generate_deck", "generate_game"],
     shirt: "#2aa198",
     shirtDark: "#1f7d76",
     hair: "#16140f",
