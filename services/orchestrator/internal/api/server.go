@@ -197,6 +197,8 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		r.Post("/claw", h.CreateClaw)
 		r.Get("/claw/{id}", h.GetClaw)
 		r.Post("/claw/{id}/messages", h.PostClawMessage)
+		// v23 名词皆可动 — reassign a pending plan row between runs.
+		r.Patch("/claw/{id}/plan", h.PatchClawPlan)
 		r.Get("/claw/{id}/artifact", h.GetClawArtifact)
 		r.Get("/claw/{id}/deck", h.GetClawDeck)
 		// 真·动态改绑 — live role↔tool bindings (read + edit).

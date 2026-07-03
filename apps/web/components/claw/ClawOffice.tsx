@@ -6,7 +6,7 @@ import * as Popover from "@radix-ui/react-popover";
 import { FileText, Image as ImageIcon, Film, Layers, Users, X, GripVertical, Shuffle, ChevronLeft, ChevronRight, Plug, Check } from "lucide-react";
 import clsx from "clsx";
 
-import { getClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
+import { getClawRoles, patchClawPlan, putClawRoles, type ClawRun, type ClawRolesConfig, type ClawTask } from "@/lib/api";
 import { TaskPlanCard } from "./TaskPlanCard";
 import { narrationFor } from "./narrate";
 import { directivesFor } from "./sceneGrammar";
@@ -42,6 +42,12 @@ const PHASES = PHASE_ORDER.map((p) => ({
   zh: PHASE_ZH[p],
   workers: WORKERS.filter((w) => w.phase === p).map((w) => w.key),
 })).filter((p) => p.workers.length > 0);
+
+// v23 名词皆可动 — every drag payload kind the office understands. The
+// MIME type is `application/x-claw-<kind>`; recipients declare which kinds
+// they take via acceptKinds and glow while a matching drag is in flight.
+const DRAG_KINDS = ["figure", "report", "task", "worker"] as const;
+export type DragKind = (typeof DRAG_KINDS)[number];
 
 type Flight = {
   id: number;
@@ -79,16 +85,21 @@ export function ClawOffice({
   const [focus, setFocus] = useState<string | null>(null);
   const [light, setLight] = useState<"day" | "dusk" | "night">("day");
 
-  // ── 空间可操作化 — drag a figure/report from the work package onto a
-  // worker to hand them the job (drops become real follow-up turns via
-  // onAsk). dragKind tracks the payload type while a drag is in flight so
-  // valid recipients glow; native DnD events bubble up to window.
-  const [dragKind, setDragKind] = useState<"figure" | "report" | null>(null);
+  // ── 空间可操作化 — drag payloads onto workers/zones and the drop becomes
+  // a real system action: figure/report → follow-up turns (v20), task row →
+  // PATCH plan reassignment, worker → 商议 follow-up or 门禁 disable (v23).
+  // dragKind tracks the in-flight payload so valid recipients glow; native
+  // DnD events bubble up to window.
+  const [dragKind, setDragKind] = useState<DragKind | null>(null);
   useEffect(() => {
     const onStart = (e: DragEvent) => {
       const t = e.dataTransfer?.types ?? [];
-      if (t.includes("application/x-claw-figure")) setDragKind("figure");
-      else if (t.includes("application/x-claw-report")) setDragKind("report");
+      for (const k of DRAG_KINDS) {
+        if (t.includes(`application/x-claw-${k}`)) {
+          setDragKind(k);
+          return;
+        }
+      }
     };
     const onEnd = () => setDragKind(null);
     window.addEventListener("dragstart", onStart);
@@ -100,8 +111,16 @@ export function ClawOffice({
       window.removeEventListener("drop", onEnd);
     };
   }, []);
-  // the designer offers two edits — a drop opens a tiny pick menu at the desk
-  const [dropMenu, setDropMenu] = useState<{ index: number; x: number; y: number } | null>(null);
+  // drop follow-ups that need a decision open a tiny pick menu at the spot
+  const [dropMenu, setDropMenu] = useState<
+    | { kind: "edit"; index: number; x: number; y: number }
+    | { kind: "disable"; worker: string; x: number; y: number }
+    | null
+  >(null);
+  // 白板即需求 (v23) — click the whiteboard, write a requirement, it lands
+  // as a real follow-up turn.
+  const [whiteboardOpen, setWhiteboardOpen] = useState(false);
+  const [whiteboardText, setWhiteboardText] = useState("");
   // 请喝咖啡 — clicking the machine floats a ☕ over everyone (45s cooldown)
   const [coffee, setCoffee] = useState(false);
   const coffeeCd = useRef(0);
@@ -239,17 +258,25 @@ export function ClawOffice({
   const catPos = useRef<{ x: number; y: number; sleeping: boolean } | null>(null);
   const sim = useOfficeSim({ views, offDuty, meetingUntil, meetingChair, pulses, visits });
 
-  // which payload each worker accepts (only on finished runs — drops become
-  // follow-up turns, and the chips-era gate applies: figures/report must exist)
-  const dropSpec = useCallback(
-    (key: string): "figure" | "report" | null => {
-      if (run.status !== "finished" || !onAsk || disabledSet.has(key)) return null;
-      if ((key === "designer" || key === "videographer") && (run.figures?.length ?? 0) > 0) return "figure";
-      if (key === "producer" && (run.artifact_version ?? 0) > 0) return "report";
-      return null;
+  // which payload kinds each worker accepts. figure/report follow-ups keep
+  // the chips-era gate (finished run, artifact exists); task reassignment
+  // only needs "not mid-run"; 商议 needs a finished run to discuss.
+  const notRunning = run.status !== "running";
+  const acceptKinds = useCallback(
+    (key: string): DragKind[] => {
+      if (disabledSet.has(key)) return [];
+      const out: DragKind[] = [];
+      const finished = run.status === "finished" && !!onAsk;
+      if ((key === "designer" || key === "videographer") && finished && (run.figures?.length ?? 0) > 0)
+        out.push("figure");
+      if ((key === "producer" || key === "critic") && finished && (run.artifact_version ?? 0) > 0)
+        out.push("report");
+      if (notRunning) out.push("task"); // backend re-validates row + role
+      if (finished) out.push("worker"); // 商议 target
+      return out;
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [run.status, run.figures?.length, run.artifact_version, onAsk, rolesCfg],
+    [run.status, run.figures?.length, run.artifact_version, onAsk, rolesCfg, notRunning],
   );
 
   // a drop = the worker acknowledges in place + the ask goes out as a turn
@@ -263,8 +290,8 @@ export function ClawOffice({
   );
 
   const onDropPayload = useCallback(
-    (key: string, kind: "figure" | "report", index: number) => {
-      const n = index + 1;
+    (key: string, kind: DragKind, payload: { index?: number; key?: string; title?: string }) => {
+      const n = (payload.index ?? 0) + 1;
       if (key === "videographer" && kind === "figure") {
         spatialAsk(
           key,
@@ -273,12 +300,40 @@ export function ClawOffice({
         );
       } else if (key === "producer" && kind === "report") {
         spatialAsk(key, "报告收到,今晚必须出片!", "把这份报告做成一份幻灯片 deck。");
+      } else if (key === "critic" && kind === "report") {
+        // 传阅 — hand the report back to the critic for another pass
+        spatialAsk(key, "再审一遍?好,这次更严。", "让评审员按原 rubric 再复审一遍当前报告,严格挑错并给出修改。");
       } else if (key === "designer" && kind === "figure") {
         const s = sim[key];
-        setDropMenu({ index, x: s?.x ?? 50, y: s?.y ?? 50 });
+        setDropMenu({ kind: "edit", index: payload.index ?? 0, x: s?.x ?? 50, y: s?.y ?? 50 });
+      } else if (kind === "task") {
+        // 改派 — plan surgery through PATCH; the backend re-announces the
+        // plan (claw.plan) so every view updates. Rejection = 摆手 + reason.
+        const idx = payload.index ?? 0; // 1-based from OfficePlan
+        patchClawPlan(run.job_id, idx, key)
+          .then(() => {
+            setSpeech((prev) => ({
+              ...prev,
+              [key]: { text: `「${(payload.title ?? "").slice(0, 14) || `任务 #${idx}`}」我接了。`, until: Date.now() + 5500 },
+            }));
+            pulses.current[key] = { g: "nod", until: Date.now() + 1600 };
+          })
+          .catch((err: Error) => {
+            setSpeech((prev) => ({
+              ...prev,
+              [key]: { text: `接不了 — ${err.message.slice(0, 30)}`, until: Date.now() + 5500 },
+            }));
+            pulses.current[key] = { g: "wave", until: Date.now() + 1600 };
+          });
+      } else if (kind === "worker" && payload.key && payload.key !== key) {
+        // 商议 — put two workers in a room and make them reconcile
+        const a = WORKERS.find((w) => w.key === payload.key)?.zh ?? payload.key;
+        const b = WORKERS.find((w) => w.key === key)?.zh ?? key;
+        pulses.current[payload.key] = { g: "talk", until: Date.now() + 2600 };
+        spatialAsk(key, `我找${a}对一下思路。`, `让${a}和${b}就当前成果再对一轮意见:各自指出对方产出里最薄弱的一点,并给出一致的改进结论。`);
       }
     },
-    [sim, spatialAsk],
+    [sim, spatialAsk, run.job_id],
   );
 
   // 锤人 — when a worker's tool errors (facepalm reaction), the 评审员 (or
@@ -718,9 +773,10 @@ export function ClawOffice({
             sim={sim[def.key]}
             offDuty={offDuty}
             say={speech[def.key] && speech[def.key].until > Date.now() ? speech[def.key].text : undefined}
-            acceptKind={dropSpec(def.key)}
+            acceptKinds={acceptKinds(def.key)}
             dragKind={dragKind}
-            onDropPayload={(kind, index) => onDropPayload(def.key, kind, index)}
+            draggableWorker={run.status === "finished" && !!onAsk}
+            onDropPayload={(kind, payload) => onDropPayload(def.key, kind, payload)}
             onClick={(shift) =>
               shift ? triggerBonk(def.key) : setFocus((f) => (f === def.key ? null : def.key))
             }
@@ -728,7 +784,7 @@ export function ClawOffice({
         ))}
 
         {/* 拖图给设计师 — 精修方式二选一(高清化/抠图),点外面取消 */}
-        {dropMenu && (
+        {dropMenu?.kind === "edit" && (
           <div
             className="claw-popover absolute z-[110] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface p-1.5 shadow-pixel"
             style={{ left: `${dropMenu.x}%`, top: `${Math.max(dropMenu.y - 16, 4)}%` }}
@@ -772,6 +828,125 @@ export function ClawOffice({
                 ✕
               </button>
             </div>
+          </div>
+        )}
+
+        {/* 门禁确认 — 小人被拖进休息区,停用要点头(下一轮生效) */}
+        {dropMenu?.kind === "disable" && (
+          <div
+            className="claw-popover absolute z-[110] -translate-x-1/2 rounded-pixel border-2 border-ink bg-surface p-1.5 shadow-pixel"
+            style={{ left: `${dropMenu.x}%`, top: `${Math.max(dropMenu.y - 14, 4)}%` }}
+          >
+            <p className="mb-1 px-1 font-mono text-[9.5px] font-bold text-muted">
+              让{WORKERS.find((w) => w.key === dropMenu.worker)?.zh ?? dropMenu.worker}休假?(下一轮不派活)
+            </p>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                data-testid="confirm-disable"
+                className="rounded-pixel border-2 border-ink bg-paper px-2 py-1 font-mono text-[10px] text-ink shadow-pixel-sm hover:-translate-y-0.5"
+                onClick={() => {
+                  const worker = dropMenu.worker;
+                  const enabled: Record<string, boolean> = {};
+                  for (const role of rolesCfg?.roles ?? []) enabled[role.key] = role.key === worker ? false : role.enabled;
+                  putClawRoles(rolesCfg?.assign ?? {}, enabled)
+                    .then((cfg) => {
+                      setRolesCfg(cfg);
+                      setSpeech((prev) => ({
+                        ...prev,
+                        [worker]: { text: "行,那我歇会儿。", until: Date.now() + 5000 },
+                      }));
+                    })
+                    .catch(() => {
+                      setSpeech((prev) => ({
+                        ...prev,
+                        [worker]: { text: "歇不了 — 这角色不让停用。", until: Date.now() + 5000 },
+                      }));
+                    });
+                  setDropMenu(null);
+                }}
+              >
+                休假
+              </button>
+              <button
+                type="button"
+                className="rounded-pixel border border-ink/40 px-2 py-1 font-mono text-[10px] text-ink-2 hover:text-ink"
+                onClick={() => setDropMenu(null)}
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 白板即需求 (v23) — 点白板写新要求,提交成为一轮真实追问 */}
+        {onAsk && notRunning && (
+          <button
+            type="button"
+            aria-label="在白板上写新要求"
+            title="在白板上写新要求"
+            onClick={() => setWhiteboardOpen((o) => !o)}
+            className="absolute z-[60] cursor-pointer rounded-[4px] border-2 border-transparent hover:border-accent/60"
+            style={{ left: "43.5%", top: "1.5%", width: "13%", height: "13%", background: "transparent" }}
+          />
+        )}
+        {whiteboardOpen && (
+          <form
+            className="claw-popover absolute z-[110] w-[260px] rounded-pixel border-2 border-ink bg-surface p-2 shadow-pixel"
+            style={{ left: "44%", top: "16%" }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              const text = whiteboardText.trim();
+              if (!text) return;
+              spatialAsk("coordinator", "白板上的新要求,收到。", `白板新增要求:${text}。请把它纳入并调整现有成果。`);
+              setWhiteboardText("");
+              setWhiteboardOpen(false);
+            }}
+          >
+            <p className="mb-1 font-mono text-[10px] font-bold text-muted">✎ 白板 · 给团队写一条新要求</p>
+            <textarea
+              value={whiteboardText}
+              onChange={(e) => setWhiteboardText(e.target.value)}
+              rows={3}
+              placeholder="例:价格全部换算成人民币,并补一段风险提示"
+              className="w-full rounded-[4px] border-2 border-ink/40 bg-paper p-1.5 font-mono text-[11px] text-ink outline-none focus:border-accent"
+            />
+            <div className="mt-1 flex justify-end gap-1">
+              <button type="button" className="rounded-pixel border border-ink/40 px-2 py-0.5 font-mono text-[10px] text-ink-2" onClick={() => setWhiteboardOpen(false)}>
+                取消
+              </button>
+              <button type="submit" className="rounded-pixel border-2 border-ink bg-accent px-2 py-0.5 font-mono text-[10px] font-bold text-white shadow-pixel-sm">
+                贴上白板
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* 休息区门禁落点 — 拖小人到这里 = 提议休假(停用角色) */}
+        {dragKind === "worker" && (
+          <div
+            data-testid="lounge-dropzone"
+            className="absolute z-[94] rounded-pixel border-2 border-dashed border-accent/70 bg-accent/10"
+            style={{ left: "2%", top: "68%", width: "16%", height: "26%" }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              try {
+                const raw = e.dataTransfer.getData("application/x-claw-worker");
+                const p = raw ? (JSON.parse(raw) as { key?: string }) : {};
+                if (p.key) setDropMenu({ kind: "disable", worker: p.key, x: 12, y: 72 });
+              } catch {
+                /* ignore malformed payloads */
+              }
+            }}
+          >
+            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] font-bold text-accent">
+              拖到这里休假
+            </span>
           </div>
         )}
 
@@ -1341,8 +1516,9 @@ function OfficeWorker({
   offDuty,
   onClick,
   say,
-  acceptKind,
+  acceptKinds = [],
   dragKind,
+  draggableWorker = false,
   onDropPayload,
 }: {
   def: WorkerDef;
@@ -1353,14 +1529,16 @@ function OfficeWorker({
   say?: string;
   /** shift=true → 老板的小锤 (boss discipline easter egg). */
   onClick: (shift: boolean) => void;
-  /** which drag payload this worker takes right now (null = not a target). */
-  acceptKind?: "figure" | "report" | null;
+  /** which drag payload kinds this worker takes right now. */
+  acceptKinds?: DragKind[];
   /** the payload kind currently being dragged anywhere on the page. */
-  dragKind?: "figure" | "report" | null;
-  onDropPayload?: (kind: "figure" | "report", index: number) => void;
+  dragKind?: DragKind | null;
+  /** v23 商议 — this worker can itself be dragged onto a colleague. */
+  draggableWorker?: boolean;
+  onDropPayload?: (kind: DragKind, payload: { index?: number; key?: string; title?: string }) => void;
 }) {
   const status = view?.status ?? "idle";
-  const droppable = !!acceptKind && dragKind === acceptKind;
+  const droppable = !!dragKind && acceptKinds.includes(dragKind);
   const [dropHover, setDropHover] = useState(false);
   const [pokedUntil, setPokedUntil] = useState(0);
   const poked = pokedUntil > 0;
@@ -1399,6 +1577,12 @@ function OfficeWorker({
         if (!e.shiftKey) setPokedUntil(Date.now());
         onClick(e.shiftKey);
       }}
+      draggable={draggableWorker}
+      onDragStart={(e) => {
+        if (!draggableWorker) return;
+        e.dataTransfer.setData("application/x-claw-worker", JSON.stringify({ key: def.key }));
+        e.dataTransfer.effectAllowed = "copy";
+      }}
       onDragOver={(e) => {
         if (!droppable) return;
         e.preventDefault();
@@ -1408,15 +1592,15 @@ function OfficeWorker({
       onDragLeave={() => setDropHover(false)}
       onDrop={(e) => {
         setDropHover(false);
-        if (!droppable || !acceptKind) return;
+        if (!droppable || !dragKind) return;
         e.preventDefault();
         e.stopPropagation();
         try {
-          const raw = e.dataTransfer.getData(`application/x-claw-${acceptKind}`);
-          const payload = raw ? (JSON.parse(raw) as { index?: number }) : {};
-          onDropPayload?.(acceptKind, payload.index ?? 0);
+          const raw = e.dataTransfer.getData(`application/x-claw-${dragKind}`);
+          const payload = raw ? (JSON.parse(raw) as { index?: number; key?: string; title?: string }) : {};
+          onDropPayload?.(dragKind, payload);
         } catch {
-          onDropPayload?.(acceptKind, 0);
+          onDropPayload?.(dragKind, {});
         }
       }}
       className="absolute cursor-pointer border-0 bg-transparent p-0"
@@ -1565,7 +1749,15 @@ function OfficePlan({ run }: { run: ClawRun }) {
       if (ev.kind === "claw.plan") {
         const titles = ev.data.task_titles ?? [];
         const roles = ev.data.task_roles ?? [];
-        setPlan(titles.map((t, i) => ({ title: t, role: roles[i], status: "pending" as const })));
+        // A same-length re-announce (v23 改派) keeps known statuses; a new
+        // plan (different shape) starts fresh as all-pending.
+        setPlan((prev) =>
+          titles.map((t, i) => ({
+            title: t,
+            role: roles[i],
+            status: (prev.length === titles.length ? prev[i]?.status : undefined) ?? ("pending" as const),
+          })),
+        );
         setOpen(true);
       } else if (ev.kind === "claw.task.update") {
         const idx = ev.data.task_index ?? 0;
@@ -1602,7 +1794,25 @@ function OfficePlan({ run }: { run: ClawRun }) {
           </button>
           <ol className="max-h-[42vh] divide-y divide-line overflow-y-auto">
             {plan.map((t, i) => (
-              <li key={i} className="flex items-start gap-2 px-2.5 py-1.5">
+              <li
+                key={i}
+                // v23 改派 — a PENDING row can be dragged onto a worker;
+                // the drop PATCHes the plan (backend re-validates + 409s
+                // mid-run, so this stays draggable and lets the worker 摆手).
+                draggable={t.status === "pending" && run.status !== "running"}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    "application/x-claw-task",
+                    JSON.stringify({ index: i + 1, title: t.title }),
+                  );
+                  e.dataTransfer.effectAllowed = "copy";
+                }}
+                title={t.status === "pending" && run.status !== "running" ? "拖到某个小人身上改派这条任务" : undefined}
+                className={clsx(
+                  "flex items-start gap-2 px-2.5 py-1.5",
+                  t.status === "pending" && run.status !== "running" && "cursor-grab active:cursor-grabbing",
+                )}
+              >
                 <span
                   className={clsx(
                     "mt-[1px] grid h-[14px] w-[14px] flex-none place-items-center rounded-[3px] border-2 border-ink text-white",

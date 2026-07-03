@@ -270,6 +270,43 @@ func TestPhaseEvents(t *testing.T) {
 	}
 }
 
+// TestReassignTask (v23 名词皆可动) — plan surgery: pending rows move to an
+// enabled role and the plan re-announces; doing rows and bad roles refuse.
+func TestReassignTask(t *testing.T) {
+	em := &recordingEmitter{}
+	r := &Runner{
+		Router:        &fakeRouter{steps: map[string]int{}},
+		Emitter:       em,
+		Sessions:      NewSessionStore(),
+		Images:        fakeImages{},
+		ImagesEnabled: true, // wires the designer
+	}
+	sess := &Session{Prompt: "带图报告"}
+	r.Sessions.Put("job-ra", sess)
+	sess.SetPlanTasks([]Task{
+		{Title: "查资料", Role: RoleResearcher},
+		{Title: "配一张图", Role: RoleResearcher},
+	})
+	sess.UpdateTask(1, TaskDoing) // row 1 is mid-flight — must refuse surgery
+	ctx := event.WithSessionID(context.Background(), "sess-ra")
+
+	if err := r.ReassignTask(ctx, "job-ra", 2, RoleDesigner); err != nil {
+		t.Fatalf("reassign pending: %v", err)
+	}
+	if got := sess.PlanSnapshot()[1].Role; got != RoleDesigner {
+		t.Fatalf("task 2 role = %q, want designer", got)
+	}
+	if ev, ok := em.firstOf(event.KindClawPlan); !ok || len(ev.Data.TaskRoles) != 2 || ev.Data.TaskRoles[1] != RoleDesigner {
+		t.Fatalf("plan not re-announced with new role: %+v", ev.Data)
+	}
+	if err := r.ReassignTask(ctx, "job-ra", 1, RoleDesigner); err == nil {
+		t.Fatal("reassigning a DOING row must fail")
+	}
+	if err := r.ReassignTask(ctx, "job-ra", 2, "no-such-role"); err == nil {
+		t.Fatal("reassigning to an unknown role must fail")
+	}
+}
+
 // TestReportRevisedIssue (v22 质检章) — a v2+ write_document call must emit
 // claw.issue report_revised with the changed-block count; v1 must not.
 func TestReportRevisedIssue(t *testing.T) {

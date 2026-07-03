@@ -121,6 +121,26 @@ func (r *Runner) coordinate(ctx context.Context, sess *Session, goal string, isF
 	return nil
 }
 
+// ReassignTask (v23 名词皆可动) is the user-driven plan surgery behind
+// PATCH /claw/{id}/plan: move a pending row to another ENABLED role, then
+// re-announce the plan so every view updates. The route layer guards run
+// state (no surgery mid-execution); this guards role validity.
+func (r *Runner) ReassignTask(ctx context.Context, jobID string, index1 int, role string) error {
+	sess, ok := r.Sessions.Get(jobID)
+	if !ok {
+		return fmt.Errorf("会话不存在")
+	}
+	if _, exists := RoleByKey(role); !exists || !r.roleEnabled(role) {
+		return fmt.Errorf("角色不可用: %s", role)
+	}
+	titles, roles, err := sess.ReassignTask(index1, role)
+	if err != nil {
+		return err
+	}
+	r.emit(ctx, event.NewClawPlan(titles, roles))
+	return nil
+}
+
 // phaseSpan opens a pipeline stage as a first-class claw.phase event (v21)
 // and returns the matching end emitter. Callers either bracket a block
 // (end := r.phaseSpan(...); ...; end()) or defer it for whole-function

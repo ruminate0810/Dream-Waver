@@ -671,6 +671,17 @@ export type ClawRolesConfig = {
   tool_wired: Record<string, boolean>;
 };
 
+/** v23 名词皆可动 — reassign one PENDING plan row to another enabled role
+ *  (between runs only; 409 while executing, 422 on invalid row/role). */
+export async function patchClawPlan(jobId: string, taskIndex: number, role: string): Promise<void> {
+  const res = await fetch(`/api/v1/claw/${jobId}/plan`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_index: taskIndex, role }),
+  });
+  await unwrap<unknown>(res);
+}
+
 export async function getClawRoles(): Promise<ClawRolesConfig> {
   const res = await fetch("/api/v1/claw/roles");
   return unwrap<ClawRolesConfig>(res);

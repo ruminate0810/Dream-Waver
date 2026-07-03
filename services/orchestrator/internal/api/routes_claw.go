@@ -430,6 +430,55 @@ func (h *handlers) PostClawMessage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// PatchClawPlan (v23 名词皆可动) — reassign one PENDING plan row to another
+// enabled role. Only between runs (409 while executing); the runner
+// validates role + row state and re-announces the plan over the WS.
+func (h *handlers) PatchClawPlan(w http.ResponseWriter, r *http.Request) {
+	if h.deps.Claw == nil {
+		errorJSON(w, http.StatusServiceUnavailable, "claw not configured")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	clawJobsMu.RLock()
+	job, ok := clawJobs[id]
+	clawJobsMu.RUnlock()
+	if !ok {
+		if hydrated := h.hydrateClawJob(r.Context(), id); hydrated != nil {
+			job = hydrated
+		} else {
+			errorJSON(w, http.StatusNotFound, "job not found")
+			return
+		}
+	}
+	clawJobsMu.RLock()
+	running := job.Status == "running"
+	clawJobsMu.RUnlock()
+	if running {
+		errorJSON(w, http.StatusConflict, "运行中不能改派 — 等这一轮结束")
+		return
+	}
+
+	var req struct {
+		TaskIndex int    `json:"task_index"` // 1-based
+		Role      string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		errorJSON(w, http.StatusBadRequest, "invalid JSON: "+err.Error())
+		return
+	}
+	if req.TaskIndex < 1 || strings.TrimSpace(req.Role) == "" {
+		errorJSON(w, http.StatusBadRequest, "task_index (1-based) and role are required")
+		return
+	}
+
+	ctx := event.WithSessionID(r.Context(), job.SessionID)
+	if err := h.deps.Claw.ReassignTask(ctx, job.ID, req.TaskIndex, req.Role); err != nil {
+		errorJSON(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"job_id": job.ID, "task_index": req.TaskIndex, "role": req.Role})
+}
+
 func (h *handlers) continueClawJob(job *clawJob, userMessage string, wsID uuid.UUID) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()

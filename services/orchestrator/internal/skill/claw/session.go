@@ -21,6 +21,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -238,6 +239,28 @@ func (s *Session) SetArtifact(markdown string) (version, bytes int, prev string)
 	s.artifact = markdown
 	s.artifactVersion++
 	return s.artifactVersion, len(markdown), prev
+}
+
+// ReassignTask (v23 名词皆可动) moves one PENDING plan row to another role.
+// Doing/done/skipped rows are immutable — reassignment is plan surgery, not
+// history rewriting. Returns the fresh titles/roles snapshot so the caller
+// can re-announce the plan.
+func (s *Session) ReassignTask(index1 int, role string) (titles, roles []string, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if index1 < 1 || index1 > len(s.plan) {
+		return nil, nil, fmt.Errorf("任务 #%d 不存在", index1)
+	}
+	t := &s.plan[index1-1]
+	if t.Status != TaskPending {
+		return nil, nil, fmt.Errorf("任务 #%d 已是 %s,只能改派未开始的任务", index1, t.Status)
+	}
+	t.Role = role
+	for _, task := range s.plan {
+		titles = append(titles, task.Title)
+		roles = append(roles, task.Role)
+	}
+	return titles, roles, nil
 }
 
 // SetBrief records the clarification answers (受众/深度/篇幅/格式) so the
