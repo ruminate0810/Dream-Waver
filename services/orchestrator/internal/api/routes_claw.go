@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -428,6 +429,95 @@ func (h *handlers) PostClawMessage(w http.ResponseWriter, r *http.Request) {
 		"job_id":     job.ID,
 		"session_id": job.SessionID,
 	})
+}
+
+// ListClaw (v25 工作室) — the studio's 案卷架: every persisted run for this
+// workspace, newest first, plus any live in-memory jobs (anonymous/dev runs
+// that never hit the store). Plan rides along so the studio can aggregate
+// per-role dossiers client-side without a second endpoint.
+func (h *handlers) ListClaw(w http.ResponseWriter, r *http.Request) {
+	type item struct {
+		JobID           string          `json:"job_id"`
+		SessionID       string          `json:"session_id"`
+		Status          string          `json:"status"`
+		Prompt          string          `json:"prompt"`
+		Title           string          `json:"title,omitempty"`
+		Plan            json.RawMessage `json:"plan,omitempty"`
+		ArtifactVersion int             `json:"artifact_version"`
+		Figures         int             `json:"figures"`
+		Videos          int             `json:"videos"`
+		HasDeck         bool            `json:"has_deck"`
+		StartedAt       time.Time       `json:"started_at"`
+	}
+	seen := map[string]bool{}
+	out := []item{}
+
+	wsID := workspaceIDFromCtx(r.Context())
+	if wsID != uuid.Nil && h.deps.Store != nil && h.deps.Store.ClawRuns != nil {
+		rows, err := h.deps.Store.ClawRuns.List(r.Context(), wsID, 100)
+		if err == nil {
+			for _, row := range rows {
+				seen[row.ID.String()] = true
+				out = append(out, item{
+					JobID:           row.ID.String(),
+					SessionID:       row.SessionID.String(),
+					Status:          row.Status,
+					Prompt:          row.Prompt,
+					Title:           row.Title,
+					Plan:            row.Plan,
+					ArtifactVersion: row.ArtifactVersion,
+					Figures:         jsonArrayLen(row.Figures),
+					Videos:          jsonArrayLen(row.Videos),
+					HasDeck:         len(row.Deck) > 0 && string(row.Deck) != "null",
+					StartedAt:       row.StartedAt,
+				})
+			}
+		}
+	}
+	// live jobs not (yet) persisted — anonymous/dev runs still show up
+	clawJobsMu.RLock()
+	for _, job := range clawJobs {
+		if seen[job.ID] {
+			continue
+		}
+		it := item{
+			JobID:     job.ID,
+			SessionID: job.SessionID,
+			Status:    job.Status,
+			Prompt:    job.Prompt,
+			Title:     job.Title,
+			StartedAt: job.StartedAt,
+		}
+		if h.deps.ClawSessions != nil {
+			if sess, ok := h.deps.ClawSessions.Get(job.ID); ok {
+				if b, err := json.Marshal(sess.PlanSnapshot()); err == nil {
+					it.Plan = b
+				}
+				_, it.ArtifactVersion = sess.Artifact()
+				it.Figures = len(sess.Figures())
+				it.Videos = len(sess.Videos())
+				it.HasDeck = sess.DeckArtifact() != nil
+			}
+		}
+		out = append(out, it)
+	}
+	clawJobsMu.RUnlock()
+
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.After(out[j].StartedAt) })
+	writeJSON(w, http.StatusOK, map[string]any{"runs": out})
+}
+
+// jsonArrayLen counts elements of a persisted JSON array without decoding
+// the full payload shape.
+func jsonArrayLen(raw json.RawMessage) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var arr []json.RawMessage
+	if json.Unmarshal(raw, &arr) != nil {
+		return 0
+	}
+	return len(arr)
 }
 
 // PatchClawPlan (v23 名词皆可动) — reassign one PENDING plan row to another

@@ -195,6 +195,8 @@ func NewServer(deps Dependencies, addr string) *http.Server {
 		// bus. GET /claw/{id} returns status + plan + artifact_version; the
 		// markdown report itself rides GET /claw/{id}/artifact (never the WS).
 		r.Post("/claw", h.CreateClaw)
+		// v25 工作室 — 案卷架: list runs (persisted + live in-memory).
+		r.Get("/claw", h.ListClaw)
 		r.Get("/claw/{id}", h.GetClaw)
 		r.Post("/claw/{id}/messages", h.PostClawMessage)
 		// v23 名词皆可动 — reassign a pending plan row between runs.

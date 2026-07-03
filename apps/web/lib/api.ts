@@ -671,6 +671,27 @@ export type ClawRolesConfig = {
   tool_wired: Record<string, boolean>;
 };
 
+/** v25 工作室 — one shelf entry on the 案卷架 (GET /api/v1/claw). */
+export type ClawRunSummary = {
+  job_id: string;
+  session_id: string;
+  status: ClawRun["status"];
+  prompt: string;
+  title?: string;
+  plan?: ClawTask[];
+  artifact_version: number;
+  figures: number;
+  videos: number;
+  has_deck: boolean;
+  started_at: string;
+};
+
+export async function listClawRuns(): Promise<ClawRunSummary[]> {
+  const res = await fetch("/api/v1/claw");
+  const body = await unwrap<{ runs: ClawRunSummary[] }>(res);
+  return body.runs ?? [];
+}
+
 /** v24 时光机 — one persisted session event (chat_events row) as served by
  *  GET /sessions/{id}/log. `at` is the wall-clock timestamp used to pace
  *  replay; `data` mirrors the live WS frame payload. */
