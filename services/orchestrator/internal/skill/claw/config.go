@@ -201,6 +201,8 @@ func (r *Runner) toolWired(name string) bool {
 		return r.Video != nil
 	case "edit_image":
 		return r.Editor != nil
+	case "generate_variants":
+		return r.Variants != nil
 	case "find_kol":
 		return r.KOL != nil
 	default: // plan_tasks / update_task / write_document — always available

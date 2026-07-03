@@ -231,6 +231,11 @@ func main() {
 	if designBridge != nil {
 		clawEditor = designEditor{bridge: designBridge}
 	}
+	// Designer's multi-take generator (V26 批一) — nil greys generate_variants.
+	var clawVariants claw.VariantMaker
+	if designBridge != nil {
+		clawVariants = designVariants{bridge: designBridge}
+	}
 	// Designer's image source: prefer the design bridge's NanoBanana (df-ability
 	// keys, same gateway as Seedance) over the legacy orchestrator-side
 	// providers; fall back to the composite searcher when there's no bridge.
@@ -275,6 +280,8 @@ func main() {
 		Video: clawVideo,
 		// Designer worker's post-production ops (design bridge edit endpoints).
 		Editor: clawEditor,
+		// Designer worker's multi-take generator (design bridge variants).
+		Variants: clawVariants,
 		// Researcher worker's KOL finder (YouTube Data API v3). nil greys find_kol.
 		KOL: clawKOL,
 	}
@@ -412,6 +419,24 @@ func (b bridgeImages) Search(ctx context.Context, query string) (*image.Result, 
 		return nil, nil
 	}
 	return &image.Result{URL: resp.URL}, nil
+}
+
+// designVariants adapts the design bridge's GenerateVariants into the claw
+// designer's VariantMaker capability (generate_variants tool, V26 批一).
+type designVariants struct{ bridge *design.Bridge }
+
+func (d designVariants) GenerateVariants(ctx context.Context, prompt string, count int) ([]string, error) {
+	resp, err := d.bridge.GenerateVariants(ctx, design.GenerateVariantsRequest{Prompt: prompt, Count: count})
+	if err != nil {
+		return nil, err
+	}
+	urls := make([]string, 0, len(resp.Variants))
+	for _, v := range resp.Variants {
+		if v.URL != "" {
+			urls = append(urls, v.URL)
+		}
+	}
+	return urls, nil
 }
 
 // designEditor adapts the design bridge's image-edit endpoints into the claw

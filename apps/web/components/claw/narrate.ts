@@ -21,6 +21,7 @@ const INTRO: Record<string, (detail: string) => string> = {
   edit_image: (d) => `这张图交给我精修 — ${d || "抠图、高清,安排"}。`,
   generate_poster: (d) => `海报我来 — ${d ? `主标题「${d}」` : "排版交给我"},一张就够抓眼球。`,
   generate_storybook: () => "这个适合做成绘本,我一格一格画,风格统一。",
+  generate_variants: () => "方向没定?我出几版不同的,你挑。",
   write_document: () => "材料齐了,我开写 — 这稿起码润八遍。",
   generate_deck: () => "报告给我,今晚必须出片!幻灯片这就排。",
   generate_video: () => "上三脚架!我把这张图推、拉、摇、移起来。",
@@ -33,6 +34,7 @@ const DONE: Record<string, string> = {
   edit_image: "修好了,放大看也经得起 ✦",
   generate_poster: "海报出稿!标题够大、留白够透 ✦",
   generate_storybook: "绘本画好了,一页页连得上 ✦",
+  generate_variants: "几个方案都摆出来了,挑一个 ✦",
   generate_deck: "片出了!档期保住了 ✓",
   generate_video: "成片!这条最稳 ►",
 };

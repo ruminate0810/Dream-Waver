@@ -95,6 +95,10 @@ func (r *Runner) buildTools(role Role, sess *Session) []tool.Tool {
 			if r.ImagesEnabled && r.Images != nil {
 				out = append(out, &GenerateStorybook{Images: r.Images, Session: sess, Emitter: r.Emitter})
 			}
+		case "generate_variants":
+			if r.Variants != nil {
+				out = append(out, &GenerateVariantsTool{Variants: r.Variants, Session: sess, Emitter: r.Emitter})
+			}
 		case "write_document":
 			out = append(out, &WriteDocument{Session: sess, Emitter: r.Emitter})
 		case "generate_deck":

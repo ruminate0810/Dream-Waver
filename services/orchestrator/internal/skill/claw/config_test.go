@@ -15,7 +15,8 @@ func TestDynamicRebinding(t *testing.T) {
 	r.LoadConfig(path)
 
 	// defaults: designer holds generate_image + edit_image + the 多样产出 tools
-	if got := r.EffectiveTools(RoleDesigner); len(got) != 4 || !contains(got, "generate_image") || !contains(got, "generate_poster") {
+	// (+ generate_variants since V26 批一)
+	if got := r.EffectiveTools(RoleDesigner); len(got) != 5 || !contains(got, "generate_image") || !contains(got, "generate_variants") {
 		t.Fatalf("designer default tools = %v", got)
 	}
 
@@ -26,7 +27,7 @@ func TestDynamicRebinding(t *testing.T) {
 	if got := r.EffectiveTools(RoleEngineer); len(got) != 2 { // code_execute + generate_image
 		t.Fatalf("engineer tools after rebind = %v", got)
 	}
-	if got := r.EffectiveTools(RoleDesigner); len(got) != 3 { // keeps edit_image + poster + storybook
+	if got := r.EffectiveTools(RoleDesigner); len(got) != 4 { // keeps edit_image + poster + storybook + variants
 		t.Fatalf("designer should keep its non-rebindable tools, got %v", got)
 	}
 	if r.roleEnabled(RoleDesigner) {
