@@ -154,6 +154,10 @@ export function nextSteps(run: ClawRun): NextStep[] {
   out.push({ label: "做成绘本", text: "让设计师把核心内容改编成一本 4 页的插画绘本,画风温暖统一。" });
   if (!run.deck) {
     out.push({ label: "做成 PPT", text: "把这份报告做成一份幻灯片 deck。" });
+  } else {
+    // deck exists → offer edits (edit_deck via the producer, V26 批三)
+    out.push({ label: "换 deck 主题", text: "把整个 deck 换成 corporate 风格。" });
+    out.push({ label: "精简 deck", text: "把 deck 里最满的那几页精简一下,每页只留核心要点。" });
   }
   if ((run.games?.length ?? 0) === 0) {
     out.push({ label: "做成小游戏", text: "把这个主题做成一个可玩的 HTML 小游戏,玩法简单上手、有一个小反转。" });

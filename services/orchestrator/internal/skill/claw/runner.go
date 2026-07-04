@@ -30,6 +30,7 @@ type Runner struct {
 	Editor        ImageEditor       // optional; the designer's post-production ops (nil greys edit_image out)
 	Variants      VariantMaker      // optional; the designer's multi-take generator (nil greys generate_variants out)
 	Game          GameMaker         // optional; the producer's playable-game maker (nil greys generate_game out)
+	DeckEditor    DeckEditor        // optional; the producer's deck-editor (nil greys edit_deck out)
 	KOL           KOLFinder         // optional; the researcher's KOL/influencer finder (nil greys find_kol out)
 
 	// 真·动态改绑 — runtime role↔tool bindings + role enablement (config.go).

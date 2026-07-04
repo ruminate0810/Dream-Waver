@@ -205,6 +205,8 @@ func (r *Runner) toolWired(name string) bool {
 		return r.Variants != nil
 	case "generate_game":
 		return r.Game != nil
+	case "edit_deck":
+		return r.DeckEditor != nil
 	case "find_kol":
 		return r.KOL != nil
 	default: // plan_tasks / update_task / write_document — always available

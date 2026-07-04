@@ -86,3 +86,73 @@ func (t *GenerateDeck) Execute(ctx context.Context, args json.RawMessage) (schem
 	}
 	return schema.ToolResult{Output: fmt.Sprintf("已生成 deck:%s(%d 页)。", out.Title, out.SlideCount)}, nil
 }
+
+// DeckEditor is the producer's deck-editing capability (V26 批三): apply a
+// natural-language edit to an already-generated deck, keyed by its slides
+// session id (the deck's PreviewID). Backed by the slides AgentRunner's
+// Continue path via an adapter in cmd/server, so one claw tool inherits the
+// full slides edit toolset (换主题/增删页/密度重写/评审…) for free. nil when
+// the slides agent runner is absent, which unwires the tool.
+type DeckEditor interface {
+	EditDeck(ctx context.Context, previewID, instruction string) (path, title string, slideCount int, err error)
+}
+
+// EditDeck lets the producer revise the EXISTING work-package deck instead of
+// regenerating it from scratch. The instruction is free-form ("把整个 deck 换成
+// corporate 风", "第 3 页太满,精简一下", "在结尾加一页总结") — the slides edit
+// agent picks the right internal tool. Requires a deck to exist.
+type EditDeck struct {
+	Editor  DeckEditor
+	Session *Session
+	Emitter event.Emitter
+}
+
+func (*EditDeck) Name() string { return "edit_deck" }
+
+func (*EditDeck) Description() string {
+	return "Revise the EXISTING slide deck (do not regenerate). Pass a natural-language instruction: " +
+		"change theme, add/delete/reorder/merge/split a slide, tighten a dense slide, restyle, or fix " +
+		"content. Only works after generate_deck. Call once per edit, then terminate."
+}
+
+func (*EditDeck) Parameters() json.RawMessage {
+	return json.RawMessage(`{
+		"type": "object",
+		"required": ["instruction"],
+		"properties": {
+			"instruction": {"type": "string", "description": "What to change, in natural language (Chinese OK), e.g. 把整个 deck 换成 corporate 风 / 第 3 页太满，精简 / 在结尾加一页总结。"}
+		}
+	}`)
+}
+
+func (t *EditDeck) Execute(ctx context.Context, args json.RawMessage) (schema.ToolResult, error) {
+	var p struct {
+		Instruction string `json:"instruction"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return schema.ToolResult{Error: "invalid arguments: " + err.Error()}, nil
+	}
+	instr := strings.TrimSpace(p.Instruction)
+	if instr == "" {
+		return schema.ToolResult{Error: "instruction is required"}, nil
+	}
+	deck := t.Session.DeckArtifact()
+	if deck == nil || strings.TrimSpace(deck.PreviewID) == "" {
+		return schema.ToolResult{Error: "还没有可编辑的 deck — 先用 generate_deck 生成。"}, nil
+	}
+
+	// Suppress the slides edit agent's own slides.* events (run under an
+	// empty session id) — the producer's tool.start/end already shows
+	// progress, same as GenerateDeck.
+	ectx := event.WithSessionID(ctx, "")
+	path, title, count, err := t.Editor.EditDeck(ectx, deck.PreviewID, instr)
+	if err != nil {
+		return schema.ToolResult{Error: "deck 编辑失败: " + err.Error()}, nil
+	}
+
+	t.Session.SetDeck(path, title, count, deck.PreviewID)
+	if t.Emitter != nil {
+		t.Emitter.Emit(ctx, event.NewClawArtifactUpdated("deck", 1, count))
+	}
+	return schema.ToolResult{Output: fmt.Sprintf("已改好 deck:%s(%d 页)。", title, count)}, nil
+}

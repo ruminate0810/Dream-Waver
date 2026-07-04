@@ -309,6 +309,54 @@ func TestGenerateGameTool(t *testing.T) {
 	}
 }
 
+// fakeDeckEditor satisfies DeckEditor for the V26 批三 tool test.
+type fakeDeckEditor struct {
+	gotPreviewID string
+	gotInstr     string
+}
+
+func (f *fakeDeckEditor) EditDeck(_ context.Context, previewID, instruction string) (string, string, int, error) {
+	f.gotPreviewID = previewID
+	f.gotInstr = instruction
+	return "/out/deck-edited.pptx", "改后的 deck", 9, nil
+}
+
+// TestEditDeckTool (V26 批三) — edit_deck routes the instruction to the deck's
+// slides session (by PreviewID), updates the work-package deck, and refuses
+// when there's no deck yet.
+func TestEditDeckTool(t *testing.T) {
+	sess := &Session{}
+	em := &recordingEmitter{}
+	ed := &fakeDeckEditor{}
+	tool := &EditDeck{Editor: ed, Session: sess, Emitter: em}
+
+	// No deck yet → refuse (don't panic).
+	res, _ := tool.Execute(context.Background(), json.RawMessage(`{"instruction":"换成 corporate 风"}`))
+	if res.Error == "" {
+		t.Fatal("edit_deck must refuse when no deck exists")
+	}
+
+	// Now a deck exists — the edit must route to its PreviewID and land.
+	sess.SetDeck("/out/deck.pptx", "原 deck", 8, "preview-xyz")
+	res, err := tool.Execute(context.Background(), json.RawMessage(`{"instruction":"把整个 deck 换成 corporate 风"}`))
+	if err != nil || res.Error != "" {
+		t.Fatalf("execute: err=%v toolErr=%q", err, res.Error)
+	}
+	if ed.gotPreviewID != "preview-xyz" {
+		t.Fatalf("edit routed to wrong session: %q", ed.gotPreviewID)
+	}
+	if ed.gotInstr != "把整个 deck 换成 corporate 风" {
+		t.Fatalf("instruction not passed through: %q", ed.gotInstr)
+	}
+	d := sess.DeckArtifact()
+	if d == nil || d.Path != "/out/deck-edited.pptx" || d.SlideCount != 9 || d.PreviewID != "preview-xyz" {
+		t.Fatalf("deck not updated in place: %+v", d)
+	}
+	if ev, ok := em.firstOf(event.KindClawArtifactUpdated); !ok || ev.Data.ArtifactKind != "deck" {
+		t.Fatalf("no deck artifact event: %+v", ev.Data)
+	}
+}
+
 // TestReassignTask (v23 名词皆可动) — plan surgery: pending rows move to an
 // enabled role and the plan re-announces; doing rows and bad roles refuse.
 func TestReassignTask(t *testing.T) {

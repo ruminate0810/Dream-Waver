@@ -250,7 +250,11 @@ func (r *Runner) callPlanner(ctx context.Context, sess *Session, goal string, av
 	if avail[RoleProducer] {
 		caps := []string{}
 		if r.toolWired("generate_deck") {
-			caps = append(caps, "把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck)")
+			deckCap := "把报告做成幻灯片 deck(仅当用户明确要 PPT/幻灯片/deck)"
+			if r.toolWired("edit_deck") {
+				deckCap += ",或修改已生成的 deck(换主题/增删页/精简)"
+			}
+			caps = append(caps, deckCap)
 		}
 		if r.toolWired("generate_game") {
 			caps = append(caps, "把玩法描述做成可玩的 HTML 小游戏(仅当用户明确要游戏)")
@@ -721,6 +725,11 @@ func (r *Runner) runProducer(ctx context.Context, sess *Session, goal string) {
 	fmt.Fprintf(&b, "主题:%s\n", goal)
 	if t := strings.TrimSpace(sess.Title); t != "" {
 		fmt.Fprintf(&b, "标题:%s\n", t)
+	}
+	// Tell the producer the current deck state so it picks generate_deck
+	// (none yet) vs edit_deck (revise the existing one) — V26 批三.
+	if d := sess.DeckArtifact(); d != nil {
+		fmt.Fprintf(&b, "当前已有 deck:%s(%d 页)。要改动它请用 edit_deck(传自然语言指令),不要重新 generate_deck。\n", d.Title, d.SlideCount)
 	}
 	if rep := strings.TrimSpace(report); rep != "" {
 		fmt.Fprintf(&b, "报告要点(节选,做 deck 时用):\n%s\n", truncateClaw(rep, 800))

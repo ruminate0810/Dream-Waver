@@ -243,6 +243,12 @@ func main() {
 	// a full game_jobs row (incl. HTML snapshot) is persisted best-effort
 	// so it survives restarts like a route-created game.
 	clawGame := clawGameMaker{pipeline: gamePipeline, sessions: gameSessions, jobs: dataStore.GameJobs}
+	// Producer's deck editor (V26 批三) — reuses the slides AgentRunner's
+	// edit loop, so one claw tool (edit_deck) inherits the full slides edit
+	// toolset. The deck the producer generates lives in the shared slides
+	// SessionStore under its PreviewID, which is exactly the jobID
+	// AgentRunner.Continue expects. nil greys out edit_deck.
+	clawDeckEditor := slidesDeckEditor{runner: agentRunner}
 	// Designer's image source: prefer the design bridge's NanoBanana (df-ability
 	// keys, same gateway as Seedance) over the legacy orchestrator-side
 	// providers; fall back to the composite searcher when there's no bridge.
@@ -291,6 +297,8 @@ func main() {
 		Variants: clawVariants,
 		// Producer worker's playable-game maker (games vertical pipeline).
 		Game: clawGame,
+		// Producer worker's deck editor (slides agent-runner edit loop).
+		DeckEditor: clawDeckEditor,
 		// Researcher worker's KOL finder (YouTube Data API v3). nil greys find_kol.
 		KOL: clawKOL,
 	}
@@ -481,6 +489,24 @@ func (g clawGameMaker) MakeGame(ctx context.Context, prompt, genre string) (stri
 		}
 	}
 	return playURL, out.Title, out.Description, nil
+}
+
+// slidesDeckEditor adapts the slides AgentRunner's Continue (edit) path into
+// the claw producer's DeckEditor capability (edit_deck tool, V26 批三). The
+// previewID is the slides jobID; Continue looks up the SessionState, runs
+// the slides edit agent (which owns ~20 edit tools), and returns the updated
+// deck. ErrSessionGone surfaces as a normal tool error.
+type slidesDeckEditor struct{ runner *slides.AgentRunner }
+
+func (e slidesDeckEditor) EditDeck(ctx context.Context, previewID, instruction string) (string, string, int, error) {
+	out, err := e.runner.Continue(ctx, previewID, instruction)
+	if err != nil {
+		return "", "", 0, err
+	}
+	if out == nil {
+		return "", "", 0, fmt.Errorf("deck 编辑没有产出")
+	}
+	return out.PptxPath, out.Title, out.SlideCount, nil
 }
 
 // designVariants adapts the design bridge's GenerateVariants into the claw
