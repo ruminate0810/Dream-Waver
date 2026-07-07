@@ -241,12 +241,18 @@ generate_deck 走 slides 管线是现成范式），不搬各纵切的 UI。
 | 批一(核实为已有) | outpaint / img2img | 2 | edit_image 的 op 枚举早已覆盖(审计误报) | 已有 |
 | 批二 | games 纵切 generate_game | 2 | 新「游戏制作人」角色或制片扩权;games.Pipeline.Run 适配器;需要 claw session 新增 game 产物槽(迁移+快照+前端 tab)——工作量在产物通道不在工具 | 方案 |
 | 批三 | slides 编辑工具(高频 6-8 个: 改文字/换主题/加删页/重排/评审 deck) | ~30 中选 8 | 作用于 deck 的 slides session(Deck.PreviewID 已在);制片获得"出片后继续改"闭环;每工具一薄适配器 | 方案 |
-| 批四 | video bridge 时间线迭代(CreateRun/Regen/Timeline) | 5 | 视频师从单发 i2v 升级为可迭代短片;依赖 Opendream 后端在位 | 方案 |
+| 批四 | video bridge 时间线迭代(CreateRun/Regen/Timeline) | 5 | 视频师从单发 i2v 升级为可迭代短片 | **暂缓**(见下) |
 | 不接 | DesignRouting(design-chat 专用)、纯 UI 特性 | — | 界面不搬 | — |
 
-批二的关键决策留待确认：游戏产物槽是复用 deck 的 jsonb 模式（省迁移）还是
-独立 games 槽位。批三先挑 change_theme / add_slide / delete_slide /
-regenerate_slide / rewrite_for_density / critic_deck 六个。
+批二已落：游戏走独立 games jsonb 槽位（迁移 0012），HTML 存 games 纵切、
+claw 只存引用。批三未逐个搬工具，而是 edit_deck 委托给 slides
+AgentRunner.Continue，一个工具白拿全部 ~20 个 slides 编辑能力。
+
+**批四暂缓，理由（符合 §0 可检验关）**：Opendream video bridge 依赖
+`OPENDREAM_BASE_URL`，本环境未配置 → 工具会被 toolWired 永久灰掉，无法在
+真机冒烟里验证；且它是「多镜头时间线 + 异步轮询 + 新产物模型」的大改
+（远重于批一二三）。等 Opendream 后端在位后再做，做法与 edit_image 一致：
+工具结构完整、缺 key 干净灰掉、fake 单测 + 后端在位时集成验。
 
 ## 10. 与论文和产品的对齐
 
